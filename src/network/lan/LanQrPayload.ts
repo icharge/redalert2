@@ -83,19 +83,19 @@ function parsePacket(jsonText: string): LanQrPacket {
         parsed = JSON.parse(jsonText);
     }
     catch {
-        throw new Error('二维码内容不是合法 JSON。');
+        throw new Error('QR code content is not valid JSON.');
     }
 
     if (!parsed || typeof parsed !== 'object') {
-        throw new Error('二维码内容格式不正确。');
+        throw new Error('QR code content format is incorrect.');
     }
 
     const candidate = parsed as Partial<LanQrPacket>;
     if (candidate.version !== 1) {
-        throw new Error(`不支持的二维码版本：${candidate.version ?? 'unknown'}。`);
+        throw new Error(`Unsupported QR code version: ${candidate.version ?? 'unknown'}.`);
     }
     if (candidate.kind !== 'invite' && candidate.kind !== 'join-response') {
-        throw new Error('二维码内容类型无法识别。');
+        throw new Error('QR code content type is unrecognized.');
     }
     return candidate as LanQrPacket;
 }
@@ -110,7 +110,7 @@ export async function decodeLanQrPacket(payloadText: string): Promise<LanQrPacke
 
     if (normalized.startsWith(GZIP_PREFIX)) {
         if (!supportsCompressionStreams()) {
-            throw new Error('当前浏览器不支持压缩二维码内容。');
+            throw new Error('This browser does not support compressed QR code content.');
         }
         const bytes = base64UrlToBytes(normalized.slice(GZIP_PREFIX.length));
         const uncompressed = await gunzipBytes(bytes);
@@ -121,5 +121,5 @@ export async function decodeLanQrPacket(payloadText: string): Promise<LanQrPacke
         return parsePacket(normalized.slice(JSON_PREFIX.length));
     }
 
-    throw new Error('这不是 redalert2 局域网联机二维码内容。');
+    throw new Error('This is not a redalert2 LAN QR code content.');
 }

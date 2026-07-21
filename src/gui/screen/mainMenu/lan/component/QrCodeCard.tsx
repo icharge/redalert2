@@ -59,7 +59,7 @@ export const QrCodeCard: React.FC<QrCodeCardProps> = ({ title, description, payl
                 </div>
             ) : (
                 <div className="lan-qr-placeholder">
-                    {errorText ?? '当前还没有可展示的二维码内容。'}
+                    {errorText ?? 'No QR code content to display yet.'}
                 </div>
             )}
         </div>

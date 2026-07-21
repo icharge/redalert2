@@ -151,7 +151,7 @@ export const GeneralOpts: React.FC<GeneralOptsProps> = ({ strings, options, full
       </div>
       {mobileLayout && (<div className="item">
           <label>
-            <span className="label">摇杆</span>
+            <span className="label">Joystick</span>
             <input type="checkbox" checked={mobileJoystickEnabled} onChange={(event) => {
                 const enabled = event.target.checked;
                 const globalWindow = window as any;

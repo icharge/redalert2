@@ -70,7 +70,7 @@ const StorageExplorer: React.FC<StorageExplorerProps> = ({ strings, messageBoxAp
                 }}
                 validateNewFolderName={(name) => {
                     if (!modIdRegex.test(name)) {
-                        return '文件夹名称只允许字母、数字、- 和 _。';
+                        return 'Folder names may only contain letters, numbers, hyphens, and underscores.';
                     }
                     return undefined;
                 }}

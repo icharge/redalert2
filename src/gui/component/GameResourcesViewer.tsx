@@ -47,8 +47,8 @@ const GameResourcesViewer: React.FC = () => {
     };
 
     const getSystemStatus = () => {
-        const vfsStatus = Engine.vfs ? '✅ 已初始化' : '❌ 未初始化';
-        const rfsStatus = Engine.rfs ? '✅ 已初始化' : '❌ 未初始化';
+        const vfsStatus = Engine.vfs ? '✅ Initialized' : '❌ Not Initialized';
+        const rfsStatus = Engine.rfs ? '✅ Initialized' : '❌ Not Initialized';
         const vfsArchiveCount = Engine.vfs ? Engine.vfs.listArchives().length : 0;
         const storageReady = !!storageDirHandle;
         const fsAccessReady = !!browserFileSystemAccess.adapters.indexeddb;
@@ -65,31 +65,31 @@ const GameResourcesViewer: React.FC = () => {
             fontFamily: 'Arial, sans-serif',
             boxSizing: 'border-box'
         }}>
-            <h1>RA2 Web - 游戏资源存储浏览器</h1>
+            <h1>RA2 Web - Game Resource Storage Browser</h1>
 
             <div style={{ marginBottom: '20px' }}>
-                <h2>系统状态</h2>
+                <h2>System Status</h2>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
                     <div style={{ padding: '10px', border: '1px solid #ccc', borderRadius: '5px' }}>
-                        <strong>虚拟文件系统 (VFS)</strong>
-                        <div>状态: {vfsStatus}</div>
-                        <div>归档数量: {vfsArchiveCount}</div>
+                        <strong>Virtual File System (VFS)</strong>
+                        <div>Status: {vfsStatus}</div>
+                        <div>Archive Count: {vfsArchiveCount}</div>
                     </div>
                     <div style={{ padding: '10px', border: '1px solid #ccc', borderRadius: '5px' }}>
-                        <strong>真实文件系统 (RFS)</strong>
-                        <div>状态: {rfsStatus}</div>
-                        <div>存储句柄: {storageReady ? '✅ 就绪' : '❌ 未就绪'}</div>
+                        <strong>Real File System (RFS)</strong>
+                        <div>Status: {rfsStatus}</div>
+                        <div>Storage Handle: {storageReady ? '✅ Ready' : '❌ Not Ready'}</div>
                     </div>
                     <div style={{ padding: '10px', border: '1px solid #ccc', borderRadius: '5px' }}>
-                        <strong>ESM 模块</strong>
-                        <div>FileSystemAccess: {fsAccessReady ? '✅ 已接入' : '❌ 不可用'}</div>
-                        <div>File Explorer: ✅ TypeScript 组件</div>
+                        <strong>ESM Module</strong>
+                        <div>FileSystemAccess: {fsAccessReady ? '✅ Connected' : '❌ Unavailable'}</div>
+                        <div>File Explorer: ✅ TypeScript Component</div>
                     </div>
                 </div>
             </div>
 
             <div style={{ marginBottom: '20px' }}>
-                <h2>存储浏览器控制</h2>
+                <h2>Storage Browser Controls</h2>
                 <div style={{ marginBottom: '10px' }}>
                     <button
                         onClick={() => {
@@ -107,7 +107,7 @@ const GameResourcesViewer: React.FC = () => {
                             cursor: storageReady ? 'pointer' : 'not-allowed'
                         }}
                     >
-                        打开存储浏览器
+                        Open Storage Browser
                     </button>
                     <button
                         onClick={() => location.reload()}
@@ -121,7 +121,7 @@ const GameResourcesViewer: React.FC = () => {
                             cursor: fileSystemChanged ? 'pointer' : 'not-allowed'
                         }}
                     >
-                        {fileSystemChanged ? '退出并重新加载' : '重新加载（未修改）'}
+                        {fileSystemChanged ? 'Exit and Reload' : 'Reload (No Changes)'}
                     </button>
                 </div>
             </div>
@@ -135,7 +135,7 @@ const GameResourcesViewer: React.FC = () => {
                     marginBottom: '10px',
                     border: '1px solid #ffcdd2'
                 }}>
-                    错误: {error}
+                    Error: {error}
                 </div>
             ) : null}
 
@@ -161,7 +161,7 @@ const GameResourcesViewer: React.FC = () => {
                     marginBottom: '10px',
                     border: '1px solid #ffeaa7'
                 }}>
-                    ⚠️ 文件系统已修改。建议重新加载应用以确保更改生效。
+                    ⚠️ File system has been modified. Please reload the application to ensure changes take effect.
                 </div>
             ) : null}
 
@@ -175,8 +175,8 @@ const GameResourcesViewer: React.FC = () => {
             }}>
                 {!showExplorer ? (
                     <div style={{ padding: '20px', textAlign: 'center' }}>
-                        <p>点击“打开存储浏览器”开始浏览游戏资源文件。</p>
-                        <p>这里显示的是浏览器存储中持久化的游戏文件和目录。</p>
+                        <p>Click "Open Storage Browser" to browse game resource files.</p>
+                        <p>This shows the game files and directories persisted in browser storage.</p>
                     </div>
                 ) : storageDirHandle ? (
                     <StorageFileExplorer
@@ -184,7 +184,7 @@ const GameResourcesViewer: React.FC = () => {
                         rootLabel="Game Storage"
                         isSystemFile={isSystemFile}
                         onFileSystemChange={() => setFileSystemChanged(true)}
-                        onFileOpen={(path, entry) => setMessage(`打开文件: ${entry.name} (路径: ${path})`)}
+                        onFileOpen={(path, entry) => setMessage(`Opened file: ${entry.name} (path: ${path})`)}
                         onInfo={(info) => setMessage(info)}
                         promptForText={async (promptText) => {
                             const value = window.prompt(promptText);
@@ -195,20 +195,20 @@ const GameResourcesViewer: React.FC = () => {
                     />
                 ) : (
                     <div style={{ padding: '20px', textAlign: 'center' }}>
-                        <p>等待存储系统就绪...</p>
-                        <p>请确保游戏资源已导入且 RFS 系统正常初始化。</p>
+                        <p>Waiting for storage system to be ready...</p>
+                        <p>Please ensure game resources are imported and the RFS system is initialized correctly.</p>
                     </div>
                 )}
             </div>
 
             <div style={{ marginTop: '20px', padding: '15px', backgroundColor: '#f0f0f0', borderRadius: '5px' }}>
-                <h3>使用说明</h3>
+                <h3>Instructions</h3>
                 <ul>
-                    <li><strong>存储浏览器</strong>: 浏览浏览器存储中的游戏资源文件</li>
-                    <li><strong>系统文件</strong>: .mix、.bag、.ini 等核心游戏文件受保护，删除前会警告</li>
-                    <li><strong>文件操作</strong>: 支持上传、删除、新建文件夹等操作</li>
-                    <li><strong>调试工具</strong>: 此组件用于调试 mix 文件读取问题和资源管理</li>
-                    <li><strong>ESM 迁移</strong>: 浏览器不再依赖 public 下的旧版 file-explorer.js</li>
+                    <li><strong>Storage Browser</strong>: Browse game resource files in browser storage</li>
+                    <li><strong>System Files</strong>: Core game files (.mix, .bag, .ini, etc.) are protected; a warning appears before deletion</li>
+                    <li><strong>File Operations</strong>: Upload, delete, create new folders, and more are supported</li>
+                    <li><strong>Debug Tool</strong>: This component is used for debugging mix file reading and resource management</li>
+                    <li><strong>ESM Migration</strong>: The browser no longer relies on the legacy file-explorer.js in public</li>
                 </ul>
             </div>
         </div>

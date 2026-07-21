@@ -17,7 +17,7 @@ export class TestEntryScreen implements Screen {
     private appVersion: string;
     private controller?: MainMenuController;
     private view: TestEntryView = 'home';
-    public title: string = '底层测试入口';
+    public title: string = 'Test Entry';
     constructor(strings: Strings, messageBoxApi: MessageBoxApi, appVersion: string) {
         this.strings = strings;
         this.messageBoxApi = messageBoxApi;
@@ -42,11 +42,11 @@ export class TestEntryScreen implements Screen {
     private getSidebarTitle(): string {
         switch (this.view) {
             case 'asset':
-                return '素材测试';
+                return 'Asset Tests';
             case 'mechanic':
-                return '机制测试';
+                return 'Mechanic Tests';
             case 'scene':
-                return '场景测试';
+                return 'Scene Tests';
             default:
                 return this.title;
         }
@@ -63,13 +63,13 @@ export class TestEntryScreen implements Screen {
     }
     private createBackToCategoriesButton(): SidebarButton {
         return {
-            label: '返回测试分类',
+            label: 'Back to Test Categories',
             onClick: () => this.setView('home')
         };
     }
     private createBackToMenuButton(): SidebarButton {
         return {
-            label: '返回主菜单',
+            label: 'Back to Main Menu',
             isBottom: true,
             onClick: () => {
                 console.log('[TestEntryScreen] Back clicked');
@@ -80,43 +80,43 @@ export class TestEntryScreen implements Screen {
     private renderButtons(): void {
         const homeButtons: SidebarButton[] = [
             {
-                label: '素材测试',
-                tooltip: '查看 VXL、SHP、音频素材测试',
+                label: 'Asset Tests',
+                tooltip: 'View VXL, SHP, and audio asset tests',
                 onClick: () => this.setView('asset')
             },
             {
-                label: '机制测试',
-                tooltip: '查看 建筑、载具、步兵、飞行器测试',
+                label: 'Mechanic Tests',
+                tooltip: 'View building, vehicle, infantry, and aircraft tests',
                 onClick: () => this.setView('mechanic')
             },
             {
-                label: '场景测试',
-                tooltip: '查看 大厅、世界、移动测试',
+                label: 'Scene Tests',
+                tooltip: 'View lobby, world, and movement tests',
                 onClick: () => this.setView('scene')
             },
             this.createBackToMenuButton()
         ];
         const assetButtons: SidebarButton[] = [
-            this.createRouteButton('VXL测试', '打开 VXL 测试工具', '/vxltest'),
-            this.createRouteButton('SHP测试', '打开 SHP 测试工具', '/shptest'),
-            this.createRouteButton('音频测试', '打开 音频 测试工具', '/soundtest'),
+            this.createRouteButton('VXL Test', 'Open the VXL test tool', '/vxltest'),
+            this.createRouteButton('SHP Test', 'Open the SHP test tool', '/shptest'),
+            this.createRouteButton('Audio Test', 'Open the audio test tool', '/soundtest'),
             this.createBackToCategoriesButton(),
             this.createBackToMenuButton()
         ];
         const mechanicButtons: SidebarButton[] = [
-            this.createRouteButton('建筑测试', '打开 建筑 测试工具', '/buildtest'),
-            this.createRouteButton('载具测试', '打开 载具 测试工具', '/vehicletest'),
-            this.createRouteButton('步兵测试', '打开 步兵 测试工具', '/inftest'),
-            this.createRouteButton('飞行器测试', '打开 飞行器 测试工具', '/airtest'),
+            this.createRouteButton('Building Test', 'Open the building test tool', '/buildtest'),
+            this.createRouteButton('Vehicle Test', 'Open the vehicle test tool', '/vehicletest'),
+            this.createRouteButton('Infantry Test', 'Open the infantry test tool', '/inftest'),
+            this.createRouteButton('Aircraft Test', 'Open the aircraft test tool', '/airtest'),
             this.createBackToCategoriesButton(),
             this.createBackToMenuButton()
         ];
         const sceneButtons: SidebarButton[] = [
-            this.createRouteButton('大厅测试', '打开 大厅 测试工具', '/lobbytest'),
-            this.createRouteButton('世界测试', '打开 世界场景 测试工具', '/worldscenetest'),
-            this.createRouteButton('移动测试', '打开 单位移动 测试工具', '/unitmovementtest'),
-            this.createRouteButton('场景沙盒', '打开 可手动放置单位的地图沙盒', '/scenesandbox'),
-            this.createRouteButton('性能测试', '打开 性能 基准 测试工具', '/perftest'),
+            this.createRouteButton('Lobby Test', 'Open the lobby test tool', '/lobbytest'),
+            this.createRouteButton('World Test', 'Open the world scene test tool', '/worldscenetest'),
+            this.createRouteButton('Movement Test', 'Open the unit movement test tool', '/unitmovementtest'),
+            this.createRouteButton('Scene Sandbox', 'Open the map sandbox where units can be placed manually', '/scenesandbox'),
+            this.createRouteButton('Performance Test', 'Open the performance benchmark test tool', '/perftest'),
             this.createBackToCategoriesButton(),
             this.createBackToMenuButton()
         ];

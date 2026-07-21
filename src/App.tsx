@@ -77,7 +77,7 @@ function App() {
                 borderRadius: '4px',
                 cursor: 'pointer'
             }}>
-            返回正常模式
+            Return to Normal Mode
           </button>
         </div>
       </div>);

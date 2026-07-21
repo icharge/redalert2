@@ -246,7 +246,7 @@ export class LiveInteractionTester {
         const loadingStartedAt = performance.now();
         const loadingScreen = this.createLoadingScreen(root, strings);
         try {
-            await loadingScreen.api.start(this.createLoadingScreenPlayers(), '直播互动');
+            await loadingScreen.api.start(this.createLoadingScreenPlayers(), 'Live Interaction');
             loadingScreen.uiScene.create3DObject();
             loadingScreen.uiScene.update(0);
             await this.flushUi();
@@ -279,7 +279,7 @@ export class LiveInteractionTester {
             const remainingLoadingTime = LOADING_SCREEN_MIN_DURATION_MS - (performance.now() - loadingStartedAt);
             await this.flushUi(Math.max(0, remainingLoadingTime));
 
-            this.appendLog('系统', '直播互动模式已加载，可先用右侧 mock 按钮验证效果。');
+            this.appendLog('system', 'Live Interaction mode loaded. Use the mock buttons on the right to preview effects.');
             this.state.ready = true;
             this.syncState();
             const debugRoot = ((window as any).__ra2debug ??= {});
@@ -394,7 +394,7 @@ export class LiveInteractionTester {
         minimapShell.dataset.liveMinimap = '1';
 
         const minimapBadge = document.createElement('div');
-        minimapBadge.textContent = '正式小地图';
+        minimapBadge.textContent = 'Minimap';
         minimapBadge.style.position = 'absolute';
         minimapBadge.style.left = `${MINIMAP_MARGIN}px`;
         minimapBadge.style.bottom = `${MINIMAP_MARGIN + MINIMAP_SIZE + 8}px`;
@@ -445,12 +445,12 @@ export class LiveInteractionTester {
         panelContent.style.transition = 'opacity 120ms ease';
 
         const title = document.createElement('div');
-        title.textContent = strings.get('GUI:MainMenu') ? '直播互动模式' : 'Live Interaction';
+        title.textContent = strings.get('GUI:MainMenu') ? 'Live Interaction Mode' : 'Live Interaction';
         title.style.fontSize = '24px';
         title.style.fontWeight = '700';
 
         const subtitle = document.createElement('div');
-        subtitle.textContent = '当前直接复用了正式遭遇战的世界渲染、交互和小地图组件，只隐藏侧边栏和底栏。红方老家在上、蓝方老家在下，双方增援会默认朝敌方老家移动攻击，可用屏幕边缘滚动、右键拖拽、滚轮缩放和小地图跳转查看战场。';
+        subtitle.textContent = 'This reuses the real skirmish world rendering, interaction, and minimap components, hiding only the sidebar and bottom bar. The red base is at the top, the blue base at the bottom; reinforcements default to attack-move toward the enemy base. Use screen-edge scrolling, right-drag, mouse-wheel zoom, and minimap clicks to view the battlefield.';
         subtitle.style.fontSize = '12px';
         subtitle.style.opacity = '0.85';
         subtitle.style.lineHeight = '1.5';
@@ -468,12 +468,12 @@ export class LiveInteractionTester {
         modeRow.style.alignItems = 'center';
         modeRow.style.gap = '8px';
         const modeLabel = document.createElement('label');
-        modeLabel.textContent = '模式';
+        modeLabel.textContent = 'Mode';
         const modeSelect = document.createElement('select');
         modeSelect.dataset.liveInput = 'mode';
         modeSelect.innerHTML = `
-            <option value="mock">本地模拟</option>
-            <option value="live">B站直播</option>
+            <option value="mock">Local Mock</option>
+            <option value="live">Bilibili Live</option>
         `;
         modeSelect.value = 'mock';
 
@@ -486,18 +486,18 @@ export class LiveInteractionTester {
         const appIdInput = this.buildLabeledInput(credentialsGrid, 'App ID', 'appId');
         const accessKeyIdInput = this.buildLabeledInput(credentialsGrid, 'Access Key', 'accessKeyId');
         const accessSecretInput = this.buildLabeledInput(credentialsGrid, 'Access Secret', 'accessSecret', 'password');
-        const codeInput = this.buildLabeledInput(credentialsGrid, '身份码', 'code');
+        const codeInput = this.buildLabeledInput(credentialsGrid, 'Auth Code', 'code');
 
         const actionsRow = document.createElement('div');
         actionsRow.style.display = 'grid';
         actionsRow.style.gridTemplateColumns = '1fr 1fr';
         actionsRow.style.gap = '8px';
-        const connectButton = this.buildButton('连接', 'connect');
-        const disconnectButton = this.buildButton('断开', 'disconnect');
+        const connectButton = this.buildButton('Connect', 'connect');
+        const disconnectButton = this.buildButton('Disconnect', 'disconnect');
         actionsRow.append(connectButton, disconnectButton);
 
         const mockTitle = document.createElement('div');
-        mockTitle.textContent = '本地测试';
+        mockTitle.textContent = 'Local Test';
         mockTitle.style.fontSize = '14px';
         mockTitle.style.fontWeight = '700';
 
@@ -506,14 +506,14 @@ export class LiveInteractionTester {
         mockButtons.style.gridTemplateColumns = '1fr 1fr';
         mockButtons.style.gap = '8px';
         mockButtons.append(
-            this.buildButton('模拟进房', 'mock-room-enter'),
-            this.buildButton('模拟点赞', 'mock-like'),
-            this.buildButton('模拟礼物', 'mock-gift'),
-            this.buildButton('模拟上舰', 'mock-guard'),
-            this.buildButton('模拟醒目留言', 'mock-super-chat'),
-            this.buildButton('红方弹幕(上)', 'mock-danmaku-left'),
-            this.buildButton('蓝方弹幕(下)', 'mock-danmaku-right'),
-            this.buildButton('战场全览', 'focus-center'),
+            this.buildButton('Mock Room Enter', 'mock-room-enter'),
+            this.buildButton('Mock Like', 'mock-like'),
+            this.buildButton('Mock Gift', 'mock-gift'),
+            this.buildButton('Mock Guard', 'mock-guard'),
+            this.buildButton('Mock Super Chat', 'mock-super-chat'),
+            this.buildButton('Red Danmaku (Top)', 'mock-danmaku-left'),
+            this.buildButton('Blue Danmaku (Bottom)', 'mock-danmaku-right'),
+            this.buildButton('Battle Overview', 'focus-center'),
         );
 
         const danmakuRow = document.createElement('div');
@@ -521,9 +521,9 @@ export class LiveInteractionTester {
         danmakuRow.style.gridTemplateColumns = '1fr auto';
         danmakuRow.style.gap = '8px';
         const danmakuInput = document.createElement('input');
-        danmakuInput.placeholder = '自定义弹幕，例如：蓝军 下路冲 / 红军 上路守';
+        danmakuInput.placeholder = 'Custom danmaku, e.g., Blue bottom rush / Red top defend';
         danmakuInput.dataset.liveInput = 'danmaku';
-        const danmakuSubmit = this.buildButton('发送', 'mock-danmaku-custom');
+        const danmakuSubmit = this.buildButton('Send', 'mock-danmaku-custom');
         danmakuRow.append(danmakuInput, danmakuSubmit);
 
         const statusSummary = document.createElement('div');
@@ -545,16 +545,16 @@ export class LiveInteractionTester {
         mappingSummary.style.lineHeight = '1.5';
         mappingSummary.style.whiteSpace = 'pre-wrap';
         mappingSummary.textContent = [
-            '事件映射',
-            '进房 / 点赞 -> 红方上方增援',
-            '礼物 / 上舰 / 醒目留言 -> 蓝方下方增援',
-            '弹幕含“红/上/top” -> 红方上路',
-            '弹幕含“蓝/下/bottom” -> 蓝方下路',
-            '重装与精英单位会优先显示观众昵称',
+            'Event Mapping',
+            'Room Enter / Like -> Red top reinforcement',
+            'Gift / Guard / Super Chat -> Blue bottom reinforcement',
+            'Danmaku contains "red/top/top" -> Red top lane',
+            'Danmaku contains "blue/bottom/bottom" -> Blue bottom lane',
+            'Heavy and elite units will display viewer names first',
         ].join('\n');
 
         const logTitle = document.createElement('div');
-        logTitle.textContent = '事件日志';
+        logTitle.textContent = 'Event Log';
         logTitle.style.fontSize = '14px';
         logTitle.style.fontWeight = '700';
 
@@ -691,13 +691,13 @@ export class LiveInteractionTester {
         const bottomCountryId = this.findNamedIndex(countryNames, ['Russians', 'Russia', 'Confederation']);
         return [
             {
-                name: '红方上方老家',
+                name: 'Red Top Base',
                 countryId: topCountryId,
                 colorId: 0,
                 teamId: NO_TEAM_ID,
             },
             {
-                name: '蓝方下方老家',
+                name: 'Blue Bottom Base',
                 countryId: bottomCountryId,
                 colorId: 1,
                 teamId: NO_TEAM_ID,
@@ -732,7 +732,7 @@ export class LiveInteractionTester {
 
     private static buildHomeButton(): void {
         const button = document.createElement('button');
-        button.textContent = '点此返回主页';
+        button.textContent = 'Back to Home';
         button.style.cssText = `
             position: fixed;
             left: 50%;
@@ -837,8 +837,8 @@ export class LiveInteractionTester {
             maxSlots: 2,
             mapOfficial: true,
             humanPlayers: [
-                { name: '红方', countryId: redCountryId, colorId: redColorId, startPos: 0, teamId: 0 },
-                { name: '蓝方', countryId: blueCountryId, colorId: blueColorId, startPos: 1, teamId: 1 },
+                { name: 'Red', countryId: redCountryId, colorId: redColorId, startPos: 0, teamId: 0 },
+                { name: 'Blue', countryId: blueCountryId, colorId: blueColorId, startPos: 1, teamId: 1 },
             ],
             aiPlayers: [],
         };
@@ -861,8 +861,8 @@ export class LiveInteractionTester {
             speedCheat,
             debugBotIndex,
         );
-        const leftPlayer = game.getPlayerByName('红方');
-        const rightPlayer = game.getPlayerByName('蓝方');
+        const leftPlayer = game.getPlayerByName('Red');
+        const rightPlayer = game.getPlayerByName('Blue');
         IsoCoords.init({
             x: 0,
             y: (game.map.mapBounds.getFullSize().width * Coords.getWorldTileSize()) / 2,
@@ -1009,8 +1009,8 @@ export class LiveInteractionTester {
             throw new Error('Failed to place top/bottom home bases for live interaction battle');
         }
 
-        const leftBase = this.spawnHomeBase(game, leftPlayer, leftBaseName, leftBaseTile, '红方老家');
-        const rightBase = this.spawnHomeBase(game, rightPlayer, rightBaseName, rightBaseTile, '蓝方老家');
+        const leftBase = this.spawnHomeBase(game, leftPlayer, leftBaseName, leftBaseTile, 'Red Base');
+        const rightBase = this.spawnHomeBase(game, rightPlayer, rightBaseName, rightBaseTile, 'Blue Base');
         const leftFoundation = leftBase.getFoundation();
         const rightFoundation = rightBase.getFoundation();
         const leftBaseCenterRx = leftBase.tile.rx + Math.floor(leftFoundation.width / 2);
@@ -1028,13 +1028,13 @@ export class LiveInteractionTester {
         }
 
         this.ui.catalogSummary!.textContent = [
-            '单位映射',
-            `红方上方老家: ${leftBaseName}`,
-            `蓝方下方老家: ${rightBaseName}`,
-            `红方基础步兵: ${unitCatalog.infantryBasic}`,
-            `红方精英步兵: ${unitCatalog.infantryElite}`,
-            `蓝方轻装甲: ${unitCatalog.vehicleLight}`,
-            `蓝方重装甲: ${unitCatalog.vehicleHeavy}`,
+            'Unit Mapping',
+            `Red top base: ${leftBaseName}`,
+            `Blue bottom base: ${rightBaseName}`,
+            `Red basic infantry: ${unitCatalog.infantryBasic}`,
+            `Red elite infantry: ${unitCatalog.infantryElite}`,
+            `Blue light armor: ${unitCatalog.vehicleLight}`,
+            `Blue heavy armor: ${unitCatalog.vehicleHeavy}`,
         ].join('\n');
 
         const debugRoot = ((window as any).__ra2debug ??= {});
@@ -1292,7 +1292,7 @@ export class LiveInteractionTester {
         }
         if (this.ui.panelToggle) {
             this.ui.panelToggle.textContent = this.panelCollapsed ? '◀' : '▶';
-            this.ui.panelToggle.title = this.panelCollapsed ? '展开右侧工具栏' : '向右缩起工具栏';
+            this.ui.panelToggle.title = this.panelCollapsed ? 'Expand right toolbar' : 'Collapse right toolbar';
         }
     }
 
@@ -1543,8 +1543,8 @@ export class LiveInteractionTester {
         if (!this.battle) {
             return;
         }
-        const leftBaseStatus = this.getBaseStatus(this.battle.leftBase, '红方老家');
-        const rightBaseStatus = this.getBaseStatus(this.battle.rightBase, '蓝方老家');
+        const leftBaseStatus = this.getBaseStatus(this.battle.leftBase, 'Red Base');
+        const rightBaseStatus = this.getBaseStatus(this.battle.rightBase, 'Blue Base');
         if (this.battle.leftBase) {
             this.battle.leftBase.debugLabel = `${leftBaseStatus.label}\n${leftBaseStatus.hpDisplay}`;
         }
@@ -1584,8 +1584,8 @@ export class LiveInteractionTester {
             overlayPane.appendChild(label);
         };
 
-        const leftBaseStatus = this.getBaseStatus(battle.leftBase, '红方老家');
-        const rightBaseStatus = this.getBaseStatus(battle.rightBase, '蓝方老家');
+        const leftBaseStatus = this.getBaseStatus(battle.leftBase, 'Red Base');
+        const rightBaseStatus = this.getBaseStatus(battle.rightBase, 'Blue Base');
         if (battle.leftBase?.position?.worldPosition) {
             appendLabel(`${leftBaseStatus.label}\n${leftBaseStatus.hpDisplay}`, battle.leftBase.position.worldPosition, '#ff6a6a', true);
         }
@@ -1671,7 +1671,7 @@ export class LiveInteractionTester {
     private static bindRuntimeBridge(): void {
         this.fetchRuntimeStatus().catch((error) => {
             console.warn('[LiveInteractionTester] Failed to query runtime status', error);
-            this.state.runtimeStatus.lastError = '未连接到本地直播运行时，请通过 bun run live:runtime 启动。';
+            this.state.runtimeStatus.lastError = 'Not connected to the local live runtime. Start it with bun run live:runtime.';
             this.syncState();
         });
         try {
@@ -1691,7 +1691,7 @@ export class LiveInteractionTester {
                     ...this.state.runtimeStatus,
                     connected: false,
                     sessionActive: false,
-                    lastError: '事件流连接中断，请确认本地运行时仍在运行。',
+                    lastError: 'Event stream connection interrupted. Please confirm the local runtime is still running.',
                 };
                 this.syncState();
             };
@@ -1721,9 +1721,9 @@ export class LiveInteractionTester {
         try {
             const status = await this.postJson(`${API_BASE}/connect`, payload);
             this.state.runtimeStatus = status as RuntimeStatus;
-            this.appendLog('系统', mode === 'live' ? '已发起 B 站直播连接。' : '已切换到本地模拟模式。');
+            this.appendLog('system', mode === 'live' ? 'Bilibili live connection initiated.' : 'Switched to local mock mode.');
         } catch (error: any) {
-            this.appendLog('系统', `连接失败: ${error?.message || error}`);
+            this.appendLog('system', `Connection failed: ${error?.message || error}`);
             this.state.runtimeStatus.lastError = String(error?.message || error);
         }
         this.syncState();
@@ -1733,9 +1733,9 @@ export class LiveInteractionTester {
         try {
             const status = await this.postJson(`${API_BASE}/disconnect`, {});
             this.state.runtimeStatus = status as RuntimeStatus;
-            this.appendLog('系统', '直播互动连接已断开。');
+            this.appendLog('system', 'Live interaction connection disconnected.');
         } catch (error: any) {
-            this.appendLog('系统', `断开失败: ${error?.message || error}`);
+            this.appendLog('system', `Disconnect failed: ${error?.message || error}`);
             this.state.runtimeStatus.lastError = String(error?.message || error);
         }
         this.syncState();
@@ -1748,30 +1748,30 @@ export class LiveInteractionTester {
                 this.syncBattleViewport();
                 return;
             case 'mock-room-enter':
-                await this.emitMockEvent('room-enter', { uname: '观众A' });
+                await this.emitMockEvent('room-enter', { uname: 'ViewerA' });
                 return;
             case 'mock-like':
-                await this.emitMockEvent('like', { uname: '观众B', likeCount: 3 });
+                await this.emitMockEvent('like', { uname: 'ViewerB', likeCount: 3 });
                 return;
             case 'mock-gift':
-                await this.emitMockEvent('gift', { uname: '舰队长', giftName: '辣条', giftNum: 5, price: 100, totalPrice: 500 });
+                await this.emitMockEvent('gift', { uname: 'FleetCaptain', giftName: 'Spicy Stick', giftNum: 5, price: 100, totalPrice: 500 });
                 return;
             case 'mock-guard':
-                await this.emitMockEvent('guard', { uname: '总督', guardLevel: 3, totalPrice: 2000 });
+                await this.emitMockEvent('guard', { uname: 'Governor', guardLevel: 3, totalPrice: 2000 });
                 return;
             case 'mock-super-chat':
-                await this.emitMockEvent('super-chat', { uname: '醒目留言用户', price: 30, totalPrice: 3000, message: '蓝军冲锋' });
+                await this.emitMockEvent('super-chat', { uname: 'SuperChatUser', price: 30, totalPrice: 3000, message: 'Blue army charge' });
                 return;
             case 'mock-danmaku-left':
-                await this.emitMockEvent('danmaku', { uname: '弹幕兵', message: '红军 上上上' });
+                await this.emitMockEvent('danmaku', { uname: 'DanmakuSoldier', message: 'Red army go go go' });
                 return;
             case 'mock-danmaku-right':
-                await this.emitMockEvent('danmaku', { uname: '弹幕兵', message: '蓝军 冲锋' });
+                await this.emitMockEvent('danmaku', { uname: 'DanmakuSoldier', message: 'Blue army charge' });
                 return;
             case 'mock-danmaku-custom':
                 await this.emitMockEvent('danmaku', {
-                    uname: '自定义弹幕',
-                    message: this.ui.danmakuInput?.value.trim() || '红军 支援',
+                    uname: 'CustomDanmaku',
+                    message: this.ui.danmakuInput?.value.trim() || 'Red support',
                 });
                 return;
             case 'focus-center':
@@ -1789,7 +1789,7 @@ export class LiveInteractionTester {
                 this.state.runtimeStatus = status as RuntimeStatus;
             }
         } catch (error: any) {
-            this.appendLog('系统', `发送 mock 事件失败: ${error?.message || error}`);
+            this.appendLog('system', `Failed to send mock event: ${error?.message || error}`);
             this.state.runtimeStatus.lastError = String(error?.message || error);
             this.syncState();
         }
@@ -1816,12 +1816,12 @@ export class LiveInteractionTester {
         this.state.runtimeStatus.lastEventAt = event.timestamp;
         const plan = this.resolveWavePlan(event);
         if (!plan) {
-            this.appendLog('事件', `${event.cmd} 已接收，但当前未配置为出兵。`);
+            this.appendLog('event', `${event.cmd} received, but not configured to spawn troops.`);
             this.syncState();
             return;
         }
         this.spawnWave(plan);
-        this.appendLog('事件', this.describeEvent(event, plan));
+        this.appendLog('event', this.describeEvent(event, plan));
         this.syncState();
     }
 
@@ -1829,39 +1829,39 @@ export class LiveInteractionTester {
         const viewerLabel = this.toViewerLabel(event.uname);
         switch (event.kind) {
             case 'room-enter':
-                return { side: 'left', reason: '进房', infantryBasic: 1, viewerLabel };
+                return { side: 'left', reason: 'Room Enter', infantryBasic: 1, viewerLabel };
             case 'like': {
                 const likeCount = Math.max(1, Math.min(5, event.likeCount ?? 1));
-                return { side: 'left', reason: '点赞', infantryBasic: likeCount, viewerLabel };
+                return { side: 'left', reason: 'Like', infantryBasic: likeCount, viewerLabel };
             }
             case 'gift': {
                 const totalPrice = event.totalPrice ?? (event.price ?? 0) * (event.giftNum ?? 1);
                 if (totalPrice >= 2000) {
-                    return { side: 'right', reason: '高价值礼物', infantryElite: 6, vehicleHeavy: 2, veteran: true, viewerLabel };
+                    return { side: 'right', reason: 'High-value Gift', infantryElite: 6, vehicleHeavy: 2, veteran: true, viewerLabel };
                 }
                 if (totalPrice >= 500) {
-                    return { side: 'right', reason: '礼物', infantryElite: 3, vehicleLight: 1, veteran: true, viewerLabel };
+                    return { side: 'right', reason: 'Gift', infantryElite: 3, vehicleLight: 1, veteran: true, viewerLabel };
                 }
-                return { side: 'right', reason: '礼物', infantryElite: 2, viewerLabel };
+                return { side: 'right', reason: 'Gift', infantryElite: 2, viewerLabel };
             }
             case 'guard':
-                return { side: 'right', reason: '上舰', infantryElite: 5, vehicleHeavy: 1, veteran: true, viewerLabel };
+                return { side: 'right', reason: 'Guard', infantryElite: 5, vehicleHeavy: 1, veteran: true, viewerLabel };
             case 'super-chat':
-                return { side: 'right', reason: '醒目留言', infantryElite: 4, vehicleHeavy: 2, veteran: true, viewerLabel };
+                return { side: 'right', reason: 'Super Chat', infantryElite: 4, vehicleHeavy: 2, veteran: true, viewerLabel };
             case 'danmaku': {
                 const message = event.message?.toLowerCase() ?? '';
-                const side = message.includes('蓝') || message.includes('下') || message.includes('right') || message.includes('blue') || message.includes('bottom')
+                const side = message.includes('blue') || message.includes('bottom') || message.includes('right')
                     ? 'right'
                     : 'left';
-                const premium = message.includes('坦克') || message.includes('tank');
+                const premium = message.includes('tank');
                 return premium
-                    ? { side, reason: '弹幕指令', infantryBasic: 2, vehicleLight: 1, viewerLabel }
-                    : { side, reason: '弹幕指令', infantryBasic: 2, viewerLabel };
+                    ? { side, reason: 'Danmaku Command', infantryBasic: 2, vehicleLight: 1, viewerLabel }
+                    : { side, reason: 'Danmaku Command', infantryBasic: 2, viewerLabel };
             }
             case 'live-start':
-                return { side: 'left', reason: '开播', infantryBasic: 3, vehicleLight: 1, viewerLabel };
+                return { side: 'left', reason: 'Live Start', infantryBasic: 3, vehicleLight: 1, viewerLabel };
             case 'live-end':
-                return { side: 'right', reason: '下播', infantryElite: 3, vehicleHeavy: 1, viewerLabel };
+                return { side: 'right', reason: 'Live End', infantryElite: 3, vehicleHeavy: 1, viewerLabel };
             default:
                 return null;
         }
@@ -2007,27 +2007,27 @@ export class LiveInteractionTester {
         this.clampBattleCamera();
         this.syncState();
         if (withLog) {
-            this.appendLog('系统', '镜头已切到战场总览，可拖拽继续查看细节。');
+            this.appendLog('system', 'Camera switched to battlefield overview; drag to inspect details.');
         }
     }
 
     private static describeEvent(event: NormalizedInteractionEvent, plan: WavePlan): string {
-        const source = event.uname ? `${event.uname}` : '匿名观众';
-        const sideLabel = plan.side === 'left' ? '红方上路' : '蓝方下路';
+        const source = event.uname ? `${event.uname}` : 'Anonymous viewer';
+        const sideLabel = plan.side === 'left' ? 'Red top lane' : 'Blue bottom lane';
         const units: string[] = [];
         if (plan.infantryBasic) {
-            units.push(`基础步兵 x${plan.infantryBasic}`);
+            units.push(`Basic infantry x${plan.infantryBasic}`);
         }
         if (plan.infantryElite) {
-            units.push(`精英步兵 x${plan.infantryElite}`);
+            units.push(`Elite infantry x${plan.infantryElite}`);
         }
         if (plan.vehicleLight) {
-            units.push(`轻装甲 x${plan.vehicleLight}`);
+            units.push(`Light armor x${plan.vehicleLight}`);
         }
         if (plan.vehicleHeavy) {
-            units.push(`重装甲 x${plan.vehicleHeavy}`);
+            units.push(`Heavy armor x${plan.vehicleHeavy}`);
         }
-        return `${source} 触发 ${plan.reason}，${sideLabel} 出兵: ${units.join(' / ')}`;
+        return `${source} triggered ${plan.reason}, ${sideLabel} deployed: ${units.join(' / ')}`;
     }
 
     private static appendLog(tag: string, text: string): void {
@@ -2055,8 +2055,8 @@ export class LiveInteractionTester {
         const rightAlive = battle ? this.countAliveUnits(battle.rightPlayer) : 0;
         const leftLost = battle ? battle.leftPlayer.getUnitsLost() : 0;
         const rightLost = battle ? battle.rightPlayer.getUnitsLost() : 0;
-        const leftBaseStatus = this.getBaseStatus(battle?.leftBase, '红方老家');
-        const rightBaseStatus = this.getBaseStatus(battle?.rightBase, '蓝方老家');
+        const leftBaseStatus = this.getBaseStatus(battle?.leftBase, 'Red Base');
+        const rightBaseStatus = this.getBaseStatus(battle?.rightBase, 'Blue Base');
         const runtimeStatus = this.state.runtimeStatus;
         const viewport = this.measureViewport();
         const battleViewport = battle?.worldScene?.viewport ?? this.computeBattleViewport(viewport);
@@ -2067,42 +2067,42 @@ export class LiveInteractionTester {
 
         if (this.ui.statusBadge) {
             this.ui.statusBadge.textContent = runtimeStatus.lastError
-                ? `状态: ${runtimeStatus.lastError}`
+                ? `Status: ${runtimeStatus.lastError}`
                 : runtimeStatus.sessionActive
-                    ? `状态: 已连接直播间 ${runtimeStatus.anchor?.roomId ?? '-'}`
+                    ? `Status: Connected to live room ${runtimeStatus.anchor?.roomId ?? '-'}`
                     : runtimeStatus.connected
-                        ? `状态: ${runtimeStatus.mode === 'mock' ? '本地模拟已就绪' : '直播连接中'}`
-                        : '状态: 未连接本地运行时';
+                        ? `Status: ${runtimeStatus.mode === 'mock' ? 'Local mock ready' : 'Live connecting'}`
+                        : 'Status: Local runtime not connected';
         }
         if (this.ui.statusSummary) {
             this.ui.statusSummary.textContent = [
-                '运行时',
-                `模式: ${runtimeStatus.mode}`,
-                `连接: ${runtimeStatus.connected ? '已连接' : '未连接'}`,
-                `场次: ${runtimeStatus.sessionActive ? '进行中' : '未开始'}`,
-                `房间: ${runtimeStatus.anchor?.roomId ?? '-'}`,
-                `主播: ${runtimeStatus.anchor?.uname ?? '-'}`,
-                `累计事件: ${runtimeStatus.eventCount ?? 0}`,
+                'Runtime',
+                `Mode: ${runtimeStatus.mode}`,
+                `Connection: ${runtimeStatus.connected ? 'Connected' : 'Not connected'}`,
+                `Session: ${runtimeStatus.sessionActive ? 'active' : 'not started'}`,
+                `Room: ${runtimeStatus.anchor?.roomId ?? '-'}`,
+                `Anchor: ${runtimeStatus.anchor?.uname ?? '-'}`,
+                `Total events: ${runtimeStatus.eventCount ?? 0}`,
             ].join('\n');
         }
         if (this.ui.leftSummary) {
             this.ui.leftSummary.textContent = [
-                '红方上方老家',
-                `基地血量: ${leftBaseStatus.hpDisplay}`,
-                `存活单位: ${leftAlive}`,
-                `累计出兵: ${this.state.left.totalSpawned}`,
-                `累计阵亡: ${leftLost}`,
-                `最近增援: ${this.formatTime(this.state.left.lastReinforcementAt)}`,
+                'Red Top Base',
+                `Base HP: ${leftBaseStatus.hpDisplay}`,
+                `Alive units: ${leftAlive}`,
+                `Total dispatched: ${this.state.left.totalSpawned}`,
+                `Total lost: ${leftLost}`,
+                `Last reinforcement: ${this.formatTime(this.state.left.lastReinforcementAt)}`,
             ].join('\n');
         }
         if (this.ui.rightSummary) {
             this.ui.rightSummary.textContent = [
-                '蓝方下方老家',
-                `基地血量: ${rightBaseStatus.hpDisplay}`,
-                `存活单位: ${rightAlive}`,
-                `累计出兵: ${this.state.right.totalSpawned}`,
-                `累计阵亡: ${rightLost}`,
-                `最近增援: ${this.formatTime(this.state.right.lastReinforcementAt)}`,
+                'Blue Bottom Base',
+                `Base HP: ${rightBaseStatus.hpDisplay}`,
+                `Alive units: ${rightAlive}`,
+                `Total dispatched: ${this.state.right.totalSpawned}`,
+                `Total lost: ${rightLost}`,
+                `Last reinforcement: ${this.formatTime(this.state.right.lastReinforcementAt)}`,
             ].join('\n');
         }
 
@@ -2198,13 +2198,13 @@ export class LiveInteractionTester {
                 totalSpawned: this.state.left.totalSpawned,
                 aliveUnits: battle ? this.countAliveUnits(battle.leftPlayer) : 0,
                 unitsLost: battle ? battle.leftPlayer.getUnitsLost() : 0,
-                baseHealth: this.getBaseStatus(battle?.leftBase, '红方老家'),
+                baseHealth: this.getBaseStatus(battle?.leftBase, 'Red Base'),
             },
             right: {
                 totalSpawned: this.state.right.totalSpawned,
                 aliveUnits: battle ? this.countAliveUnits(battle.rightPlayer) : 0,
                 unitsLost: battle ? battle.rightPlayer.getUnitsLost() : 0,
-                baseHealth: this.getBaseStatus(battle?.rightBase, '蓝方老家'),
+                baseHealth: this.getBaseStatus(battle?.rightBase, 'Blue Base'),
             },
             lastEvent: this.state.lastEvent,
             recentEvents: this.state.recentEvents,

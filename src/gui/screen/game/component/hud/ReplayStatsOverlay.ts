@@ -74,12 +74,12 @@ const COL_WIDTH = 220;
 const PADDING = 6;
 
 const QUEUE_TYPE_LABELS: Record<number, string> = {
-    [QueueType.Structures]: "建筑",
-    [QueueType.Armory]: "防御",
-    [QueueType.Infantry]: "步兵",
-    [QueueType.Vehicles]: "载具",
-    [QueueType.Aircrafts]: "空军",
-    [QueueType.Ships]: "海军",
+    [QueueType.Structures]: "Structures",
+    [QueueType.Armory]: "Defenses",
+    [QueueType.Infantry]: "Infantry",
+    [QueueType.Vehicles]: "Vehicles",
+    [QueueType.Aircrafts]: "Aircraft",
+    [QueueType.Ships]: "Ships",
 };
 
 export class ReplayStatsOverlay extends UiComponent<ReplayStatsOverlayProps> {

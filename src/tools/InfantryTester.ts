@@ -279,7 +279,7 @@ export class InfantryTester {
         const facingSelect = document.createElement("select");
         facingSelect.dataset.testid = "infantry-facing";
         facingSelect.style.display = "block";
-        const facingLabels = ["0 上", "1 左上", "2 左", "3 左下", "4 下", "5 右下", "6 右", "7 右上"];
+        const facingLabels = ["0 N", "1 NW", "2 W", "3 SW", "4 S", "5 SE", "6 E", "7 NE"];
         for (let i = 0; i < 8; i++) {
             const opt = document.createElement("option");
             opt.value = String(i);
@@ -513,7 +513,7 @@ export class InfantryTester {
     }
     private static buildHomeButton(): void {
         const homeButton = document.createElement('button');
-        homeButton.innerHTML = '点此返回主页';
+        homeButton.innerHTML = 'Back to Home';
         homeButton.style.cssText = `
       position: fixed;
       left: 50%;

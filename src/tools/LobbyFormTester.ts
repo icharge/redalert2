@@ -220,7 +220,7 @@ export class LobbyFormTester {
     }
     private static buildHomeButton(parent: HTMLElement): void {
         const homeButton = this.homeButton = document.createElement('button');
-        homeButton.innerHTML = '点此返回主页';
+        homeButton.innerHTML = 'Back to Home';
         homeButton.style.cssText = `
       position: fixed;
       left: 50%;

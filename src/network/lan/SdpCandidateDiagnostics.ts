@@ -74,24 +74,24 @@ export function summarizeSdpCandidates(description?: RTCSessionDescriptionInit |
 
 export function formatSdpCandidateSummary(summary: SdpCandidateSummary): string {
     const parts = [
-        `候选 ${summary.totalCandidates} 个`,
-        summary.hasPrivateIpv4Candidate ? '含局域网 IPv4' : '无局域网 IPv4',
-        summary.hasMdnsHostCandidate ? '含 mDNS 主机名' : '无 mDNS 主机名',
-        summary.hasSrflxCandidate ? '含 srflx' : '无 srflx',
-        summary.hasRelayCandidate ? '含 relay' : '无 relay',
+        `Candidates: ${summary.totalCandidates}`,
+        summary.hasPrivateIpv4Candidate ? 'Has LAN IPv4' : 'No LAN IPv4',
+        summary.hasMdnsHostCandidate ? 'Has mDNS hostname' : 'No mDNS hostname',
+        summary.hasSrflxCandidate ? 'Has srflx' : 'No srflx',
+        summary.hasRelayCandidate ? 'Has relay' : 'No relay',
     ];
-    return parts.join('，');
+    return parts.join(', ');
 }
 
 export function getSdpCandidateWarning(summary: SdpCandidateSummary): string | undefined {
     if (!summary.totalCandidates) {
-        return '当前 SDP 没有收集到任何 ICE 候选，跨机器肯定无法建立局域网直连。';
+        return 'The current SDP has not gathered any ICE candidates; cross-machine LAN direct connection will definitely fail.';
     }
     if (summary.hasMdnsHostCandidate &&
         !summary.hasPrivateIpv4Candidate &&
         !summary.hasSrflxCandidate &&
         !summary.hasRelayCandidate) {
-        return '当前浏览器只暴露了 mDNS host candidate（*.local），没有局域网 IPv4/srflx/relay 候选；同机或 127.0.0.1 往往可用，但跨机器局域网很容易因为 mDNS/UDP 被拦而失败。';
+        return 'The browser only exposed mDNS host candidates (*.local), with no LAN IPv4/srflx/relay candidates; same-machine or 127.0.0.1 often works, but cross-machine LAN is likely to fail because mDNS/UDP is blocked.';
     }
     return undefined;
 }

@@ -270,7 +270,7 @@ export class BuiltInBotAdapter extends Bot {
 export function registerBuiltInBot(): void {
     BotRegistry.getInstance().register({
         id: 'builtIn-bot',
-        displayName: 'AI-普通 (BuiltIn)',
+        displayName: 'AI-Normal (BuiltIn)',
         version: '0.6.1',
         author: 'BuiltIn',
         description: 'Normal difficulty AI. Full strategy system with missions, threat analysis, and build prioritization.',
@@ -278,7 +278,7 @@ export function registerBuiltInBot(): void {
             const bot = new BuiltInBotAdapter(name, country);
             return {
                 id: 'builtIn-bot',
-                displayName: 'AI-普通 (BuiltIn)',
+                displayName: 'AI-Normal (BuiltIn)',
                 version: '0.6.1',
                 author: 'BuiltIn',
                 description: 'Normal difficulty AI',

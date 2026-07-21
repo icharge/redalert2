@@ -15,7 +15,7 @@ async function decodeQrFromFile(file: File): Promise<string | undefined> {
         willReadFrequently: true,
     });
     if (!context) {
-        throw new Error('无法创建二维码识别画布。');
+        throw new Error('Unable to create QR code scanning canvas.');
     }
 
     context.drawImage(bitmap, 0, 0);
@@ -64,7 +64,7 @@ export const QrScannerPanel: React.FC<QrScannerPanelProps> = ({ onDetected }) =>
             willReadFrequently: true,
         });
         if (!context) {
-            setErrorText('无法创建二维码识别画布。');
+            setErrorText('Unable to create QR code scanning canvas.');
             setActive(false);
             return;
         }
@@ -164,7 +164,7 @@ export const QrScannerPanel: React.FC<QrScannerPanelProps> = ({ onDetected }) =>
         try {
             const decoded = await decodeQrFromFile(file);
             if (!decoded) {
-                throw new Error('没有在图片里识别到二维码。');
+                throw new Error('No QR code detected in the image.');
             }
             setLastDetectedText(decoded);
             await handleDetected(decoded);
@@ -184,8 +184,8 @@ export const QrScannerPanel: React.FC<QrScannerPanelProps> = ({ onDetected }) =>
     return (
         <div className="lan-panel lan-scanner-panel" data-lan-card="scanner">
             <div className="lan-panel-header">
-                <h3>扫码加入</h3>
-                <span>支持摄像头和图片导入。</span>
+                <h3>Scan to Join</h3>
+                <span>Supports camera and image import.</span>
             </div>
 
             <div className="lan-scanner-preview">
@@ -193,7 +193,7 @@ export const QrScannerPanel: React.FC<QrScannerPanelProps> = ({ onDetected }) =>
                     <video ref={videoRef} muted={true} autoPlay={true} />
                 ) : (
                     <div className="lan-qr-placeholder">
-                        摄像头未开启，也可以直接导入二维码图片。
+                        Camera is off; you can also import a QR code image directly.
                     </div>
                 )}
             </div>
@@ -213,7 +213,7 @@ export const QrScannerPanel: React.FC<QrScannerPanelProps> = ({ onDetected }) =>
                         setActive(true);
                     }}
                 >
-                    {active ? '停止扫码' : '开启摄像头扫码'}
+                    {active ? 'Stop Scanning' : 'Scan with Camera'}
                 </button>
                 <button
                     type="button"
@@ -221,7 +221,7 @@ export const QrScannerPanel: React.FC<QrScannerPanelProps> = ({ onDetected }) =>
                     disabled={busy}
                     onClick={() => fileInputRef.current?.click()}
                 >
-                    导入二维码图片
+                    Import QR Code Image
                 </button>
                 <input
                     ref={fileInputRef}

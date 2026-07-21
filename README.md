@@ -1,20 +1,12 @@
 # RA2WEB React
 
-免责声明：这是基于《时空分裂》中文版RA2WEB www.ra2web.com 的分析而开发，并意图基于最新的react和three版本进行重构。
+**Disclaimer:** This project is developed based on the analysis of the Chinese version of *Chronodivide* — RA2WEB (www.ra2web.com), and is intended to be refactored using the latest versions of React and Three.js. All rights to this project, including profit rights, belong to the owner of *Chronodivide*. Without permission from the owner of *Chronodivide*, any commercial use of this project is strictly prohibited.
 
-但项目所有权利（包括收益权）归《时空分裂》/RA2WEB负责人所有。未经《时空分裂》的所有者/RA2WEB负责人许可，严禁用于任何商业行为。
+It should be noted that the owner of *Chronodivide* has never open-sourced the game client code in any form, even though some peripheral open-source content such as a mod-SDK exists. Bugs, incomplete functions, or other issues arising from the operation of this project shall not be regarded as damage to the reputation of *Chronodivide*. Any commercial activities conducted based on this project, including but not limited to placing advertisements, developing a "bullet-screen Red Alert" mode to profit from gifts, directly packaging and selling the project, or fraudulently obtaining sponsorship and donation revenue by claiming to be the "author", shall be deemed as infringement upon the original author of *Chronodivide*, Alexandru Ciucă, and RA2WEB.
 
-需要注意的是，《时空分裂》的所有者从未以任何方式开源游戏客户端代码（即便存在诸如mod-sdk之类的周边开源内容）。本项目运行产生的BUG、功能不完善，不能等同视为对《时空分裂》的名誉贬损。任何基于本项目开展商业行为，包括但不限于植入广告、开发“弹幕红警”收受礼物获利、直接封装收费、以“作者”身份骗取赞助和充电收益等，均视为对《时空分裂》原作者Alexandru Ciucă和RA2WEB的侵权。
+A complete TypeScript re-implementation of the classic real-time strategy game *Red Alert 2*, built with React + TypeScript + Vite + Three.js.
 
-红色警戒2网页版，一款经典的即时战略类游戏的完整TypeScript重构版本，使用React + TypeScript + Vite + Three.js构建。
-
-![动画](https://github.com/user-attachments/assets/d83f6001-d426-4d49-98a6-8282addc898d)
-
-Disclaimer
-
-This project is developed based on the analysis of the Chinese version of Chronodivide — RA2WEB (www.ra2web.com), and is intended to be refactored using the latest versions of React and Three.js. All rights to this project, including profit rights, belong to the owner of Chronodivide. Without permission from the owner of Chronodivide, any commercial use of this project is strictly prohibited.
-
-It should be noted that the owner of Chronodivide has never open-sourced the game client code in any form, even though some peripheral open‑source content such as a mod‑SDK exists. Bugs, incomplete functions or other issues arising from the operation of this project shall not be regarded as damage to the reputation of Chronodivide. Any commercial activities conducted based on this project, including but not limited to placing advertisements, developing a “bullet-screen Red Alert” mode to profit from gifts, directly packaging and selling the project, or fraudulently obtaining sponsorship and donation revenue by claiming to be the “author”, shall be deemed as infringement upon the original author of Chronodivide, Alexandru Ciucă, and RA2WEB.
+![Animation](https://github.com/user-attachments/assets/d83f6001-d426-4d49-98a6-8282addc898d)
 
 ![image](https://github.com/user-attachments/assets/f146dc1c-ca15-456a-a8f0-4b43f2d431e8)
 
@@ -22,34 +14,34 @@ It should be noted that the owner of Chronodivide has never open-sourced the gam
 
 ![image](https://github.com/user-attachments/assets/4781f451-7a51-45e2-919b-cbcb8bbd727a)
 
-## 项目简介
+## Project Overview
 
-本项目是使用Typescript编写，完全对标“红色警戒2”的游戏引擎，本地自行导入红色警戒2美术素材后，就可以获得类似红警2的游玩体验
+This project is a game engine written in TypeScript that fully targets the *Red Alert 2* experience. After importing Red Alert 2 art assets locally, you can get a gameplay experience similar to the original Red Alert 2.
 
-## 当前技术状态
+## Current Technical State
 
-### 运行时和构建
+### Runtime and Build
 
-- 包管理与本地运行时：`Bun 1.3.10`
-- 开发服务器：`Vite 8.0.1`
-- UI：`React 19.2.4` + `react-dom 19.2.4`
-- 类型系统：`TypeScript 5.9.3`
-- 渲染：`three 0.183.2`
-- 自动化：`Playwright 1.58.2`
-- 默认开发和预览端口：`127.0.0.1:4000`
+- Package manager and local runtime: `Bun 1.3.10`
+- Development server: `Vite 8.0.1`
+- UI: `React 19.2.4` + `react-dom 19.2.4`
+- Type system: `TypeScript 5.9.3`
+- Rendering: `three 0.183.2`
+- Automation: `Playwright 1.58.2`
+- Default development and preview port: `127.0.0.1:4000`
 
-## 快速开始
+## Quick Start
 
-### 环境要求
+### Requirements
 
 - `Bun 1.3+`
-- 现代浏览器，推荐 Chrome / Edge
-- 浏览器需要支持：
+- A modern browser, Chrome / Edge recommended
+- Browser must support:
   - `WebGL`
   - `Web Audio API`
   - `File System Access API`
 
-### 安装与启动
+### Install and Run
 
 ```bash
 cd redalert2
@@ -57,30 +49,30 @@ bun install
 bun run dev
 ```
 
-默认访问地址：
+Default address:
 
 ```text
 http://127.0.0.1:4000
 ```
 
-生产构建与预览：
+Production build and preview:
 
 ```bash
 bun run build
 bun run preview
 ```
 
-类型检查：
+Type checking:
 
 ```bash
 bun run typecheck:entry
 ```
 
-## 自动化回归
+## Automated Regression
 
-仓库当前已经不再只依赖手点验证。`scripts/` 下维护了一组可直接执行的回归脚本，主要覆盖大厅、进图、机制和 tester 入口。
+The repository no longer relies solely on manual verification. A set of directly executable regression scripts is maintained under `scripts/`, covering the lobby, map loading, mechanics, and tester entry points.
 
-常用命令包括：
+Common commands include:
 
 ```bash
 bun run debug:game-res-init
@@ -101,31 +93,31 @@ bun run debug:test-entries
 bun run debug:tester-panels
 ```
 
-这些脚本的产物默认会写入 `.artifacts/`，便于回看截图和 JSON 结果。
+Output from these scripts is written to `.artifacts/` by default, making it easy to review screenshots and JSON results.
 
-## 测试入口
+## Test Entry Points
 
-主菜单中的测试入口目前分为三类：
+The test entry points in the main menu are currently divided into three categories:
 
-1. 素材测试
-   - `VXL测试`
-   - `SHP测试`
-   - `音频测试`
-2. 机制测试
-   - `建筑测试`
-   - `载具测试`
-   - `步兵测试`
-   - `飞行器测试`
-3. 场景测试
-   - `大厅测试`
-   - `世界测试`
-   - `移动测试`
+1. Asset tests
+   - `VXL Test`
+   - `SHP Test`
+   - `Audio Test`
+2. Mechanic tests
+   - `Building Test`
+   - `Vehicle Test`
+   - `Infantry Test`
+   - `Aircraft Test`
+3. Scenario tests
+   - `Lobby Test`
+   - `World Test`
+   - `Movement Test`
 
-这些 tester 页面不是孤立 Demo，而是当前仓库里很重要的调试和回归入口。页面左侧面板状态会同步到调试状态对象，自动化脚本也会直接使用这些入口验证渲染和交互结果。
+These tester pages are not isolated demos; they are important debugging and regression entry points in the current repository. The left-panel state on these pages syncs to the debug state object, and the automation scripts directly use these entry points to verify rendering and interaction results.
 
-## 技术架构
+## Technical Architecture
 
-### 核心技术栈
+### Core Technology Stack
 
 - `React 19.2.4`
 - `TypeScript 5.9.3`
@@ -139,53 +131,53 @@ bun run debug:tester-panels
 - `@ra2web/pcxfile`
 - `@ra2web/wavefile`
 
-### 目录说明
+### Directory Structure
 
 ```text
 redalert2/
-├── public/          静态资源、配置、locale、遗留样式
-├── scripts/         Playwright 自动化回归脚本
+├── public/          Static assets, configs, locales, legacy styles
+├── scripts/         Playwright automated regression scripts
 ├── src/
-│   ├── data/        原版资源格式、编码、地图、VFS
-│   ├── engine/      渲染、音频、资源加载、底层引擎能力
-│   ├── game/        游戏逻辑、对象系统、触发器、规则、超武
-│   ├── gui/         主菜单、HUD、选项、游戏内 UI
-│   ├── network/     网络和联机相关基础设施
-│   ├── tools/       独立 tester 页面
-│   └── util/        通用工具
-├── docs/            对齐记录与工程说明
-└── vite.config.ts   开发和构建配置
+│   ├── data/        Original resource formats, encoding, maps, VFS
+│   ├── engine/      Rendering, audio, resource loading, low-level engine
+│   ├── game/        Game logic, object system, triggers, rules, superweapons
+│   ├── gui/         Main menu, HUD, options, in-game UI
+│   ├── network/     Networking and multiplayer infrastructure
+│   ├── tools/       Standalone tester pages
+│   └── util/        Common utilities
+├── docs/            Alignment records and engineering notes
+└── vite.config.ts   Development and build configuration
 ```
 
-### 主要模块
+### Main Modules
 
 `src/engine/`
 
-- `gfx/`：three 渲染层、材质、批处理、viewport、lighting
-- `renderable/`：游戏对象到可视对象的桥接层
-- `sound/`：音频混音、音乐、音效播放
-- `gameRes/`：资源导入、CDN 加载、缓存与目录处理
+- `gfx/`: Three.js rendering layer, materials, batching, viewport, lighting
+- `renderable/`: Bridge between game objects and visible objects
+- `sound/`: Audio mixing, music, sound effect playback
+- `gameRes/`: Resource import, CDN loading, caching, and directory handling
 
 `src/game/`
 
-- `gameobject/`：单位、建筑、抛射体、trait、locomotor
-- `rules/`：INI 规则读取与对象规则构建
-- `trigger/`：地图触发器、条件、执行器
-- `superweapon/`：核弹、闪电风暴、超时空等超武逻辑
+- `gameobject/`: Units, buildings, projectiles, traits, locomotors
+- `rules/`: INI rule parsing and object rule construction
+- `trigger/`: Map triggers, conditions, executors
+- `superweapon/`: Nuke, Lightning Storm, Chrono, and other superweapon logic
 
 `src/gui/`
 
-- `screen/mainMenu/`：主菜单、地图选择、大厅、选项
-- `screen/game/`：游戏内 HUD、世界交互、菜单
-- `component/`：React 组件
-- `jsx/`：自定义 UI 渲染桥接
+- `screen/mainMenu/`: Main menu, map selection, lobby, options
+- `screen/game/`: In-game HUD, world interaction, menus
+- `component/`: React components
+- `jsx/`: Custom UI rendering bridge
 
 `src/tools/`
 
-- 提供素材、机制、场景三类 tester 页面
-- 当前是调试结果可视化和自动化断言的重要入口
+- Provides asset, mechanic, and scenario tester pages
+- These are currently important entry points for debugging visualization and automated assertions
 
-## 开发命令
+## Development Commands
 
 ```bash
 bun run dev
@@ -194,48 +186,49 @@ bun run preview
 bun run typecheck:entry
 ```
 
-## 文档与调试约定
+## Documentation and Debugging Conventions
 
-- 开发端口固定为 `4000`
-- 主要技术对齐记录维护在 `docs/build-alignment-log.md`
-- 自动化产物默认输出到 `.artifacts/`
-- 构建通过并不等于所有行为已完全对齐，功能层面仍应优先参考专项脚本和实际流程验证
+- Development port is fixed at `4000`
+- Major technical alignment records are maintained in `docs/build-alignment-log.md`
+- Automated output is written to `.artifacts/` by default
+- A successful build does not mean all behavior is fully aligned; functional behavior should still be verified using the relevant scripts and actual workflows
 
-## 贡献建议
+## Contribution Guidelines
 
-提交改动前，至少建议执行：
+Before submitting changes, it is recommended to run at least:
 
 ```bash
 bun run typecheck:entry
 bun run build
 ```
 
-如果改动涉及大厅、资源加载、进图、HUD、机制或 tester，请补跑相应的 `debug:*` 脚本。
+If your changes involve the lobby, resource loading, map loading, HUD, mechanics, or testers, please also run the relevant `debug:*` scripts.
 
-## 许可证
+## License
 
-本项目基于GNU General Public License v3.0（GPL-3.0）许可证开源。详见 [LICENSE](LICENSE) 文件。
+This project is open-sourced under the GNU General Public License v3.0 (GPL-3.0). See the [LICENSE](LICENSE) file for details.
 
-### 重要说明
-- 可以自由使用、修改和分发，除非取得RA2WEB负责人许可，否则严禁用于商业目的
-- 必须保留版权声明和许可证文本
-- 任何衍生作品必须使用相同的 GPL-3.0 许可证
-- 必须提供源代码，包括修改后的版本
-- 不能将 GPL 代码集成到专有软件中
+### Important Notes
 
-**注意：** 本项目仅用于学习和研究目的。红色警戒2是EA公司的知识产权，导入美术素材时请确保拥有合法的游戏副本。
+- Free to use, modify, and distribute, unless permission is obtained from the RA2WEB responsible party; commercial use is strictly prohibited
+- Copyright notice and license text must be retained
+- Any derivative works must use the same GPL-3.0 license
+- Source code must be provided, including modified versions
+- GPL code may not be integrated into proprietary software
 
-## 致谢
+**Note:** This project is for learning and research purposes only. *Red Alert 2* is the intellectual property of EA. Please ensure you own a legitimate copy of the game when importing art assets.
+
+## Acknowledgements
 
 - RA2WEB.COM
-- Three.js 社区
-- React 团队
-- TypeScript 团队
-- 相关开源依赖维护者
-- 红警 2 玩家社区
+- The Three.js community
+- The React team
+- The TypeScript team
+- Maintainers of related open-source dependencies
+- The Red Alert 2 player community
 
 ---
 
-**免责声明**: 本项目仅供学习研究使用，不用于商业目的。红色警戒2及相关商标归EA公司所有。
+**Disclaimer:** This project is for learning and research purposes only, not for commercial use. *Red Alert 2* and related trademarks belong to EA.
 
 ---

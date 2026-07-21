@@ -157,7 +157,7 @@ export class PerformanceTester {
             this.homeButton.remove();
         }
         const button = document.createElement('button');
-        button.innerHTML = '点此返回主页';
+        button.innerHTML = 'Back to Home';
         button.style.cssText = `
             position: fixed;
             left: 50%;

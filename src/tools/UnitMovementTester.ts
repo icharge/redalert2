@@ -682,7 +682,7 @@ export class UnitMovementTester {
     }
     private static buildHomeButton(): void {
         const homeButton = document.createElement('button');
-        homeButton.innerHTML = '点此返回主页';
+        homeButton.innerHTML = 'Back to Home';
         homeButton.style.cssText = `
       position: fixed;
       left: 50%;
@@ -740,13 +740,13 @@ export class UnitMovementTester {
       gap: 6px;
     `;
         const btnInf = document.createElement('button');
-        btnInf.innerText = '步兵';
+        btnInf.innerText = 'Infantry';
         btnInf.onclick = handlers.onSelectInfantry;
         const btnVeh = document.createElement('button');
-        btnVeh.innerText = '坦克';
+        btnVeh.innerText = 'Vehicle';
         btnVeh.onclick = handlers.onSelectVehicle;
         const btnAir = document.createElement('button');
-        btnAir.innerText = '飞机';
+        btnAir.innerText = 'Aircraft';
         btnAir.onclick = handlers.onSelectAircraft;
         box.appendChild(btnInf);
         box.appendChild(btnVeh);

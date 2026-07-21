@@ -712,7 +712,7 @@ export const StorageFileExplorer: React.FC<StorageFileExplorerProps> = ({
             setEntries(nextEntries);
             setSelectedIds(new Set());
             setFocusedId(null);
-            setStatusMessage('已刷新');
+            setStatusMessage('Refreshed');
             setDragPathHoverIndex(null);
             setSelectionBoxRect(null);
             selectionDragRef.current = null;
@@ -764,7 +764,7 @@ export const StorageFileExplorer: React.FC<StorageFileExplorerProps> = ({
         const nextPath = buildPath(currentSegments, entry.id);
         if (onFileOpen) {
             onFileOpen(nextPath, entry);
-            emitInfo(`打开文件: ${entry.name}`);
+            emitInfo(`Opened file: ${entry.name}`);
             return;
         }
         try {
@@ -772,11 +772,11 @@ export const StorageFileExplorer: React.FC<StorageFileExplorerProps> = ({
             const fileHandle = await currentDirHandle.getFileHandle(entry.id);
             const file = await fileHandle.getFile();
             await downloadSingleFile(file);
-            emitInfo(`已下载文件: ${entry.name}`);
+            emitInfo(`Downloaded file: ${entry.name}`);
         }
         catch (openError: any) {
             AppLogger.error('[StorageFileExplorer] Failed to open file:', openError);
-            setError(openError?.message ?? '打开文件失败');
+            setError(openError?.message ?? 'Failed to open file');
         }
     };
 
@@ -803,7 +803,7 @@ export const StorageFileExplorer: React.FC<StorageFileExplorerProps> = ({
                 let shouldOverwrite = true;
                 try {
                     await targetDirHandle.getFileHandle(fileName);
-                    shouldOverwrite = await requestConfirm(`文件 "${fileName}" 已存在。是否覆盖？`, '覆盖', '取消');
+                    shouldOverwrite = await requestConfirm(`File "${fileName}" already exists. Overwrite?`, 'Overwrite', 'Cancel');
                 }
                 catch {
                 }
@@ -825,17 +825,17 @@ export const StorageFileExplorer: React.FC<StorageFileExplorerProps> = ({
                 }
             }
             if (skippedFiles.length) {
-                await showMessage(`以下文件不允许上传到当前目录:\n${skippedFiles.join('\n')}`, '上传已跳过');
+                await showMessage(`The following files are not allowed in this directory:\n${skippedFiles.join('\n')}`, 'Upload skipped');
             }
             if (modified) {
-                emitInfo(`已上传 ${files.length - skippedFiles.length} 个文件`);
+                emitInfo(`Uploaded ${files.length - skippedFiles.length} files`);
                 onFileSystemChange?.();
                 await refresh();
             }
         }
         catch (uploadError: any) {
             AppLogger.error('[StorageFileExplorer] Failed to upload files:', uploadError);
-            setError(uploadError?.message ?? '上传失败');
+            setError(uploadError?.message ?? 'Upload failed');
         }
         finally {
             setLoading(false);
@@ -848,11 +848,11 @@ export const StorageFileExplorer: React.FC<StorageFileExplorerProps> = ({
             return;
         }
         if (!targetEntry.canModify) {
-            await showMessage('当前项目不允许重命名。');
+            await showMessage('The selected item cannot be renamed.');
             return;
         }
         const originalPath = buildPath(currentSegments, targetEntry.id);
-        const nextNameInput = (await requestText(`输入 "${targetEntry.name}" 的新名称:`))?.trim();
+        const nextNameInput = (await requestText(`Enter new name for "${targetEntry.name}":`))?.trim();
         if (!nextNameInput || nextNameInput === targetEntry.id) {
             return;
         }
@@ -869,7 +869,7 @@ export const StorageFileExplorer: React.FC<StorageFileExplorerProps> = ({
         try {
             const currentDirHandle = await navigateToPath(rootHandle, currentSegments);
             if (await entryExists(currentDirHandle, nextName)) {
-                await showMessage(`"${nextName}" 已存在。`);
+                await showMessage(`"${nextName}" already exists.`);
                 return;
             }
             const sourceHandle = targetEntry.type === 'folder'
@@ -877,23 +877,23 @@ export const StorageFileExplorer: React.FC<StorageFileExplorerProps> = ({
                 : await currentDirHandle.getFileHandle(targetEntry.id);
             await cloneHandleToDirectory(sourceHandle, currentDirHandle, nextName);
             await currentDirHandle.removeEntry(targetEntry.id, { recursive: true });
-            emitInfo(`已重命名: ${targetEntry.name} -> ${nextName}`);
+            emitInfo(`Renamed: ${targetEntry.name} -> ${nextName}`);
             onFileSystemChange?.();
             await refresh();
             focusEntry(nextName);
         }
         catch (renameError: any) {
             AppLogger.error('[StorageFileExplorer] Failed to rename entry:', renameError);
-            setError(renameError?.message ?? '重命名失败');
+            setError(renameError?.message ?? 'Rename failed');
         }
     };
 
     const handleCreateFolder = async () => {
         if (canCreateFolder && !canCreateFolder(currentPath, currentSegments)) {
-            await showMessage('当前目录不允许新建文件夹。');
+            await showMessage('Creating folders is not allowed in this directory.');
             return;
         }
-        const folderName = (await requestText('输入新文件夹名称:'))?.trim();
+        const folderName = (await requestText('Enter new folder name:'))?.trim();
         if (!folderName) {
             return;
         }
@@ -905,13 +905,13 @@ export const StorageFileExplorer: React.FC<StorageFileExplorerProps> = ({
         try {
             const currentDirHandle = await navigateToPath(rootHandle, currentSegments);
             await currentDirHandle.getDirectoryHandle(folderName, { create: true });
-            emitInfo(`已创建文件夹: ${folderName}`);
+            emitInfo(`Created folder: ${folderName}`);
             onFileSystemChange?.();
             await refresh();
         }
         catch (createError: any) {
             AppLogger.error('[StorageFileExplorer] Failed to create folder:', createError);
-            setError(createError?.message ?? '创建文件夹失败');
+            setError(createError?.message ?? 'Failed to create folder');
         }
     };
 
@@ -924,18 +924,18 @@ export const StorageFileExplorer: React.FC<StorageFileExplorerProps> = ({
             .filter((path) => isSystemFile?.(path));
         if (systemFiles.length) {
             const confirmedSystemDelete = await requestConfirm(
-                `文件 "${systemFiles.map((path) => path.split('/').pop()).join(', ')}" 是系统文件。删除它们可能导致游戏无法正常工作。\n\n您确定要继续吗？`,
-                '删除',
-                '取消',
+                `The file(s) "${systemFiles.map((path) => path.split('/').pop()).join(', ')}" are system files. Deleting them may cause the game to stop working.\n\nAre you sure you want to continue?`,
+                'Delete',
+                'Cancel',
             );
             if (!confirmedSystemDelete) {
                 return;
             }
         }
         const confirmedDelete = await requestConfirm(
-            `您确定要永久删除这 ${entriesToDelete.length} 个项目吗？`,
-            '删除',
-            '取消',
+            `Are you sure you want to permanently delete these ${entriesToDelete.length} items?`,
+            'Delete',
+            'Cancel',
         );
         if (!confirmedDelete) {
             return;
@@ -945,13 +945,13 @@ export const StorageFileExplorer: React.FC<StorageFileExplorerProps> = ({
             for (const entry of entriesToDelete) {
                 await currentDirHandle.removeEntry(entry.id, { recursive: true });
             }
-            emitInfo(`已删除 ${entriesToDelete.length} 个项目`);
+            emitInfo(`Deleted ${entriesToDelete.length} items`);
             onFileSystemChange?.();
             await refresh();
         }
         catch (deleteError: any) {
             AppLogger.error('[StorageFileExplorer] Failed to delete entries:', deleteError);
-            setError(deleteError?.message ?? '删除失败');
+            setError(deleteError?.message ?? 'Delete failed');
         }
     };
 
@@ -1003,19 +1003,19 @@ export const StorageFileExplorer: React.FC<StorageFileExplorerProps> = ({
                     chunks.push(value);
                 }
                 await downloadBlob(new Blob(chunks as any, { type: 'application/zip' }), 'cdexport.zip');
-                emitInfo(`已打包下载 ${entriesToDownload.length} 个项目`);
+                emitInfo(`Downloaded ${entriesToDownload.length} items as archive`);
                 return;
             }
             const entry = entriesToDownload[0];
             const fileHandle = await currentDirHandle.getFileHandle(entry.id);
             const file = await fileHandle.getFile();
             await downloadSingleFile(file);
-            emitInfo(`已下载文件: ${entry.name}`);
+            emitInfo(`Downloaded file: ${entry.name}`);
         }
         catch (downloadError: any) {
             AppLogger.error('[StorageFileExplorer] Failed to download entries:', downloadError);
             if (downloadError?.name !== 'AbortError') {
-                setError(downloadError?.message ?? '下载失败');
+                setError(downloadError?.message ?? 'Download failed');
             }
         }
     };
@@ -1136,14 +1136,14 @@ export const StorageFileExplorer: React.FC<StorageFileExplorerProps> = ({
             items: entriesToStage.map((entry) => ({ id: entry.id, type: entry.type })),
         });
         setShowPasteOverlay(true);
-        emitInfo(`${mode === 'copy' ? '已复制' : '已剪切'} ${entriesToStage.length} 个项目`);
+        emitInfo(`${mode === 'copy' ? 'Copied' : 'Cut'} ${entriesToStage.length} items`);
     };
 
     const transferEntries = async (payload: InternalDragPayload, mode: 'copy' | 'cut', targetSegments: string[]) => {
         const sourcePath = buildPath(payload.sourceSegments);
         const targetPath = buildPath(targetSegments);
         if (mode === 'cut' && sourcePath === targetPath) {
-            emitInfo('源目录与目标目录相同，未执行移动');
+            emitInfo('Source and destination directories are the same; move not performed');
             return;
         }
         try {
@@ -1165,7 +1165,7 @@ export const StorageFileExplorer: React.FC<StorageFileExplorerProps> = ({
                     targetName = await getAvailableCopyName(targetDirHandle, item.id);
                 }
                 else if (await entryExists(targetDirHandle, targetName)) {
-                    const overwrite = await requestConfirm(`"${targetName}" 已存在。是否覆盖？`, '覆盖', '取消');
+                    const overwrite = await requestConfirm(`"${targetName}" already exists. Overwrite?`, 'Overwrite', 'Cancel');
                     if (!overwrite) {
                         continue;
                     }
@@ -1178,7 +1178,7 @@ export const StorageFileExplorer: React.FC<StorageFileExplorerProps> = ({
                 modified = true;
             }
             if (modified) {
-                emitInfo(`${mode === 'copy' ? '已粘贴' : '已移动'} ${payload.items.length} 个项目`);
+                emitInfo(`${mode === 'copy' ? 'Pasted' : 'Moved'} ${payload.items.length} items`);
                 onFileSystemChange?.();
                 if (mode === 'cut' && clipboard && buildPath(clipboard.sourceSegments) === sourcePath) {
                     setClipboard(null);
@@ -1188,7 +1188,7 @@ export const StorageFileExplorer: React.FC<StorageFileExplorerProps> = ({
         }
         catch (pasteError: any) {
             AppLogger.error('[StorageFileExplorer] Failed to paste entries:', pasteError);
-            setError(pasteError?.message ?? '粘贴失败');
+            setError(pasteError?.message ?? 'Paste failed');
         }
         finally {
             setLoading(false);
@@ -1491,7 +1491,7 @@ export const StorageFileExplorer: React.FC<StorageFileExplorerProps> = ({
             if (!items.length) {
                 items.push({
                     id: `${segment.index}:empty`,
-                    label: '没有子文件夹',
+                    label: 'No subfolders',
                     disabled: true,
                     onSelect: () => undefined,
                 });
@@ -1501,7 +1501,7 @@ export const StorageFileExplorer: React.FC<StorageFileExplorerProps> = ({
         }
         catch (popupError: any) {
             AppLogger.error('[StorageFileExplorer] Failed to open path segment menu:', popupError);
-            setError(popupError?.message ?? '打开路径菜单失败');
+            setError(popupError?.message ?? 'Failed to open path menu');
         }
     };
 
@@ -1509,31 +1509,31 @@ export const StorageFileExplorer: React.FC<StorageFileExplorerProps> = ({
         openPopupMenu([
             {
                 id: 'refresh',
-                label: '刷新',
+                label: 'Refresh',
                 onSelect: () => refresh(),
             },
             {
                 id: 'new-folder',
-                label: '新建文件夹',
+                label: 'New Folder',
                 iconClass: 'fe_fileexplorer_popup_item_icon_folder',
                 disabled: !!(canCreateFolder && !canCreateFolder(currentPath, currentSegments)),
                 onSelect: () => handleCreateFolder(),
             },
             {
                 id: 'upload',
-                label: '上传文件',
+                label: 'Upload File',
                 onSelect: () => handleUploadClick(),
             },
             {
                 id: 'paste',
-                label: '粘贴',
+                label: 'Paste',
                 iconClass: 'fe_fileexplorer_popup_item_icon_paste',
                 disabled: !clipboard?.items.length,
                 onSelect: () => handlePaste(),
             },
             {
                 id: 'select-all',
-                label: '全选',
+                label: 'Select All',
                 separatorBefore: true,
                 disabled: !entries.length,
                 onSelect: () => {
@@ -1550,39 +1550,39 @@ export const StorageFileExplorer: React.FC<StorageFileExplorerProps> = ({
         openPopupMenu([
             {
                 id: 'open',
-                label: entry.type === 'folder' ? '打开' : '打开/下载',
+                label: entry.type === 'folder' ? 'Open' : 'Open / Download',
                 iconClass: entry.type === 'folder' ? 'fe_fileexplorer_popup_item_icon_folder' : 'fe_fileexplorer_popup_item_icon_file',
                 onSelect: () => openEntry(entry),
             },
             {
                 id: 'copy',
-                label: '复制',
+                label: 'Copy',
                 iconClass: 'fe_fileexplorer_popup_item_icon_copy',
                 onSelect: () => handleClipboardStage('copy', contextEntries),
             },
             {
                 id: 'cut',
-                label: '剪切',
+                label: 'Cut',
                 iconClass: 'fe_fileexplorer_popup_item_icon_cut',
                 disabled: contextEntries.some((item) => !item.canModify),
                 onSelect: () => handleClipboardStage('cut', contextEntries),
             },
             {
                 id: 'rename',
-                label: '重命名',
+                label: 'Rename',
                 separatorBefore: true,
                 disabled: !singleContextEntry || !singleContextEntry.canModify,
                 onSelect: () => handleRename(singleContextEntry),
             },
             {
                 id: 'download',
-                label: '下载',
+                label: 'Download',
                 iconClass: 'fe_fileexplorer_popup_item_icon_download',
                 onSelect: () => handleDownload(contextEntries),
             },
             {
                 id: 'delete',
-                label: '删除',
+                label: 'Delete',
                 iconClass: 'fe_fileexplorer_popup_item_icon_delete',
                 disabled: contextEntries.some((item) => !item.canModify),
                 onSelect: () => handleDelete(contextEntries),
@@ -1633,7 +1633,7 @@ export const StorageFileExplorer: React.FC<StorageFileExplorerProps> = ({
         event.clipboardData.setData('text/plain', JSON.stringify({
             'application/x-ra2-fileexplorer-clipboard': payload,
         }));
-        emitInfo(`${mode === 'copy' ? '已复制' : '已剪切'} ${selectedEntries.length} 个项目`);
+        emitInfo(`${mode === 'copy' ? 'Copied' : 'Cut'} ${selectedEntries.length} items`);
     };
 
     const handlePasteEvent = (event: React.ClipboardEvent<HTMLDivElement>) => {
@@ -1703,9 +1703,9 @@ export const StorageFileExplorer: React.FC<StorageFileExplorerProps> = ({
     };
     const pasteShortcutLabel = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform) ? 'Cmd+V' : 'Ctrl+V';
     const statusSegments = [
-        selectedEntries.length ? `已选择 ${selectedEntries.length} 项` : `项目 ${entries.length} 个`,
+        selectedEntries.length ? `${selectedEntries.length} selected` : `${entries.length} items`,
         currentPath,
-        clipboard ? `${clipboard.mode === 'copy' ? '复制板' : '剪切板'}: ${clipboard.items.length} 项` : '',
+        clipboard ? `${clipboard.mode === 'copy' ? 'Copy' : 'Cut'}: ${clipboard.items.length} items` : '',
         error || statusMessage || '',
     ].filter(Boolean);
 
@@ -1742,16 +1742,16 @@ export const StorageFileExplorer: React.FC<StorageFileExplorerProps> = ({
                             className={`fe_fileexplorer_navtool_back${historyIndex < 1 ? ' fe_fileexplorer_disabled' : ''}`}
                             onClick={handleGoBack}
                             disabled={historyIndex < 1 || loading}
-                            title="后退"
-                            aria-label="后退"
+                            title="Back"
+                            aria-label="Back"
                         />
                         <button
                             type="button"
                             className={`fe_fileexplorer_navtool_forward${historyIndex >= historyEntries.length - 1 ? ' fe_fileexplorer_disabled' : ''}`}
                             onClick={handleGoForward}
                             disabled={historyIndex >= historyEntries.length - 1 || loading}
-                            title="前进"
-                            aria-label="前进"
+                            title="Forward"
+                            aria-label="Forward"
                         />
                         <button
                             ref={navHistoryRef}
@@ -1767,16 +1767,16 @@ export const StorageFileExplorer: React.FC<StorageFileExplorerProps> = ({
                                     openHistoryMenu();
                                 }
                             }}
-                            title="最近访问"
-                            aria-label="最近访问"
+                            title="Recent"
+                            aria-label="Recent"
                         />
                         <button
                             type="button"
                             className={`fe_fileexplorer_navtool_up${currentSegments.length < 1 ? ' fe_fileexplorer_disabled' : ''}`}
                             onClick={() => navigateToSegments(currentSegments.slice(0, -1))}
                             disabled={currentSegments.length < 1 || loading}
-                            title="上一级"
-                            aria-label="上一级"
+                            title="Up"
+                            aria-label="Up"
                         />
                     </div>
                     <div className="fe_fileexplorer_path_wrap">
@@ -1853,8 +1853,8 @@ export const StorageFileExplorer: React.FC<StorageFileExplorerProps> = ({
                                             onFocus={(event) => event.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' })}
                                             onKeyDown={(event) => handlePathSegmentKeyDown(event, segment, position, 'opts')}
                                             disabled={loading}
-                                            title={`浏览 ${segment.label} 下的文件夹`}
-                                            aria-label={`浏览 ${segment.label} 下的文件夹`}
+                                            title={`Browse folders in ${segment.label}`}
+                                            aria-label={`Browse folders in ${segment.label}`}
                                         />
                                     </div>
                                 ))}
@@ -1872,56 +1872,56 @@ export const StorageFileExplorer: React.FC<StorageFileExplorerProps> = ({
                                     className="fe_fileexplorer_folder_tool_new_folder"
                                     onClick={() => void handleCreateFolder()}
                                     disabled={loading}
-                                    title="新建文件夹"
-                                    aria-label="新建文件夹"
+                                    title="New Folder"
+                                    aria-label="New Folder"
                                 />
                                 <button
                                     type="button"
                                     className="fe_fileexplorer_folder_tool_upload"
                                     onClick={handleUploadClick}
                                     disabled={loading}
-                                    title="上传"
-                                    aria-label="上传"
+                                    title="Upload"
+                                    aria-label="Upload"
                                 />
                                 <button
                                     type="button"
                                     className={`fe_fileexplorer_folder_tool_download${selectedEntries.length ? '' : ' fe_fileexplorer_disabled'}`}
                                     onClick={() => void handleDownload()}
                                     disabled={loading || !selectedEntries.length}
-                                    title="下载"
-                                    aria-label="下载"
+                                    title="Download"
+                                    aria-label="Download"
                                 />
                                 <button
                                     type="button"
                                     className={`fe_fileexplorer_folder_tool_copy${selectedEntries.length ? '' : ' fe_fileexplorer_disabled'}`}
                                     onClick={() => handleClipboardStage('copy')}
                                     disabled={loading || !selectedEntries.length}
-                                    title="复制"
-                                    aria-label="复制"
+                                    title="Copy"
+                                    aria-label="Copy"
                                 />
                                 <button
                                     type="button"
                                     className={`fe_fileexplorer_folder_tool_paste${clipboard?.items.length ? '' : ' fe_fileexplorer_disabled'}`}
                                     onClick={() => void handlePaste()}
                                     disabled={loading || !clipboard?.items.length}
-                                    title="粘贴"
-                                    aria-label="粘贴"
+                                    title="Paste"
+                                    aria-label="Paste"
                                 />
                                 <button
                                     type="button"
                                     className={`fe_fileexplorer_folder_tool_cut${selectedEntries.length ? '' : ' fe_fileexplorer_disabled'}`}
                                     onClick={() => handleClipboardStage('cut')}
                                     disabled={loading || !selectedEntries.length}
-                                    title="剪切"
-                                    aria-label="剪切"
+                                    title="Cut"
+                                    aria-label="Cut"
                                 />
                                 <button
                                     type="button"
                                     className={`fe_fileexplorer_folder_tool_delete${selectedEntries.length ? '' : ' fe_fileexplorer_disabled'}`}
                                     onClick={() => void handleDelete()}
                                     disabled={loading || !selectedEntries.length}
-                                    title="删除"
-                                    aria-label="删除"
+                                    title="Delete"
+                                    aria-label="Delete"
                                 />
                                 <div className="fe_fileexplorer_folder_tool_separator" />
                                 <button
@@ -1929,8 +1929,8 @@ export const StorageFileExplorer: React.FC<StorageFileExplorerProps> = ({
                                     className="fe_fileexplorer_folder_tool_item_checkboxes"
                                     onClick={() => setShowCheckboxes((value) => !value)}
                                     disabled={loading}
-                                    title="切换复选框"
-                                    aria-label="切换复选框"
+                                    title="Toggle Checkboxes"
+                                    aria-label="Toggle Checkboxes"
                                 />
                             </div>
                         </div>
@@ -2012,22 +2012,22 @@ export const StorageFileExplorer: React.FC<StorageFileExplorerProps> = ({
                                             <div className="fe_fileexplorer_items_clipboard_overlay_paste_text_wrap">
                                                 <div className="fe_fileexplorer_items_clipboard_overlay_paste_text">
                                                     <div className="fe_fileexplorer_items_clipboard_overlay_paste_text_big">
-                                                        按 {pasteShortcutLabel} 粘贴到当前目录
+                                                        Press {pasteShortcutLabel} to paste into the current directory
                                                     </div>
                                                     <div className="fe_fileexplorer_items_clipboard_overlay_paste_text_small">
-                                                        或右键打开粘贴菜单
+                                                        Or right-click to open the paste menu
                                                     </div>
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
                                 ) : null}
-                                {dragActive ? (
-                                    <div className="fe_fileexplorer_drop_message">释放文件以上传到当前目录</div>
-                                ) : null}
-                                {loading ? (
-                                    <div className="fe_fileexplorer_items_message_wrap">{loadingLabel ?? '加载中...'}</div>
-                                ) : entries.length ? (
+                    {dragActive ? (
+                        <div className="fe_fileexplorer_drop_message">Drop files here to upload to current directory</div>
+                    ) : null}
+                    {loading ? (
+                        <div className="fe_fileexplorer_items_message_wrap">{loadingLabel ?? 'Loading...'}</div>
+                    ) : entries.length ? (
                                     <div className="fe_fileexplorer_items_wrap fe_fileexplorer_items_focus">
                                         {entries.map((entry) => {
                                             const selected = selectedIds.has(entry.id);
@@ -2148,7 +2148,7 @@ export const StorageFileExplorer: React.FC<StorageFileExplorerProps> = ({
                                     </div>
                                 ) : (
                                     <div className="fe_fileexplorer_items_message_wrap">
-                                        {emptyState ?? '当前目录为空。'}
+                                        {emptyState ?? 'This directory is empty.'}
                                     </div>
                                 )}
                             </div>
@@ -2175,8 +2175,8 @@ export const StorageFileExplorer: React.FC<StorageFileExplorerProps> = ({
                             className="fe_fileexplorer_open_icon"
                             onClick={() => void refresh()}
                             disabled={loading}
-                            title="刷新"
-                            aria-label="刷新"
+                            title="Refresh"
+                            aria-label="Refresh"
                         />
                     </div>
                 </div>

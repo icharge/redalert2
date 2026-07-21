@@ -417,10 +417,10 @@ export class LanRoomSession {
 
     startGame(returnRoute: { screenType: number; params?: any }): LanLaunchDescriptor {
         if (!this.roomState || !this.isHost()) {
-            throw new Error('只有房主可以开始游戏。');
+            throw new Error('Only the host can start the game.');
         }
         if (!this.canStart()) {
-            throw new Error('当前房间还不能开始游戏。');
+            throw new Error('The room cannot start the game yet.');
         }
         const self = this.meshSession.getSelf();
         const descriptor: LanLaunchDescriptor = {
@@ -465,7 +465,7 @@ export class LanRoomSession {
         this.reconcileRoomStateWithMesh();
 
         if (previousHostPeerId !== this.roomState.hostPeerId && this.isHost()) {
-            this.log('info', '房主已迁移到当前客户端。');
+            this.log('info', 'Host has migrated to this client.');
             this.broadcastStateSync();
             this.scheduleCustomMapTransfers();
         }
@@ -604,7 +604,7 @@ export class LanRoomSession {
             const bytes = base64StringToUint8Array(transfer.chunks.join(''));
             const file = VirtualFile.fromBytes(bytes, transfer.filename);
             if (MapDigest.compute(file) !== transfer.digest) {
-                throw new Error('接收到的自定义地图摘要不匹配。');
+                throw new Error('Received custom map digest does not match.');
             }
             this.currentCustomMapFile = file;
             await this.persistCustomMap(file);

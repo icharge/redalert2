@@ -373,7 +373,7 @@ export class AircraftTester {
     }
     private static buildHomeButton(): void {
         const homeButton = document.createElement('button');
-        homeButton.innerHTML = '点此返回主页';
+        homeButton.innerHTML = 'Back to Home';
         homeButton.style.cssText = `
       position: fixed;
       left: 50%;

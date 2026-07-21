@@ -150,6 +150,8 @@ export class CsfFile {
     }
     private autoDetectLocale(): void {
         const introTheme = this.data["THEME:INTRO"];
+        // These Chinese strings are literal values stored in the CSF file and are used
+        // to detect Traditional Chinese ("開場") and Simplified Chinese ("开场") locale files.
         if (introTheme === "開場") {
             this.language = CsfLanguage.ChineseTW;
         }

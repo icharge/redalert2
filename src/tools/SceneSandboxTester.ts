@@ -124,82 +124,82 @@ export class SceneSandboxTester {
         panelCollapsed: false,
         tickMultiplier: 2,
         spawnedCount: 0,
-        lastMessage: '选择单位后点击“进入放置模式”，再在地图上左键放置。',
+        lastMessage: 'Select a unit, then click Enter Placement Mode and left-click on the map to place.',
     };
     private static readonly fallbackObjectDisplayNames: Record<string, string> = {
-        E1: '美国大兵',
-        E2: '动员兵',
-        GGI: '重装大兵',
-        ENGINEER: '工程师',
-        SNIPE: '狙击手',
-        TANY: '谭雅',
-        SEAL: '海豹部队',
-        SPY: '间谍',
-        DOG: '警犬',
-        ADOG: '警犬',
-        CLEG: '超时空军团兵',
-        YURI: '尤里',
-        IVAN: '疯狂伊文',
-        FLKT: '防空步兵',
-        TERROR: '恐怖分子',
-        DESO: '辐射工兵',
-        MTNK: '灰熊坦克',
-        HTNK: '犀牛坦克',
-        MGTK: '幻影坦克',
-        SREF: '光棱坦克',
-        FV: '多功能步兵车',
-        TNKD: '坦克杀手',
-        HARV: '矿车',
-        CMIN: '超时空采矿车',
-        AMCV: '盟军机动建设车',
-        SMCV: '苏军机动建设车',
-        PCV: '尤里机动建设车',
-        APOC: '天启坦克',
-        V3: 'V3 火箭车',
-        DRON: '恐怖机器人',
-        HTK: '防空履带车',
-        SAPC: '装甲运兵船',
-        LCRF: '两栖运输艇',
-        DEST: '驱逐舰',
-        AEGIS: '神盾巡洋舰',
-        CARRIER: '航空母舰',
-        DLPH: '海豚',
-        SUB: '台风攻击潜艇',
-        DRED: '无畏级战舰',
-        SQD: '巨型乌贼',
-        ORCA: '入侵者战机',
-        BEAG: '黑鹰战机',
-        ZEP: '基洛夫飞艇',
-        GACNST: '盟军建造厂',
-        NACNST: '苏军建造厂',
-        YACNST: '尤里建造厂',
-        GAPOWR: '盟军发电厂',
-        NAPOWR: '磁能反应炉',
-        YAPOWR: '生化反应炉',
-        GAREFN: '盟军矿石精炼厂',
-        NAREFN: '苏军矿石精炼厂',
-        YAREFN: '奴隶矿场',
-        GAPILE: '盟军兵营',
-        NAHAND: '苏军兵营',
-        YABRCK: '尤里兵营',
-        GAWEAP: '盟军战车工厂',
-        NAWEAP: '苏军战车工厂',
-        YAWEAP: '尤里战车工厂',
-        GAAIRC: '空指部',
-        NARADR: '雷达塔',
-        GAYARD: '盟军船坞',
-        NAYARD: '苏军船坞',
-        YAYARD: '尤里船坞',
-        GATECH: '盟军作战实验室',
-        NATECH: '苏军作战实验室',
-        YATECH: '尤里作战实验室',
-        GACSPH: '超时空传送仪',
-        GAWEAT: '天气控制机',
-        NAIRON: '铁幕装置',
-        NAMISL: '核弹发射井',
-        NAMSLO: '核弹发射井',
-        YAPPET: '心灵控制器',
-        YAGNTC: '基因突变器',
+        E1: 'GI',
+        E2: 'Conscript',
+        GGI: 'Guardian GI',
+        ENGINEER: 'Engineer',
+        SNIPE: 'Sniper',
+        TANY: 'Tanya',
+        SEAL: 'Navy SEAL',
+        SPY: 'Spy',
+        DOG: 'Attack Dog',
+        ADOG: 'Attack Dog',
+        CLEG: 'Chrono Legionnaire',
+        YURI: 'Yuri',
+        IVAN: 'Crazy Ivan',
+        FLKT: 'Flak Trooper',
+        TERROR: 'Terrorist',
+        DESO: 'Desolator',
+        MTNK: 'Grizzly Tank',
+        HTNK: 'Rhino Tank',
+        MGTK: 'Mirage Tank',
+        SREF: 'Prism Tank',
+        FV: 'IFV',
+        TNKD: 'Tank Destroyer',
+        HARV: 'Ore Miner',
+        CMIN: 'Chrono Miner',
+        AMCV: 'Allied MCV',
+        SMCV: 'Soviet MCV',
+        PCV: 'Yuri MCV',
+        APOC: 'Apocalypse Tank',
+        V3: 'V3 Launcher',
+        DRON: 'Terror Drone',
+        HTK: 'Flak Track',
+        SAPC: 'Amphibious Transport',
+        LCRF: 'Landing Craft',
+        DEST: 'Destroyer',
+        AEGIS: 'Aegis Cruiser',
+        CARRIER: 'Aircraft Carrier',
+        DLPH: 'Dolphin',
+        SUB: 'Typhoon Sub',
+        DRED: 'Dreadnought',
+        SQD: 'Giant Squid',
+        ORCA: 'Harrier',
+        BEAG: 'Black Eagle',
+        ZEP: 'Kirov Airship',
+        GACNST: 'Allied Construction Yard',
+        NACNST: 'Soviet Construction Yard',
+        YACNST: 'Yuri Construction Yard',
+        GAPOWR: 'Allied Power Plant',
+        NAPOWR: 'Tesla Reactor',
+        YAPOWR: 'Bio Reactor',
+        GAREFN: 'Allied Ore Refinery',
+        NAREFN: 'Soviet Ore Refinery',
+        YAREFN: 'Slave Miner',
+        GAPILE: 'Allied Barracks',
+        NAHAND: 'Soviet Barracks',
+        YABRCK: 'Yuri Barracks',
+        GAWEAP: 'Allied War Factory',
+        NAWEAP: 'Soviet War Factory',
+        YAWEAP: 'Yuri War Factory',
+        GAAIRC: 'Air Force HQ',
+        NARADR: 'Radar Tower',
+        GAYARD: 'Allied Naval Yard',
+        NAYARD: 'Soviet Naval Yard',
+        YAYARD: 'Yuri Naval Yard',
+        GATECH: 'Allied Battle Lab',
+        NATECH: 'Soviet Battle Lab',
+        YATECH: 'Yuri Battle Lab',
+        GACSPH: 'Chrono Sphere',
+        GAWEAT: 'Weather Control Device',
+        NAIRON: 'Iron Curtain',
+        NAMISL: 'Nuclear Missile Silo',
+        NAMSLO: 'Nuclear Missile Silo',
+        YAPPET: 'Psychic Dominator',
+        YAGNTC: 'Genetic Mutator',
     };
 
     static async main(_mixFileLoader: any, gameMapFile: any, parentElement: HTMLElement, strings: StringsLike, context: TestToolRuntimeContext = {}, options: SceneSandboxOptions = {}): Promise<void> {
@@ -229,7 +229,7 @@ export class SceneSandboxTester {
         this.disposables.add(canvasMetrics);
 
         const generalOptions = new GeneralOptions();
-        // RA2 风格：左键移动、右键拖动卷动地图（与真实游戏默认一致）。
+        // RA2 style: left-click to move, right-drag to scroll (same as the real game default).
         generalOptions.rightClickMove.value = false;
         generalOptions.rightClickScroll.value = true;
         generalOptions.targetLines.value = true;
@@ -254,8 +254,8 @@ export class SceneSandboxTester {
 
         const theater = await Engine.loadTheater(theaterType);
         const game = this.createGame(gameMapFile, options.mapName);
-        const localPlayer = game.getPlayerByName('沙盒玩家');
-        const enemyPlayer = game.getPlayerByName('目标方');
+        const localPlayer = game.getPlayerByName('Sandbox Player');
+        const enemyPlayer = game.getPlayerByName('Target Side');
 
         IsoCoords.init({
             x: 0,
@@ -358,10 +358,10 @@ export class SceneSandboxTester {
             panelCollapsed: false,
             tickMultiplier: this.state.tickMultiplier,
             spawnedCount: 0,
-            lastMessage: `已载入 ${options.mapName ?? '测试地图'}。左侧选择单位后进入放置模式。`,
+            lastMessage: `Loaded ${options.mapName ?? 'test map'}. Select a unit on the left to enter placement mode.`,
         };
 
-        const panel = this.buildControlPanel(host, catalog, options.mapName ?? gameMapFile.name ?? '测试地图');
+        const panel = this.buildControlPanel(host, catalog, options.mapName ?? gameMapFile.name ?? 'test map');
         this.disposables.add(() => panel.remove());
 
         const tileHelper = new MapTileIntersectHelper(game.map, worldScene);
@@ -381,12 +381,12 @@ export class SceneSandboxTester {
             event.stopImmediatePropagation();
             const tile = this.getTargetTileAtScreenPoint(getCanvasPointer(event));
             if (!tile) {
-                this.setStatus('按住 Shift：没有找到可放置的地图格。');
+                this.setStatus('Hold Shift: no placeable map tile found.');
                 return;
             }
             const spawnedCount = this.spawnAt(tile);
             if (spawnedCount > 0) {
-                this.setStatus('按住 Shift：已放置单位，松开 Shift 后恢复正常交互。');
+                this.setStatus('Hold Shift: unit placed; release Shift to resume normal interaction.');
             }
         };
         canvas.addEventListener('mousedown', handleShiftPlacementMouseDown, true);
@@ -427,7 +427,7 @@ export class SceneSandboxTester {
                 }
                 const building = this.findDemolishableBuildingAtScreenPoint(event.pointer);
                 if (!building) {
-                    this.setStatus('拆除失败：当前位置没有可拆除的建筑。');
+                    this.setStatus('Demolition failed: no demolishable building at this location.');
                     this.updateDemolitionPointer(event.pointer);
                     return;
                 }
@@ -445,7 +445,7 @@ export class SceneSandboxTester {
                 }
                 const tile = this.getTargetTileAtScreenPoint(event.pointer);
                 if (!tile) {
-                    this.setStatus('超级武器瞄准失败：没有找到地图格。');
+                    this.setStatus('Super weapon targeting failed: no map tile found.');
                     return;
                 }
                 this.triggerSuperWeaponAt(tile);
@@ -464,17 +464,17 @@ export class SceneSandboxTester {
             }
             const tile = this.getTargetTileAtScreenPoint(event.pointer);
             if (!tile) {
-                this.setStatus('没有找到可放置的地图格。');
+                this.setStatus('No placeable map tile found.');
                 return;
             }
             const spawnedCount = this.spawnAt(tile);
             if (!this.shiftPlacementActive) {
                 this.setPlacementActive(false, spawnedCount > 0
-                    ? '已放置并退出放置模式：当前可直接右键移动/攻击，也可以框选其他单位。'
-                    : '已退出放置模式：可正常选择单位并右键移动/攻击。');
+                    ? 'Placed and exited placement mode: you can now right-click to move/attack or box-select other units.'
+                    : 'Exited placement mode: you can select units normally and right-click to move/attack.');
             }
             else if (this.shiftPlacementActive && spawnedCount > 0) {
-                this.setStatus('按住 Shift：继续临时放置模式。');
+                this.setStatus('Hold Shift: continuing temporary placement mode.');
             }
         };
         pointer.pointerEvents.addEventListener('canvas', 'mouseup', handlePlacementClick);
@@ -501,7 +501,7 @@ export class SceneSandboxTester {
             }
             if (!this.state.placementActive) {
                 this.shiftPlacementActive = true;
-                this.setPlacementActive(true, '按住 Shift：临时放置模式已开启。');
+                this.setPlacementActive(true, 'Hold Shift: temporary placement mode enabled.');
             }
         };
         const handleKeyUp = (event: KeyboardEvent) => {
@@ -510,13 +510,13 @@ export class SceneSandboxTester {
             }
             if (this.shiftPlacementActive) {
                 this.shiftPlacementActive = false;
-                this.setPlacementActive(false, 'Shift 已松开：恢复正常交互。');
+                this.setPlacementActive(false, 'Shift released: resumed normal interaction.');
             }
         };
         const handleWindowBlur = () => {
             if (this.shiftPlacementActive) {
                 this.shiftPlacementActive = false;
-                this.setPlacementActive(false, '窗口失焦：已退出临时放置模式。');
+                this.setPlacementActive(false, 'Window lost focus: exited temporary placement mode.');
             }
         };
         document.addEventListener('keydown', handleKeyDown, true);
@@ -540,7 +540,7 @@ export class SceneSandboxTester {
             }
             catch (error) {
                 console.error('[SceneSandboxTester] game.update failed', error);
-                this.setStatus(`游戏更新失败：${String(error)}`);
+                this.setStatus(`Game update failed: ${String(error)}`);
             }
         }, 33);
         this.disposables.add(() => {
@@ -598,14 +598,14 @@ export class SceneSandboxTester {
             multiEngineer: false,
             noDogEngiKills: false,
             mapName: mapName ?? gameMapFile.name ?? 'scene-sandbox.map',
-            mapTitle: gameMapFile.getOrCreateSection?.('Basic')?.getString?.('Name') ?? '场景沙盒',
+            mapTitle: gameMapFile.getOrCreateSection?.('Basic')?.getString?.('Name') ?? 'Scene Sandbox',
             mapDigest: '',
             mapSizeBytes: 0,
             maxSlots: 2,
             mapOfficial: true,
             humanPlayers: [
-                { name: '沙盒玩家', countryId: localCountryId, colorId: localColorId, startPos: 0, teamId: 0 },
-                { name: '目标方', countryId: enemyCountryId, colorId: enemyColorId, startPos: enemyStart, teamId: 1 },
+                { name: 'Sandbox Player', countryId: localCountryId, colorId: localColorId, startPos: 0, teamId: 0 },
+                { name: 'Target Side', countryId: enemyCountryId, colorId: enemyColorId, startPos: enemyStart, teamId: 1 },
             ],
             aiPlayers: [],
         };
@@ -732,15 +732,15 @@ export class SceneSandboxTester {
         header.style.cssText = 'display: flex; align-items: center; gap: 6px;';
         const title = document.createElement('div');
         title.style.cssText = 'font-weight: bold; font-size: 15px; flex: 1;';
-        title.textContent = '场景沙盒';
+        title.textContent = 'Scene Sandbox';
         header.appendChild(title);
-        const homeButton = this.createButton('主页', () => {
+        const homeButton = this.createButton('Home', () => {
             window.location.hash = '/';
         });
         homeButton.dataset.testid = 'sandbox-home';
         homeButton.style.width = '58px';
         header.appendChild(homeButton);
-        const collapseButton = this.createButton('收起', () => {
+        const collapseButton = this.createButton('Collapse', () => {
             this.state.panelCollapsed = !this.state.panelCollapsed;
             this.syncControls();
         });
@@ -755,7 +755,7 @@ export class SceneSandboxTester {
 
         const mapLine = document.createElement('div');
         mapLine.style.cssText = 'opacity: 0.9; margin-bottom: 8px;';
-        mapLine.textContent = `地图：${mapName}`;
+        mapLine.textContent = `Map: ${mapName}`;
         body.appendChild(mapLine);
 
         const row = (label: string, control: HTMLElement) => {
@@ -772,12 +772,12 @@ export class SceneSandboxTester {
         kindSelect.dataset.testid = 'sandbox-kind';
         kindSelect.style.width = '100%';
         [
-            ['vehicle', '载具'],
-            ['naval', '船只'],
-            ['infantry', '步兵'],
-            ['aircraft', '飞行器'],
-            ['building', '建筑'],
-            ['superweapon', '超级武器建筑'],
+            ['vehicle', 'Vehicle'],
+            ['naval', 'Naval'],
+            ['infantry', 'Infantry'],
+            ['aircraft', 'Aircraft'],
+            ['building', 'Building'],
+            ['superweapon', 'Superweapon Building'],
         ].forEach(([value, label]) => {
             const option = document.createElement('option');
             option.value = value;
@@ -791,7 +791,7 @@ export class SceneSandboxTester {
             kindSelect.blur();
             this.syncControls();
         };
-        row('类型', kindSelect);
+        row('Type', kindSelect);
 
         const objectSelect = document.createElement('select');
         objectSelect.dataset.testid = 'sandbox-object';
@@ -801,14 +801,14 @@ export class SceneSandboxTester {
             objectSelect.blur();
             this.syncState();
         };
-        row('对象', objectSelect);
+        row('Object', objectSelect);
 
         const ownerSelect = document.createElement('select');
         ownerSelect.dataset.testid = 'sandbox-owner';
         ownerSelect.style.width = '100%';
         [
-            ['local', '沙盒玩家'],
-            ['enemy', '目标方'],
+            ['local', 'Sandbox Player'],
+            ['enemy', 'Target Side'],
         ].forEach(([value, label]) => {
             const option = document.createElement('option');
             option.value = value;
@@ -820,15 +820,15 @@ export class SceneSandboxTester {
             ownerSelect.blur();
             this.syncState();
         };
-        row('归属', ownerSelect);
+        row('Owner', ownerSelect);
 
         const veteranSelect = document.createElement('select');
         veteranSelect.dataset.testid = 'sandbox-veteran';
         veteranSelect.style.width = '100%';
         [
-            [VeteranLevel.None, '普通'],
-            [VeteranLevel.Veteran, '老兵'],
-            [VeteranLevel.Elite, '精英'],
+            [VeteranLevel.None, 'Normal'],
+            [VeteranLevel.Veteran, 'Veteran'],
+            [VeteranLevel.Elite, 'Elite'],
         ].forEach(([value, label]) => {
             const option = document.createElement('option');
             option.value = String(value);
@@ -840,15 +840,15 @@ export class SceneSandboxTester {
             veteranSelect.blur();
             this.syncState();
         };
-        row('等级', veteranSelect);
+        row('Rank', veteranSelect);
 
         const healthSelect = document.createElement('select');
         healthSelect.dataset.testid = 'sandbox-health';
         healthSelect.style.width = '100%';
         [
-            ['full', '满血'],
-            ['half', '半血'],
-            ['low', '残血'],
+            ['full', 'Full'],
+            ['half', 'Half'],
+            ['low', 'Low'],
         ].forEach(([value, label]) => {
             const option = document.createElement('option');
             option.value = value;
@@ -860,7 +860,7 @@ export class SceneSandboxTester {
             healthSelect.blur();
             this.syncState();
         };
-        row('血量', healthSelect);
+        row('Health', healthSelect);
 
         const countInput = document.createElement('input');
         countInput.dataset.testid = 'sandbox-count';
@@ -874,29 +874,29 @@ export class SceneSandboxTester {
             countInput.value = String(this.state.count);
             this.syncState();
         };
-        row('数量', countInput);
+        row('Count', countInput);
 
         const speedWrap = document.createElement('div');
         speedWrap.style.cssText = 'display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 7px 0;';
         for (const multiplier of this.tickMultipliers) {
             const button = this.createButton(`${multiplier}x`, () => {
                 this.state.tickMultiplier = multiplier;
-                this.setStatus(`速度倍率已切换为 ${multiplier}x。`);
+                this.setStatus(`Speed multiplier switched to ${multiplier}x.`);
                 this.syncControls();
             });
             button.dataset.testid = 'sandbox-speed';
             button.dataset.speed = String(multiplier);
             speedWrap.appendChild(button);
         }
-        row('速度', speedWrap);
+        row('Speed', speedWrap);
 
         const actions = document.createElement('div');
         actions.style.cssText = 'display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px;';
-        const placeButton = this.createButton('进入放置模式（Shift）', () => this.setPlacementActive(!this.state.placementActive));
+        const placeButton = this.createButton('Enter Placement Mode (Shift)', () => this.setPlacementActive(!this.state.placementActive));
         placeButton.dataset.testid = 'sandbox-place';
-        const demolitionButton = this.createButton('拆除建筑（C）', () => this.setDemolitionActive(!this.state.demolitionActive));
+        const demolitionButton = this.createButton('Demolish Building (C)', () => this.setDemolitionActive(!this.state.demolitionActive));
         demolitionButton.dataset.testid = 'sandbox-demolish';
-        const clearButton = this.createButton('清空生成物', () => this.clearSpawnedObjects());
+        const clearButton = this.createButton('Clear Spawned', () => this.clearSpawnedObjects());
         clearButton.dataset.testid = 'sandbox-clear';
         clearButton.style.gridColumn = '1 / -1';
         actions.append(placeButton, demolitionButton, clearButton);
@@ -911,9 +911,9 @@ export class SceneSandboxTester {
             superWeaponSelect.blur();
             this.syncState();
         };
-        row('已拥有超级武器', superWeaponSelect);
+        row('Owned Super Weapons', superWeaponSelect);
 
-        const superWeaponButton = this.createButton('触发超级武器（W）', () => {
+        const superWeaponButton = this.createButton('Trigger Super Weapon (W)', () => {
             this.setSuperWeaponTargetingActive(!this.state.superWeaponTargetingActive);
         });
         superWeaponButton.dataset.testid = 'sandbox-fire-superweapon';
@@ -992,12 +992,12 @@ export class SceneSandboxTester {
     private static getQuickPresets(catalog: Record<SpawnKind, string[]>): SpawnPreset[] {
         const pick = (kind: SpawnKind, names: string[]) => names.find((name) => catalog[kind].includes(name)) ?? catalog[kind][0];
         const presets: SpawnPreset[] = [
-            { label: '基础步兵', kind: 'infantry', name: pick('infantry', ['E1', 'GGI', 'ENGINEER']) },
-            { label: '主战坦克', kind: 'vehicle', name: pick('vehicle', ['MTNK', 'HTNK', 'APOC']) },
-            { label: '船只', kind: 'naval', name: pick('naval', ['LCRF', 'SAPC', 'DEST']) },
-            { label: '飞行器', kind: 'aircraft', name: pick('aircraft', ['ORCA', 'BEAG', 'ZEP']) },
-            { label: '基础建筑', kind: 'building', name: pick('building', ['GAPOWR', 'NAPOWR', 'GAREFN', 'GAWEAP']) },
-            { label: '超级武器', kind: 'superweapon', name: pick('superweapon', ['NAMISL', 'NAMSLO', 'NAIRON', 'GACSPH', 'GAWEAT', 'YAPPET']) },
+            { label: 'basic infantry', kind: 'infantry', name: pick('infantry', ['E1', 'GGI', 'ENGINEER']) },
+            { label: 'Main Battle Tank', kind: 'vehicle', name: pick('vehicle', ['MTNK', 'HTNK', 'APOC']) },
+            { label: 'Naval', kind: 'naval', name: pick('naval', ['LCRF', 'SAPC', 'DEST']) },
+            { label: 'Aircraft', kind: 'aircraft', name: pick('aircraft', ['ORCA', 'BEAG', 'ZEP']) },
+            { label: 'Basic Buildings', kind: 'building', name: pick('building', ['GAPOWR', 'NAPOWR', 'GAREFN', 'GAWEAP']) },
+            { label: 'Super Weapons', kind: 'superweapon', name: pick('superweapon', ['NAMISL', 'NAMSLO', 'NAIRON', 'GACSPH', 'GAWEAT', 'YAPPET']) },
         ];
         return presets.filter((preset) => !!preset.name);
     }
@@ -1047,8 +1047,8 @@ export class SceneSandboxTester {
         veteranSelect.value = String(this.state.veteranLevel);
         healthSelect.value = this.state.health;
         countInput.value = String(this.state.count);
-        placeButton.textContent = this.state.placementActive ? '退出放置模式（Shift）' : '进入放置模式（Shift）';
-        demolitionButton.textContent = this.state.demolitionActive ? '退出拆除建筑（C）' : '拆除建筑（C）';
+        placeButton.textContent = this.state.placementActive ? 'Exit Placement Mode (Shift)' : 'Enter Placement Mode (Shift)';
+        demolitionButton.textContent = this.state.demolitionActive ? 'Exit Demolish Mode (C)' : 'Demolish Building (C)';
         demolitionButton.style.outline = this.state.demolitionActive ? '2px solid #ffd84a' : '';
         const superWeapons = this.getAvailableSuperWeapons();
         if (!superWeapons.some((superWeapon) => superWeapon.name === this.state.activeSuperWeaponName)) {
@@ -1064,8 +1064,8 @@ export class SceneSandboxTester {
         }
         superWeaponSelect.disabled = !superWeapons.length;
         superWeaponButton.disabled = !superWeapons.length;
-        superWeaponButton.textContent = this.state.superWeaponTargetingActive ? '取消超级武器（W）' : '触发超级武器（W）';
-        collapseButton.textContent = this.state.panelCollapsed ? '展开' : '收起';
+        superWeaponButton.textContent = this.state.superWeaponTargetingActive ? 'Cancel Super Weapon (W)' : 'Trigger Super Weapon (W)';
+        collapseButton.textContent = this.state.panelCollapsed ? 'Expand' : 'Collapse';
         body.style.display = this.state.panelCollapsed ? 'none' : 'block';
         panel.style.width = this.state.panelCollapsed ? '214px' : '340px';
         for (const button of speedButtons) {
@@ -1083,7 +1083,7 @@ export class SceneSandboxTester {
         const displayName = runtime
             ? this.resolveObjectDisplayName(runtime.game.rules, runtime.strings, type, name)
             : this.fallbackObjectDisplayNames[name] ?? name;
-        return displayName === name ? name : `${displayName}（${name}）`;
+        return displayName === name ? name : `${displayName}(${name})`;
     }
 
     private static getAvailableSuperWeapons(): any[] {
@@ -1096,23 +1096,23 @@ export class SceneSandboxTester {
             ? SuperWeaponType[superWeapon.rules.type] ?? String(superWeapon.rules.type)
             : 'Unknown';
         const statusLabel = superWeapon.status === SuperWeaponStatus.Ready
-            ? '就绪'
+            ? 'Ready'
             : superWeapon.status === SuperWeaponStatus.Paused
-                ? '暂停'
-                : '充能';
-        return `${this.getSuperWeaponDisplayName(superWeapon.name)}（${typeName}，${statusLabel}）`;
+                ? 'Paused'
+                : 'Charging';
+        return `${this.getSuperWeaponDisplayName(superWeapon.name)}(${typeName}, ${statusLabel})`;
     }
 
     private static getSuperWeaponDisplayName(name: string): string {
         const labels: Record<string, string> = {
-            NukeSpecial: '核弹',
-            IronCurtainSpecial: '铁幕',
-            ChronoSphereSpecial: '超时空传送',
-            LightningStormSpecial: '闪电风暴',
-            PsychicDominatorSpecial: '心灵控制器',
-            GeneticConverterSpecial: '基因突变器',
-            ParaDropSpecial: '伞兵',
-            AmerParaDropSpecial: '美国伞兵',
+            NukeSpecial: 'Nuke',
+            IronCurtainSpecial: 'Iron Curtain',
+            ChronoSphereSpecial: 'Chrono Sphere',
+            LightningStormSpecial: 'Lightning Storm',
+            PsychicDominatorSpecial: 'Psychic Dominator',
+            GeneticConverterSpecial: 'Genetic Mutator',
+            ParaDropSpecial: 'Paratroopers',
+            AmerParaDropSpecial: 'American Paratroopers',
         };
         return labels[name] ?? name;
     }
@@ -1144,17 +1144,17 @@ export class SceneSandboxTester {
         const runtime = this.runtime;
         const superWeapon = this.getActiveSuperWeapon();
         if (!runtime || !superWeapon) {
-            this.setSuperWeaponTargetingActive(false, '没有可触发的超级武器。');
+            this.setSuperWeaponTargetingActive(false, 'No super weapon available to trigger.');
             return;
         }
         const rules = superWeapon.rules;
         if (rules?.type === undefined) {
-            this.setSuperWeaponTargetingActive(false, `超级武器 ${superWeapon.name} 缺少 Type，无法触发。`);
+            this.setSuperWeaponTargetingActive(false, `Super weapon ${superWeapon.name} missing Type, cannot trigger.`);
             return;
         }
         if (rules.preClick && !this.pendingSuperWeaponTile) {
             this.pendingSuperWeaponTile = tile;
-            this.setStatus(`已选择第一个目标 @ ${tile.rx},${tile.ry}，请再左键选择第二个目标。`);
+            this.setStatus(`First target selected @ ${tile.rx},${tile.ry}, please left-click the second target.`);
             return;
         }
         const tile1 = this.pendingSuperWeaponTile ?? tile;
@@ -1164,7 +1164,7 @@ export class SceneSandboxTester {
         runtime.game.traits
             .get(SuperWeaponsTrait)
             .activateSuperWeapon(rules.type, runtime.localPlayer, runtime.game, tile1, tile2);
-        this.setSuperWeaponTargetingActive(false, `已触发 ${this.getSuperWeaponDisplayName(superWeapon.name)} @ ${tile1.rx},${tile1.ry}${tile2 ? ` -> ${tile2.rx},${tile2.ry}` : ''}。`);
+        this.setSuperWeaponTargetingActive(false, `Triggered ${this.getSuperWeaponDisplayName(superWeapon.name)} @ ${tile1.rx},${tile1.ry}${tile2 ? ` -> ${tile2.rx},${tile2.ry}` : ''}.`);
     }
 
     private static handleSandboxShortcut(event: KeyboardEvent): boolean {
@@ -1181,7 +1181,7 @@ export class SceneSandboxTester {
             this.shiftPlacementActive = false;
             this.state.placementActive = false;
             this.state.demolitionActive = false;
-            this.setSuperWeaponTargetingActive(false, '已取消当前临时模式。');
+            this.setSuperWeaponTargetingActive(false, 'Canceled current temporary mode.');
             return true;
         }
         const key = event.key.toLowerCase();
@@ -1201,7 +1201,7 @@ export class SceneSandboxTester {
             event.preventDefault();
             event.stopPropagation();
             this.runtime?.worldInteraction?.unitSelectionHandler?.selectCombatants?.();
-            this.setStatus('已选择本方战斗单位。');
+            this.setStatus('Selected friendly combat unit.');
             return true;
         }
         if (key === 'w') {
@@ -1235,7 +1235,7 @@ export class SceneSandboxTester {
             .getSelectedUnits()
             .filter((unit: any) => unit.owner === runtime.localPlayer && !unit.rules.spawned);
         if (!selectedUnits.length) {
-            this.setStatus(`${OrderType[orderType]} 未执行：没有选中的本方单位。`);
+            this.setStatus(`${OrderType[orderType]} not executed: no friendly units selected.`);
             return;
         }
         runtime.orderActionContext
@@ -1252,7 +1252,7 @@ export class SceneSandboxTester {
         action.target = undefined;
         action.process();
         runtime.orderAcceptedSerial += 1;
-        this.setStatus(`已执行快捷键命令：${OrderType[orderType]}。`);
+        this.setStatus(`Executed shortcut command: ${OrderType[orderType]}.`);
     }
 
     private static centerOnHome(): void {
@@ -1262,12 +1262,12 @@ export class SceneSandboxTester {
         }
         const tile = this.findHomeTile();
         if (!tile) {
-            this.setStatus('H 回基地失败：没有找到本方建筑或单位。');
+            this.setStatus('Home (H) failed: no owned building or unit found.');
             return;
         }
         const mapPanningHelper = new MapPanningHelper(runtime.game.map);
         runtime.worldScene.cameraPan.setPan(mapPanningHelper.computeCameraPanFromTile(tile.rx, tile.ry));
-        this.setStatus(`已回到基地视角 @ ${tile.rx},${tile.ry}。`);
+        this.setStatus(`Returned to base view @ ${tile.rx},${tile.ry}.`);
     }
 
     private static findHomeTile(): any | undefined {
@@ -1304,15 +1304,15 @@ export class SceneSandboxTester {
         this.state.placementActive = active;
         this.updateWorldInteractionEnabled();
         this.setStatus(message ?? (active
-            ? '放置模式已开启：在地图上左键放置，右键/按钮退出。'
-            : '放置模式已关闭：可正常选择单位并右键移动/攻击。'));
+            ? 'Placement mode enabled: left-click on the map to place; right-click or button to exit.'
+            : 'Placement mode disabled: select units normally and right-click to move/attack.'));
         this.syncControls();
     }
 
     private static setSuperWeaponTargetingActive(active: boolean, message?: string): void {
         const available = this.getAvailableSuperWeapons();
         if (active && !available.length) {
-            this.setStatus('没有可触发的超级武器：先放置一个超级武器建筑。');
+            this.setStatus('No super weapon available: place a super weapon building first.');
             this.syncControls();
             return;
         }
@@ -1331,8 +1331,8 @@ export class SceneSandboxTester {
             this.runtime?.pointer?.setPointerType(PointerType.Default);
         }
         this.setStatus(message ?? (active
-            ? '超级武器瞄准：左键选择目标，右键取消。'
-            : '已退出超级武器瞄准。'));
+            ? 'Super weapon targeting: left-click target, right-click to cancel.'
+            : 'Exited super weapon targeting.'));
         this.syncControls();
     }
 
@@ -1352,8 +1352,8 @@ export class SceneSandboxTester {
             this.runtime?.pointer?.setPointerType(PointerType.Default);
         }
         this.setStatus(message ?? (active
-            ? '拆除建筑模式已开启：左键点击建筑触发拆除动画，右键/Esc 退出。'
-            : '拆除建筑模式已关闭。'));
+            ? 'Demolition mode enabled: left-click a building to trigger demolition animation; right-click/Esc to exit.'
+            : 'Demolition mode disabled.'));
         this.syncControls();
     }
 
@@ -1513,7 +1513,7 @@ export class SceneSandboxTester {
     private static demolishBuilding(building: any): void {
         const runtime = this.runtime;
         if (!runtime || !this.canDemolishBuilding(building)) {
-            this.setStatus('拆除失败：目标不是可拆除建筑。');
+            this.setStatus('Demolition failed: target is not a demolishable building.');
             return;
         }
         const objectLabel = this.resolveObjectDisplayName(runtime.game.rules, runtime.strings, ObjectType.Building, building.name);
@@ -1523,14 +1523,14 @@ export class SceneSandboxTester {
                 building.dispose?.();
                 this.state.spawnedCount = Math.max(0, this.state.spawnedCount - 1);
                 this.keepSandboxPlayersActive(runtime.game, runtime.localPlayer, runtime.enemyPlayer);
-                this.setStatus(`已完成拆除 ${objectLabel}（${building.name}）。`);
+                this.setStatus(`Demolition completed for ${objectLabel}(${building.name}).`);
                 this.syncControls();
             });
-            this.setStatus(`正在拆除 ${objectLabel}（${building.name}）：请观察 BuildDown 动画。`);
+            this.setStatus(`Demolishing ${objectLabel}(${building.name}): watch the BuildDown animation.`);
         }
         catch (error) {
             console.error('[SceneSandboxTester] Failed to demolish building', error);
-            this.setStatus(`拆除建筑失败：${String(error)}`);
+            this.setStatus(`Demolition failed: ${String(error)}`);
         }
     }
 
@@ -1562,15 +1562,15 @@ export class SceneSandboxTester {
             const acceptedUnits = selectedUnits.filter((unit: any) => !unit.unitOrderTrait?.isIdle?.());
             if (acceptedUnits.length) {
                 runtime.orderAcceptedSerial += 1;
-                this.setStatus(`已向 ${acceptedUnits.length} 个单位下达命令。`);
+                this.setStatus(`Issued order to ${acceptedUnits.length} units.`);
             }
             else {
-                this.setStatus(`命令未被接受：当前选中 ${selectedUnits.length} 个本方单位。`);
+                this.setStatus(`Order not accepted: currently selected ${selectedUnits.length} friendly units.`);
             }
         }
         catch (error) {
             console.error('[SceneSandboxTester] Failed to execute local order', error);
-            this.setStatus(`下达命令失败：${String(error)}`);
+            this.setStatus(`Failed to issue order: ${String(error)}`);
         }
     }
 
@@ -1593,7 +1593,7 @@ export class SceneSandboxTester {
             const tile = this.findSpawnTile(targetTile, unit, spawned.length);
             if (!tile) {
                 unit.dispose?.();
-                this.setStatus(`无法在 ${targetTile.rx},${targetTile.ry} 附近找到可放置位置。已生成 ${spawned.length}/${this.state.count}。`);
+                this.setStatus(`No placeable position found near ${targetTile.rx},${targetTile.ry}. Spawned ${spawned.length}/${this.state.count}.`);
                 break;
             }
             if (unit.isInfantry?.()) {
@@ -1609,7 +1609,7 @@ export class SceneSandboxTester {
             spawned.forEach((unit) => runtime.game.unitSelection.addToSelection(unit));
         }
         this.state.spawnedCount += spawned.length;
-        this.setStatus(`已生成 ${spawned.length} 个 ${objectLabel}（${this.state.objectName}）@ ${targetTile.rx},${targetTile.ry}。`);
+        this.setStatus(`Spawned ${spawned.length} ${objectLabel}(${this.state.objectName}) @ ${targetTile.rx},${targetTile.ry}.`);
         this.keepSandboxPlayersActive(runtime.game, runtime.localPlayer, runtime.enemyPlayer);
         return spawned.length;
     }
@@ -1628,7 +1628,7 @@ export class SceneSandboxTester {
         for (let index = 0; index < this.state.count; index += 1) {
             const tile = this.findBuildingSpawnTile(targetTile, worker, this.state.objectName, spawned.length);
             if (!tile) {
-                this.setStatus(`无法在 ${targetTile.rx},${targetTile.ry} 附近找到可放置建筑的位置。已生成 ${spawned.length}/${this.state.count}。`);
+                this.setStatus(`No placeable position found near ${targetTile.rx},${targetTile.ry} for buildings. Spawned ${spawned.length}/${this.state.count}.`);
                 break;
             }
             const placedBuildings = worker.placeAt(buildingRules.name, tile, false);
@@ -1643,7 +1643,7 @@ export class SceneSandboxTester {
             spawned.forEach((building) => runtime.game.unitSelection.addToSelection(building));
         }
         this.state.spawnedCount += spawned.length;
-        this.setStatus(`已生成 ${spawned.length} 个 ${objectLabel}（${this.state.objectName}）@ ${targetTile.rx},${targetTile.ry}。`);
+        this.setStatus(`Spawned ${spawned.length} ${objectLabel}(${this.state.objectName}) @ ${targetTile.rx},${targetTile.ry}.`);
         this.keepSandboxPlayersActive(runtime.game, runtime.localPlayer, runtime.enemyPlayer);
         this.syncControls();
         return spawned.length;
@@ -1772,7 +1772,7 @@ export class SceneSandboxTester {
         }
         runtime.game.unitSelection.deselectAll();
         this.state.spawnedCount = 0;
-        this.setStatus('已清空沙盒生成的单位和建筑。');
+        this.setStatus('Cleared all sandbox spawned units and buildings.');
         this.syncControls();
     }
 
@@ -1804,15 +1804,15 @@ export class SceneSandboxTester {
         }
         statusEl.textContent = [
             this.state.lastMessage,
-            `已生成：${this.state.spawnedCount}`,
-            `速度：${this.state.tickMultiplier}x`,
+            `Spawned: ${this.state.spawnedCount}`,
+            `Speed: ${this.state.tickMultiplier}x`,
             this.state.placementActive
-                ? '当前：放置模式'
+                ? 'Current: Placement Mode'
                 : this.state.demolitionActive
-                    ? '当前：拆除建筑'
+                    ? 'Current: Demolition'
                     : this.state.superWeaponTargetingActive
-                        ? '当前：超级武器瞄准'
-                        : '当前：正常交互',
+                        ? 'Current: Super Weapon Targeting'
+                        : 'Current: Normal Interaction',
         ].join('\n');
     }
 

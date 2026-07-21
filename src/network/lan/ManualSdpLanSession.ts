@@ -76,12 +76,12 @@ export class ManualSdpLanSession {
         });
         this.attachDataChannel(channel, 'local');
 
-        this.log('info', '正在生成房主 Offer...');
+        this.log('info', 'Generating host offer...');
         await pc.setLocalDescription(await pc.createOffer());
         await this.waitForIceGatheringComplete(pc);
-        this.logLocalDescriptionDiagnostics('房主 Offer');
+        this.logLocalDescriptionDiagnostics('Host Offer');
         this.refreshSnapshot();
-        this.log('info', '房主 Offer 已生成，可以复制给加入者。');
+        this.log('info', 'Host offer generated; copy it to the guest.');
         return this.snapshot.localDescriptionText;
     }
 
@@ -97,31 +97,31 @@ export class ManualSdpLanSession {
         };
 
         const offer = this.parseDescription(offerText, 'offer');
-        this.log('info', '正在导入房主 Offer...');
+        this.log('info', 'Importing host offer...');
         await pc.setRemoteDescription(offer);
         this.snapshot.remoteDescriptionApplied = true;
         this.refreshSnapshot();
 
-        this.log('info', '正在生成加入者 Answer...');
+        this.log('info', 'Generating guest answer...');
         await pc.setLocalDescription(await pc.createAnswer());
         await this.waitForIceGatheringComplete(pc);
-        this.logLocalDescriptionDiagnostics('加入者 Answer');
+        this.logLocalDescriptionDiagnostics('Guest Answer');
         this.refreshSnapshot();
-        this.log('info', '加入者 Answer 已生成，可以复制回房主。');
+        this.log('info', 'Guest answer generated; copy it back to the host.');
         return this.snapshot.localDescriptionText;
     }
 
     async acceptGuestAnswer(answerText: string): Promise<void> {
         if (!this.peerConnection || this.snapshot.role !== 'host') {
-            throw new Error('请先在房主模式下生成 Offer。');
+            throw new Error('Please generate the offer in host mode first.');
         }
 
         const answer = this.parseDescription(answerText, 'answer');
-        this.log('info', '正在导入加入者 Answer...');
+        this.log('info', 'Importing guest answer...');
         await this.peerConnection.setRemoteDescription(answer);
         this.snapshot.remoteDescriptionApplied = true;
         this.refreshSnapshot();
-        this.log('info', 'Answer 已导入，等待数据通道建立。');
+        this.log('info', 'Answer imported; waiting for the data channel to establish.');
     }
 
     sendChat(text: string): void {
@@ -130,7 +130,7 @@ export class ManualSdpLanSession {
             return;
         }
         if (!this.dataChannel || this.dataChannel.readyState !== 'open') {
-            throw new Error('数据通道尚未建立，暂时无法发送消息。');
+            throw new Error('Data channel not established yet; cannot send messages for now.');
         }
         this.dataChannel.send(JSON.stringify({
             type: 'chat',
@@ -145,7 +145,7 @@ export class ManualSdpLanSession {
 
     private createPeerConnection(role: ManualLanRole): RTCPeerConnection {
         if (typeof RTCPeerConnection === 'undefined') {
-            throw new Error('当前浏览器不支持 WebRTC。');
+            throw new Error('This browser does not support WebRTC.');
         }
         const pc = new RTCPeerConnection({
             iceServers: [],
@@ -163,14 +163,14 @@ export class ManualSdpLanSession {
                 return;
             }
             this.refreshSnapshot();
-            this.log('info', `连接状态已更新为 ${pc.connectionState}。`);
+            this.log('info', `Connection state updated to ${pc.connectionState}.`);
         });
         pc.addEventListener('iceconnectionstatechange', () => {
             if (pc !== this.peerConnection) {
                 return;
             }
             this.refreshSnapshot();
-            this.log('info', `ICE 连接状态已更新为 ${pc.iceConnectionState}。`);
+            this.log('info', `ICE connection state updated to ${pc.iceConnectionState}.`);
         });
         pc.addEventListener('icegatheringstatechange', () => {
             if (pc !== this.peerConnection) {
@@ -183,7 +183,7 @@ export class ManualSdpLanSession {
                 return;
             }
             const address = 'address' in event && typeof event.address === 'string' ? ` ${event.address}` : '';
-            this.log('warn', `ICE 候选采集报错${address}：${event.errorText || 'unknown error'}。`);
+            this.log('warn', `ICE candidate gathering error ${address}: ${event.errorText || 'unknown error'}.`);
         });
         pc.addEventListener('signalingstatechange', () => {
             if (pc !== this.peerConnection) {
@@ -196,13 +196,13 @@ export class ManualSdpLanSession {
     private attachDataChannel(channel: RTCDataChannel, source: 'local' | 'remote'): void {
         this.dataChannel = channel;
         channel.binaryType = 'arraybuffer';
-        this.log('info', `${source === 'local' ? '本地' : '远端'}数据通道已创建。`);
+        this.log('info', `${source === 'local' ? 'Local' : 'Remote'} data channel created.`);
         channel.addEventListener('open', () => {
             if (channel !== this.dataChannel) {
                 return;
             }
             this.refreshSnapshot();
-            this.log('info', '数据通道已打开，可以开始发送测试消息。');
+            this.log('info', 'Data channel opened; you can start sending test messages.');
             try {
                 this.sendEnvelope({
                     type: 'hello',
@@ -211,7 +211,7 @@ export class ManualSdpLanSession {
                 });
             }
             catch (error) {
-                this.log('warn', `发送握手消息失败：${(error as Error).message}`);
+                this.log('warn', `Failed to send handshake message: ${(error as Error).message}`);
             }
         });
         channel.addEventListener('close', () => {
@@ -219,14 +219,14 @@ export class ManualSdpLanSession {
                 return;
             }
             this.refreshSnapshot();
-            this.log('warn', '数据通道已关闭。');
+            this.log('warn', 'Data channel closed.');
         });
         channel.addEventListener('error', () => {
             if (channel !== this.dataChannel) {
                 return;
             }
             this.refreshSnapshot();
-            this.log('error', '数据通道发生错误。');
+            this.log('error', 'Data channel encountered an error.');
         });
         channel.addEventListener('message', (event) => {
             if (channel !== this.dataChannel) {
@@ -249,7 +249,7 @@ export class ManualSdpLanSession {
         if (typeof Blob !== 'undefined' && data instanceof Blob) {
             data.text()
                 .then((text) => this.handleEnvelopeText(text))
-                .catch((error) => this.log('warn', `读取远端消息失败：${(error as Error).message}`));
+                .catch((error) => this.log('warn', `Failed to read remote message: ${(error as Error).message}`));
         }
     }
 
@@ -272,7 +272,7 @@ export class ManualSdpLanSession {
         }
 
         if (payload.type === 'hello') {
-            this.log('info', `${this.getRemoteLabel()}已完成握手。`);
+            this.log('info', `${this.getRemoteLabel()} handshake completed.`);
             return;
         }
 
@@ -285,12 +285,12 @@ export class ManualSdpLanSession {
             return;
         }
 
-        this.log('warn', '收到了无法识别的数据通道消息。');
+        this.log('warn', 'Received an unrecognized data channel message.');
     }
 
     private sendEnvelope(payload: ManualLanEnvelope): void {
         if (!this.dataChannel || this.dataChannel.readyState !== 'open') {
-            throw new Error('数据通道尚未打开。');
+            throw new Error('Data channel is not open.');
         }
         this.dataChannel.send(JSON.stringify(payload));
     }
@@ -301,19 +301,19 @@ export class ManualSdpLanSession {
             parsed = JSON.parse(text.trim());
         }
         catch {
-            throw new Error('描述文本不是合法的 JSON。');
+            throw new Error('Description text is not valid JSON.');
         }
 
         if (!parsed || typeof parsed !== 'object') {
-            throw new Error('描述文本格式不正确。');
+            throw new Error('Description text format is incorrect.');
         }
 
         const candidate = parsed as RTCSessionDescriptionInit;
         if (candidate.type !== expectedType) {
-            throw new Error(`需要导入 ${expectedType}，但当前文本类型是 ${candidate.type ?? 'unknown'}。`);
+            throw new Error(`Expected to import ${expectedType}, but the current text type is ${candidate.type ?? 'unknown'}.`);
         }
         if (!candidate.sdp || typeof candidate.sdp !== 'string') {
-            throw new Error('描述文本缺少 SDP 内容。');
+            throw new Error('Description text is missing SDP content.');
         }
         return candidate;
     }
@@ -326,7 +326,7 @@ export class ManualSdpLanSession {
         await new Promise<void>((resolve, reject) => {
             const timeoutId = window.setTimeout(() => {
                 cleanup();
-                reject(new Error('ICE 候选收集超时，请稍后重试。'));
+                reject(new Error('ICE candidate gathering timed out; please try again later.'));
             }, ICE_GATHER_TIMEOUT_MILLIS);
 
             const handleChange = () => {
@@ -379,7 +379,7 @@ export class ManualSdpLanSession {
 
     private logLocalDescriptionDiagnostics(label: string): void {
         const summary = summarizeSdpCandidates(this.peerConnection?.localDescription);
-        this.log('info', `${label} 候选情况：${formatSdpCandidateSummary(summary)}。`);
+        this.log('info', `${label} candidate summary: ${formatSdpCandidateSummary(summary)}.`);
         const warning = getSdpCandidateWarning(summary);
         if (warning) {
             this.log('warn', warning);
@@ -391,7 +391,7 @@ export class ManualSdpLanSession {
     }
 
     private getRemoteLabel(): string {
-        return this.snapshot.role === 'host' ? '加入者' : '房主';
+        return this.snapshot.role === 'host' ? 'Guest' : 'Host';
     }
 
     private log(level: ManualLanLogEntry['level'], text: string): void {

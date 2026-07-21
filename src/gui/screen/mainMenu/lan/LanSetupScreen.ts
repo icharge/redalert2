@@ -310,7 +310,7 @@ export class LanSetupScreen extends MainMenuScreen {
     private openInviteDialog(): void {
         const roomSnapshot = this.roomSession.getSnapshot();
         if (!roomSnapshot.canInvite) {
-            this.messageBoxApi.show('当前没有空闲玩家槽位，请先打开一个空位后再邀请。');
+            this.messageBoxApi.show('No open player slots. Open a slot before inviting.');
             return;
         }
         this.inviteNonce += 1;
@@ -332,7 +332,7 @@ export class LanSetupScreen extends MainMenuScreen {
             return;
         }
         if (!roomSnapshot.canStart) {
-            this.messageBoxApi.show('当前还有成员未完成连接或地图同步。');
+            this.messageBoxApi.show('Some members have not finished connection or map sync.');
             return;
         }
         this.roomSession.startGame({
@@ -349,20 +349,20 @@ export class LanSetupScreen extends MainMenuScreen {
         if (!inWaitingRoom) {
             this.controller.setSidebarButtons([
                 {
-                    label: '创建房间',
-                    tooltip: '先选择模式和地图，再进入等待页',
+                    label: 'Create Room',
+                    tooltip: 'Select mode and map first, then enter the waiting room',
                     onClick: () => {
                         void this.handleCreateRoom();
                     },
                 },
                 {
-                    label: '加入房间',
-                    tooltip: '扫码或粘贴二维码内容加入现有房间',
+                    label: 'Join Room',
+                    tooltip: 'Scan or paste QR code content to join an existing room',
                     onClick: () => this.openJoinDialog(),
                 },
                 {
-                    label: '返回',
-                    tooltip: '返回主菜单',
+                    label: 'Back',
+                    tooltip: 'Return to main menu',
                     isBottom: true,
                     onClick: () => this.controller.popScreen(),
                 },
@@ -375,22 +375,22 @@ export class LanSetupScreen extends MainMenuScreen {
 
         if (meshSnapshot.isInRoom) {
             buttons.push({
-                label: '邀请玩家',
+                label: 'Invite Players',
                 tooltip: roomSnapshot.canInvite
-                    ? '打开二维码邀请弹窗'
-                    : '当前没有空闲玩家槽位',
+                    ? 'Open QR invite dialog'
+                    : 'No open player slots',
                 disabled: !roomSnapshot.canInvite,
                 onClick: () => this.openInviteDialog(),
             });
         }
 
         buttons.push({
-            label: '开始游戏',
+            label: 'Start Game',
             tooltip: roomSnapshot.isHost
                 ? roomSnapshot.canStart
-                    ? '向所有成员广播开局描述'
-                    : '等待连接和地图同步完成'
-                : '只有当前房主可以开始游戏',
+                    ? 'Broadcast game start descriptor to all members'
+                    : 'Wait for connection and map sync to complete'
+                : 'Only the host can start the game',
             disabled: !roomSnapshot.isHost || !roomSnapshot.canStart,
             onClick: () => {
                 void this.startLanGame();
@@ -399,8 +399,8 @@ export class LanSetupScreen extends MainMenuScreen {
 
         if (roomSnapshot.isRoomActive && roomSnapshot.isHost) {
             buttons.push({
-                label: '更换地图',
-                tooltip: '重新选择模式和地图',
+                label: 'Change Map',
+                tooltip: 'Reselect mode and map',
                 onClick: () => {
                     void this.handleChangeMap();
                 },
@@ -408,8 +408,8 @@ export class LanSetupScreen extends MainMenuScreen {
         }
         else if (roomSnapshot.isRoomActive && selfMember) {
             buttons.push({
-                label: selfMember.ready ? '取消准备' : '准备',
-                tooltip: '切换自己的等待状态',
+                label: selfMember.ready ? 'Unready' : 'Ready',
+                tooltip: 'Toggle your ready status',
                 onClick: () => {
                     void this.roomSession.setReady(!selfMember.ready);
                 },
@@ -417,8 +417,8 @@ export class LanSetupScreen extends MainMenuScreen {
         }
 
         buttons.push({
-            label: '离开房间',
-            tooltip: '离开当前局域网房间并回到入口页',
+            label: 'Leave Room',
+            tooltip: 'Leave the current LAN room and return to the entry page',
             isBottom: true,
             onClick: () => {
                 void this.handleLeaveRoom();
@@ -435,7 +435,7 @@ export class LanSetupScreen extends MainMenuScreen {
             this.controller.setSidebarMpContent({
                 text: this.strings.get(this.gameModes.getById(gameOpts.gameMode).label) + '\n\n' + gameOpts.mapTitle,
                 icon: gameOpts.mapOfficial ? 'gt18.pcx' : 'settings.png',
-                tooltip: gameOpts.mapOfficial ? '当前房间使用官方地图' : '当前房间使用自定义地图',
+                tooltip: gameOpts.mapOfficial ? 'This room uses an official map' : 'This room uses a custom map',
             });
             return;
         }

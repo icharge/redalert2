@@ -200,7 +200,7 @@ export class VxlTester {
     }
     private static buildBrowser(hostElement: HTMLElement): void {
         const homeButton = document.createElement('button');
-        homeButton.innerHTML = '点此返回主页';
+        homeButton.innerHTML = 'Back to Home';
         homeButton.style.cssText = `
       position: fixed;
       left: 50%;

@@ -40,10 +40,10 @@ export class HomeScreen implements Screen {
         console.log('[HomeScreen] Entering home screen');
         const buttons: SidebarButton[] = [
             {
-                label: '遭遇战',
-                tooltip: '与AI进行单人遭遇战',
+                label: 'Skirmish',
+                tooltip: 'Single-player skirmish against AI',
                 onClick: async () => {
-                    console.log('[HomeScreen] 遭遇战 clicked');
+                    console.log('[HomeScreen] Skirmish clicked');
                     try {
                         if (this.controller) {
                             this.controller.goToScreen(MainMenuScreenType.Skirmish);
@@ -51,21 +51,21 @@ export class HomeScreen implements Screen {
                     }
                     catch (error) {
                         console.error('[HomeScreen] Failed to navigate to Skirmish:', error);
-                        await this.messageBoxApi.alert('遭遇战 - 功能开发中\n\n基本框架已配置，但仍需完善以下组件：\n• 游戏规则系统\n• 地图加载器\n• AI对手系统\n• 游戏模式管理器', this.strings.get('GUI:OK') || 'OK');
+                        await this.messageBoxApi.alert('Skirmish - Feature Under Development\n\nThe basic framework is configured, but the following components still need to be completed:\n• Game rules system\n• Map loader\n• AI opponent system\n• Game mode manager', this.strings.get('GUI:OK') || 'OK');
                     }
                 }
             },
             {
-                label: '直播互动',
-                tooltip: '进入直播互动模式，响应进房、点赞、礼物等事件并驱动双方出兵对抗',
+                label: 'Live Interaction',
+                tooltip: 'Enter live interaction mode: respond to join, like, and gift events to drive both sides into battle',
                 onClick: () => {
                     console.log('[HomeScreen] Live Interaction clicked');
                     window.location.hash = '/liveinteraction';
                 }
             },
             {
-                label: '录像回放',
-                tooltip: '查看和回放游戏录像',
+                label: 'Replays',
+                tooltip: 'View and replay game recordings',
                 onClick: () => {
                     console.log('[HomeScreen] Replays clicked');
                     if (this.controller) {
@@ -74,8 +74,8 @@ export class HomeScreen implements Screen {
                 }
             },
             {
-                label: '局域网联机',
-                tooltip: '手工交换 SDP，建立局域网 P2P 数据通道',
+                label: 'LAN Multiplayer',
+                tooltip: 'Manually exchange SDP to establish a LAN P2P data channel',
                 onClick: () => {
                     console.log('[HomeScreen] LAN Setup clicked');
                     if (this.controller) {
@@ -90,7 +90,7 @@ export class HomeScreen implements Screen {
                 tooltip: this.strings.get('STT:Mods') || 'Manage and play modified versions of the base game',
                 onClick: async () => {
                     console.log('[HomeScreen] Mods clicked');
-                    await this.messageBoxApi.alert('Mods - 功能开发中\n\n需要模组管理系统', this.strings.get('GUI:OK') || 'OK');
+                    await this.messageBoxApi.alert('Mods - Feature Under Development\n\nA mod management system is required', this.strings.get('GUI:OK') || 'OK');
                 }
             });
         }
@@ -113,8 +113,8 @@ export class HomeScreen implements Screen {
                 }
             }
         }, {
-            label: '底层测试入口',
-            tooltip: '进入底层文件系统与测试工具',
+            label: 'Test Entry',
+            tooltip: 'Enter low-level file system and test tools',
             onClick: () => {
                 console.log('[HomeScreen] Test Entry clicked');
                 if (this.controller) {
@@ -170,8 +170,8 @@ export class HomeScreen implements Screen {
         catch (err) {
             console.error('Error toggling fullscreen:', err);
             await this.messageBoxApi.alert(document.fullscreenElement
-                ? '无法退出全屏模式'
-                : '无法进入全屏模式\n\n请检查浏览器权限设置', this.strings.get('GUI:OK') || 'OK');
+                ? 'Unable to exit fullscreen mode'
+                : 'Unable to enter fullscreen mode\n\nPlease check browser permission settings', this.strings.get('GUI:OK') || 'OK');
         }
     }
 }

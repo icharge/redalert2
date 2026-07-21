@@ -138,7 +138,7 @@ function generateShortCode(): string {
 
 function createPeerConnection(): RTCPeerConnection {
     if (typeof RTCPeerConnection === 'undefined') {
-        throw new Error('当前浏览器不支持 WebRTC。');
+        throw new Error('This browser does not support WebRTC.');
     }
     return new RTCPeerConnection({
         iceServers: [],
@@ -148,7 +148,7 @@ function createPeerConnection(): RTCPeerConnection {
 export class LanMeshSession {
     private readonly self: LanPeerIdentity = {
         id: generateId(),
-        name: `玩家-${generateShortCode()}`,
+        name: `Player-${generateShortCode()}`,
     };
     private roomId?: string;
     private readonly members = new Map<string, LanPeerIdentity>();
@@ -204,10 +204,10 @@ export class LanMeshSession {
             context,
         };
 
-        this.log('info', '正在生成邀请二维码...');
+        this.log('info', 'Generating invite QR code...');
         await context.pc.setLocalDescription(await context.pc.createOffer());
         await this.waitForIceGatheringComplete(context.pc);
-        this.logLinkDiagnostics(context, '邀请 Offer');
+        this.logLinkDiagnostics(context, 'Invite Offer');
 
         const packet: LanInvitePacket = {
             version: 1,
@@ -221,10 +221,10 @@ export class LanMeshSession {
         this.activeQrPayload = {
             kind: 'invite',
             text: await encodeLanQrPacket(packet),
-            title: '邀请二维码',
-            description: '让新玩家扫描这张二维码，加入当前房间。',
+            title: 'Invite QR Code',
+            description: 'Have the new player scan this QR code to join the current room.',
         };
-        this.log('info', '邀请二维码已生成，等待对方回传加入响应。');
+        this.log('info', 'Invite QR code generated; waiting for the other side to return the join response.');
         this.dispatchSnapshot();
     }
 
@@ -245,7 +245,7 @@ export class LanMeshSession {
             return;
         }
         if (!this.directLinks.size) {
-            throw new Error('当前还没有直连玩家，无法发送房间消息。');
+            throw new Error('No direct peers yet; cannot send room messages.');
         }
 
         const envelope: ControlEnvelope = {
@@ -265,7 +265,7 @@ export class LanMeshSession {
 
     broadcastAppMessage(payload: unknown, excludedPeerId?: string): void {
         if (!this.roomId) {
-            throw new Error('当前还没有局域网房间。');
+            throw new Error('No LAN room yet.');
         }
         const envelope: ControlEnvelope = {
             type: 'app-message',
@@ -278,7 +278,7 @@ export class LanMeshSession {
 
     sendAppMessage(peerId: string, payload: unknown): void {
         if (!this.roomId) {
-            throw new Error('当前还没有局域网房间。');
+            throw new Error('No LAN room yet.');
         }
         this.sendDirectEnvelope(peerId, {
             type: 'app-message',
@@ -320,7 +320,7 @@ export class LanMeshSession {
         if (!this.roomId) {
             this.roomId = generateShortCode();
             this.members.set(this.self.id, { ...this.self });
-            this.log('info', `已创建局域网房间 ${this.roomId}。`);
+            this.log('info', `Created LAN room ${this.roomId}.`);
         }
     }
 
@@ -428,7 +428,7 @@ export class LanMeshSession {
                 return;
             }
             const address = 'address' in event && typeof event.address === 'string' ? ` ${event.address}` : '';
-            this.log('warn', `${context.peer?.name ?? '未知玩家'} 的 ICE 候选采集报错${address}：${event.errorText || 'unknown error'}。`);
+            this.log('warn', `${context.peer?.name ?? 'Unknown player'} ICE candidate gathering error ${address}:${event.errorText || 'unknown error'}.`);
         });
     }
 
@@ -459,7 +459,7 @@ export class LanMeshSession {
             if (!this.linksByKey.has(context.key)) {
                 return;
             }
-            this.log('error', `${context.peer?.name ?? '未知玩家'} 的数据通道发生错误。`);
+            this.log('error', `${context.peer?.name ?? 'Unknown player'} data channel encountered an error.`);
         });
 
         channel.addEventListener('message', (event) => {
@@ -472,7 +472,7 @@ export class LanMeshSession {
 
     private async acceptInvite(packet: LanInvitePacket): Promise<void> {
         if (this.roomId && this.members.size > 1) {
-            throw new Error('你已经在一个局域网房间里，无法再扫描其他房间邀请码。');
+            throw new Error('You are already in a LAN room and cannot scan another room invite code.');
         }
 
         this.reset();
@@ -481,12 +481,12 @@ export class LanMeshSession {
         this.members.set(packet.inviter.id, packet.inviter);
 
         const context = this.createIncomingLink(packet.inviter, 'joiner');
-        this.log('info', `正在加入房间 ${packet.roomId}，等待生成响应二维码...`);
+        this.log('info', `Joining room ${packet.roomId}, waiting to generate response QR code...`);
 
         await context.pc.setRemoteDescription(packet.description);
         await context.pc.setLocalDescription(await context.pc.createAnswer());
         await this.waitForIceGatheringComplete(context.pc);
-        this.logLinkDiagnostics(context, '加入 Answer');
+        this.logLinkDiagnostics(context, 'Join Answer');
 
         const response: LanJoinResponsePacket = {
             version: 1,
@@ -501,25 +501,25 @@ export class LanMeshSession {
         this.activeQrPayload = {
             kind: 'join-response',
             text: await encodeLanQrPacket(response),
-            title: '加入响应二维码',
-            description: `让 ${packet.inviter.name} 扫描这张二维码，完成你的入房。`,
+            title: 'Join Response QR Code',
+            description: `Have ${packet.inviter.name} scan this QR code to complete your entry.`,
         };
         this.dispatchSnapshot();
     }
 
     private async acceptJoinResponse(packet: LanJoinResponsePacket): Promise<void> {
         if (!this.pendingInvite) {
-            throw new Error('当前没有等待中的邀请二维码。');
+            throw new Error('No pending invite QR code.');
         }
         if (packet.inviterPeerId !== this.self.id || packet.inviteId !== this.pendingInvite.inviteId) {
-            throw new Error('这个加入响应不属于当前邀请二维码。');
+            throw new Error('This join response does not belong to the current invite QR code.');
         }
 
         const { context } = this.pendingInvite;
         context.peer = packet.joiner;
         this.directLinks.set(packet.joiner.id, context);
         this.members.set(packet.joiner.id, packet.joiner);
-        this.log('info', `正在接入 ${packet.joiner.name}...`);
+        this.log('info', `Connecting ${packet.joiner.name}...`);
         await context.pc.setRemoteDescription(packet.description);
         this.pendingInvite = undefined;
         this.activeQrPayload = undefined;
@@ -539,7 +539,7 @@ export class LanMeshSession {
         });
 
         if (context.role === 'inviter') {
-            this.log('info', `${context.peer.name} 已加入房间，正在补齐与其他成员的直连。`);
+            this.log('info', `${context.peer.name} joined the room; completing direct links with other members.`);
             this.broadcastRoomSync();
             Array.from(this.directLinks.values())
                 .filter((link) => link.peer && link.peer.id !== context.peer!.id && link.status === 'connected')
@@ -559,11 +559,11 @@ export class LanMeshSession {
 
         if (context.role === 'joiner') {
             this.activeQrPayload = undefined;
-            this.log('info', '已接入房间，等待其他成员自动补齐直连。');
+            this.log('info', 'Connected to the room; waiting for other members to complete direct links automatically.');
         }
 
         if (context.role === 'mesh-offerer' || context.role === 'mesh-answerer') {
-            this.log('info', `已和 ${context.peer.name} 建立直连。`);
+            this.log('info', `Connected directly with ${context.peer.name}.`);
             this.broadcastRoomSync();
         }
     }
@@ -579,7 +579,7 @@ export class LanMeshSession {
         if (context.peer) {
             this.directLinks.delete(context.peer.id);
             if (this.members.delete(context.peer.id)) {
-                this.log(reason === 'left' ? 'info' : 'warn', `${context.peer.name} 已离开房间。`);
+                this.log(reason === 'left' ? 'info' : 'warn', `${context.peer.name} left the room.`);
             }
         }
 
@@ -599,7 +599,7 @@ export class LanMeshSession {
         }
         if (typeof Blob !== 'undefined' && data instanceof Blob) {
             data.text().then((text) => this.handleEnvelopeText(context, text)).catch((error) => {
-                this.log('warn', `读取联机消息失败：${(error as Error).message}`);
+                this.log('warn', `Failed to read online message: ${(error as Error).message}`);
             });
         }
     }
@@ -614,7 +614,7 @@ export class LanMeshSession {
         }
 
         if (!payload || typeof payload !== 'object') {
-            this.log('warn', '收到了无法识别的房间消息。');
+            this.log('warn', 'Received an unrecognized room message.');
             return;
         }
 
@@ -629,7 +629,7 @@ export class LanMeshSession {
                 return;
             case 'member-join':
                 this.members.set(payload.member.id, payload.member);
-                this.log('info', `${payload.member.name} 已进入房间。`);
+                this.log('info', `${payload.member.name} entered the room.`);
                 this.dispatchSnapshot();
                 return;
             case 'member-leave':
@@ -639,12 +639,12 @@ export class LanMeshSession {
                 return;
             case 'mesh-connect-request':
                 this.handleMeshConnectRequest(context, payload.target).catch((error) => {
-                    this.log('warn', `为 ${payload.target.name} 发起直连失败：${(error as Error).message}`);
+                    this.log('warn', `Failed to initiate direct link for ${payload.target.name}: ${(error as Error).message}`);
                 });
                 return;
             case 'relay-signal':
                 this.handleRelaySignal(context, payload).catch((error) => {
-                    this.log('warn', `处理转发信令失败：${(error as Error).message}`);
+                    this.log('warn', `Failed to process relay signal: ${(error as Error).message}`);
                 });
                 return;
             case 'chat':
@@ -662,7 +662,7 @@ export class LanMeshSession {
                 });
                 return;
             default:
-                this.log('warn', '收到了未知类型的联机控制消息。');
+                this.log('warn', 'Received unknown type of online control message.');
         }
     }
 
@@ -675,7 +675,7 @@ export class LanMeshSession {
         const context = this.createOutgoingLink(target, 'mesh-offerer');
         await context.pc.setLocalDescription(await context.pc.createOffer());
         await this.waitForIceGatheringComplete(context.pc);
-        this.logLinkDiagnostics(context, `对 ${target.name} 的 mesh Offer`);
+        this.logLinkDiagnostics(context, `to ${target.name} mesh Offer`);
 
         this.sendDirectEnvelope(relayContext.peer.id, {
             type: 'relay-signal',
@@ -707,7 +707,7 @@ export class LanMeshSession {
             await context.pc.setRemoteDescription(payload.description);
             await context.pc.setLocalDescription(await context.pc.createAnswer());
             await this.waitForIceGatheringComplete(context.pc);
-            this.logLinkDiagnostics(context, `对 ${payload.source.name} 的 mesh Answer`);
+            this.logLinkDiagnostics(context, `to ${payload.source.name} mesh Answer`);
 
             this.sendDirectEnvelope(relayContext.peer.id, {
                 type: 'relay-signal',
@@ -722,7 +722,7 @@ export class LanMeshSession {
 
         const existingLink = this.directLinks.get(payload.source.id);
         if (!existingLink) {
-            throw new Error(`没有找到 ${payload.source.name} 的待完成直连。`);
+            throw new Error(`No pending direct link for ${payload.source.name} was found.`);
         }
         await existingLink.pc.setRemoteDescription(payload.description);
     }
@@ -743,7 +743,7 @@ export class LanMeshSession {
             this.disposeLink(link);
         }
         if (member) {
-            this.log(reason === 'left' ? 'info' : 'warn', `${member.name} 已离开房间。`);
+            this.log(reason === 'left' ? 'info' : 'warn', `${member.name} left the room.`);
         }
         this.dispatchSnapshot();
     }
@@ -772,7 +772,7 @@ export class LanMeshSession {
                     this.safeSend(context, envelope);
                 }
                 catch (error) {
-                    this.log('warn', `向 ${context.peer?.name ?? '未知玩家'} 发送联机消息失败：${(error as Error).message}`);
+                    this.log('warn', `Failed to send online message to ${context.peer?.name ?? 'Unknown player'}: ${(error as Error).message}`);
                     this.handleLinkClosed(context, 'disconnect');
                 }
             });
@@ -781,13 +781,13 @@ export class LanMeshSession {
     private sendDirectEnvelope(peerId: string, envelope: ControlEnvelope): void {
         const context = this.directLinks.get(peerId);
         if (!context) {
-            throw new Error(`没有到 ${peerId} 的直连通道。`);
+            throw new Error(`No direct link to ${peerId} exists.`);
         }
         try {
             this.safeSend(context, envelope);
         }
         catch (error) {
-            this.log('warn', `向 ${context.peer?.name ?? peerId} 发送联机消息失败：${(error as Error).message}`);
+            this.log('warn', `Failed to send online message to ${context.peer?.name ?? peerId}: ${(error as Error).message}`);
             this.handleLinkClosed(context, 'disconnect');
             throw error;
         }
@@ -795,7 +795,7 @@ export class LanMeshSession {
 
     private safeSend(context: LinkContext, envelope: ControlEnvelope): void {
         if (!context.channel || context.channel.readyState !== 'open') {
-            throw new Error(`和 ${context.peer?.name ?? '未知玩家'} 的数据通道尚未打开。`);
+            throw new Error(`Data channel to ${context.peer?.name ?? 'Unknown player'} is not open yet.`);
         }
         context.channel.send(JSON.stringify(envelope));
     }
@@ -808,7 +808,7 @@ export class LanMeshSession {
         await new Promise<void>((resolve, reject) => {
             const timeoutId = window.setTimeout(() => {
                 cleanup();
-                reject(new Error('ICE 候选收集超时，请稍后重试。'));
+                reject(new Error('ICE candidate gathering timed out; please try again later.'));
             }, ICE_GATHER_TIMEOUT_MILLIS);
 
             const handleChange = () => {
@@ -859,7 +859,7 @@ export class LanMeshSession {
 
     private logLinkDiagnostics(context: LinkContext, label: string): void {
         const summary = summarizeSdpCandidates(context.pc.localDescription);
-        this.log('info', `${label} 候选情况：${formatSdpCandidateSummary(summary)}。`);
+        this.log('info', `${label} candidate summary: ${formatSdpCandidateSummary(summary)}.`);
         const warning = getSdpCandidateWarning(summary);
         if (warning) {
             this.log('warn', warning);
