@@ -854,7 +854,7 @@ export class LiveInteractionTester {
             'LiveInteraction',
             timestamp,
             gameOpts,
-            gameModes,
+            gameModes as any,
             true,
             {},
             undefined,
@@ -1150,7 +1150,7 @@ export class LiveInteractionTester {
                 imageFinder.find(objectArt.bibShape, objectArt.useTheaterExtension);
             }
             const animProps = new BuildingAnimArtProps();
-            animProps.read(objectArt.art, art);
+            animProps.read(objectArt.art as any, art);
             for (const anims of animProps.getAll().values()) {
                 for (const anim of anims) {
                     imageFinder.find(anim.image, objectArt.useTheaterExtension);
@@ -1209,11 +1209,11 @@ export class LiveInteractionTester {
                     return false;
                 }
                 const landRules = rules.getLandRules(candidateTile.landType);
-                if (buildingRules.waterBound) {
+                if ((buildingRules as any).waterBound) {
                     if (landRules.getSpeedModifier(SpeedType.Float) <= 0) {
                         return false;
                     }
-                } else if (candidateTile.rampType !== 0 || !landRules.buildable) {
+                } else if (candidateTile.rampType !== 0 || !(landRules as any).buildable) {
                     return false;
                 }
             }

@@ -77,6 +77,7 @@ interface GameObject {
     traits: Map<any, any>;
     warpedOutTrait: {
         debugSetActive(active: boolean): void;
+        isActive(): boolean;
     };
 }
 interface Renderable {
@@ -128,7 +129,7 @@ export class BuildingTester {
         this.buildBrowser(rules.buildingRules);
         this.rules = rules;
         console.log('current all rules', rules);
-        this.art = new Art(rules, Engine.getArt());
+        this.art = new Art(rules, Engine.getArt(), undefined as any, console);
         this.images = Engine.getImages();
         this.voxels = Engine.getVoxels();
         this.voxelAnims = Engine.getVoxelAnims();
@@ -143,7 +144,7 @@ export class BuildingTester {
         const uiAnimationLoop = (this.uiAnimationLoop = new UiAnimationLoop(renderer));
         uiAnimationLoop.start();
         this.worldScene = worldScene;
-        this.vxlGeometryPool = new VxlGeometryPool(new VxlGeometryCache());
+        this.vxlGeometryPool = new VxlGeometryPool(new VxlGeometryCache(null, null));
         this.addGrid();
         this.syncState();
     }
@@ -156,17 +157,17 @@ export class BuildingTester {
     }
     static selectBuilding(buildingType: string): void {
         if (this.currentRenderable && this.currentBuilding && !this.currentBuilding.isDisposed) {
-            this.world.removeObject(this.currentBuilding);
+            this.world.removeObject(this.currentBuilding as any);
             this.currentBuilding.dispose();
         }
-        const buildingRule = this.rules.getBuilding(buildingType);
+        const buildingRule = this.rules.getBuilding(buildingType) as any;
         const player = new Player("Player");
         this.disposables.add(player);
         const defaultColor = (buildingRule.techLevel !== -1 || buildingRule.constructionYard)
             ? this.rules.getMultiplayerColors().get("DarkRed")?.clone() ?? new Color(255, 0, 0)
             : new Color(255, 255, 255);
         const selectedColor = this.currentBuildingColor?.clone() ?? defaultColor;
-        player.color = selectedColor;
+        (player as any).color = selectedColor;
         this.currentBuildingColor = selectedColor?.clone();
         const playerList = new PlayerList();
         playerList.addPlayer(player);
@@ -174,7 +175,7 @@ export class BuildingTester {
         const unitSelection = new UnitSelection();
         const lighting = new Lighting();
         this.disposables.add(lighting);
-        const renderableFactory = new RenderableFactory(new BoxedVar(player), unitSelection, alliances, this.rules, this.art, undefined, new ImageFinder(this.images, this.theater), Engine.getPalettes(), this.voxels, this.voxelAnims, this.theater, this.worldScene.camera, lighting, new LightingDirector(lighting, this.renderer, new BoxedVar(1)), new BoxedVar(false), new BoxedVar(false), new BoxedVar(2), undefined, new Strings({ TXT_PRIMARY: "Primary" }), new BoxedVar(FlyerHelperMode.Selected), new BoxedVar(false), new VxlBuilderFactory(this.vxlGeometryPool, false, this.worldScene.camera), new Map());
+        const renderableFactory = new RenderableFactory(new BoxedVar(player), unitSelection as any, alliances, this.rules as any, this.art, undefined, new ImageFinder(this.images, this.theater), Engine.getPalettes(), this.voxels, this.voxelAnims, this.theater, this.worldScene.camera, lighting, new LightingDirector(lighting, this.renderer, new BoxedVar(1)), new BoxedVar(false), new BoxedVar(false), new BoxedVar(2), undefined, new Strings({ TXT_PRIMARY: "Primary" }), new BoxedVar(FlyerHelperMode.Selected), new BoxedVar(false), new VxlBuilderFactory(this.vxlGeometryPool, false, this.worldScene.camera), new Map());
         const tileCollection = new TileCollection([], null as any, this.rules.general, (min: number, max: number) => getRandomInt(min, max));
         const tileOccupation = new TileOccupation(tileCollection);
         const mapBounds = new MapBounds();
@@ -188,8 +189,8 @@ export class BuildingTester {
         const renderableManager = new RenderableManager(world, this.worldScene, this.worldScene.camera, renderableFactory);
         renderableManager.init();
         this.disposables.add(renderableManager);
-        world.spawnObject(building);
-        const renderable = (this.currentRenderable = renderableManager.getRenderableByGameObject(building) as Renderable);
+        world.spawnObject(building as any);
+        const renderable = (this.currentRenderable = renderableManager.getRenderableByGameObject(building as any) as Renderable);
         renderable.selectionModel.setSelectionLevel(SelectionLevel.Selected);
         this.currentRenderable.selectionModel.setControlGroupNumber(3);
         setTimeout(() => {
@@ -217,8 +218,8 @@ export class BuildingTester {
             return;
         this.currentBuilding.healthTrait.health = damageType
             ? 100 * (damageType === DamageType.CONDITION_YELLOW
-                ? this.rules.audioVisual.conditionYellow
-                : this.rules.audioVisual.conditionRed)
+                ? (this.rules.audioVisual as any).conditionYellow
+                : (this.rules.audioVisual as any).conditionRed)
             : 100;
         this.syncState();
     }
@@ -382,7 +383,7 @@ export class BuildingTester {
             if (this.currentBuilding) {
                 this.currentBuilding.isDestroyed = true;
                 this.currentBuilding.healthTrait.health = 0;
-                this.world.removeObject(this.currentBuilding);
+                this.world.removeObject(this.currentBuilding as any);
                 this.currentBuilding.dispose();
                 this.currentBuilding = null;
                 this.currentRenderable = null;
@@ -445,9 +446,9 @@ export class BuildingTester {
         const health = building?.healthTrait?.health;
         const damageType = health === undefined
             ? null
-            : health <= 100 * this.rules.audioVisual.conditionRed
+            : health <= 100 * (this.rules.audioVisual as any).conditionRed
                 ? DamageType.CONDITION_RED
-                : health <= 100 * this.rules.audioVisual.conditionYellow
+                : health <= 100 * (this.rules.audioVisual as any).conditionYellow
                     ? DamageType.CONDITION_YELLOW
                     : DamageType.NORMAL;
         const animationButtons = this.animButtonsWrap

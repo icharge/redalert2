@@ -134,7 +134,7 @@ export class InfantryTester {
         const selectedColor = this.currentInfantryColor?.clone()
             ?? this.rules.getMultiplayerColors().get("DarkRed")?.clone()
             ?? new Color(255, 0, 0);
-        player.color = selectedColor;
+        (player as any).color = selectedColor;
         this.currentInfantryColor = selectedColor.clone();
         infantry.owner = player;
         infantry.position.tile = { rx: 1, ry: 1, z: 0, rampType: 0 };
