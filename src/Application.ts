@@ -198,7 +198,9 @@ export class Application {
             const virtualFile = new VirtualFile(dataStream, csfFileName);
             const csfFileInstance = new CsfFile(virtualFile);
             this.strings = new Strings(csfFileInstance);
-            this.currentLocale = csfFileInstance.getIsoLocale() || currentConfig.defaultLocale;
+            // Prefer the configured default language so the JSON locale matches the intended UI
+            // language even when the bundled CSF file is for a different region.
+            this.currentLocale = currentConfig.defaultLocale || csfFileInstance.getIsoLocale();
             console.log(`[Application] CSF file "${csfFileName}" loaded. Detected/Set Locale: ${this.currentLocale}. Loaded ${Object.keys(this.strings.getKeys()).length} keys from CSF.`);
         }
         catch (error) {
