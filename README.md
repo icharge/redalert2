@@ -189,7 +189,7 @@ bun run typecheck:entry
 ## Documentation and Debugging Conventions
 
 - Development port is fixed at `4000`
-- Major technical alignment records are maintained in `docs/build-alignment-log.md`
+- Architecture and engine documentation is maintained under [`docs/`](docs/README.md)
 - Automated output is written to `.artifacts/` by default
 - A successful build does not mean all behavior is fully aligned; functional behavior should still be verified using the relevant scripts and actual workflows
 

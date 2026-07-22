@@ -72,7 +72,7 @@ Move: 0, Attack: 2, AttackMove: 4, Guard: 5, Deploy: 9, Gather: 14
 The bot must use CommonJS `module.exports`:
 
 ```typescript
-(module as any).exports = {
+module.exports = {
     id: "unique-id",
     displayName: "Bot Name",
     version: "1.0.0",
