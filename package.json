@@ -43,6 +43,7 @@
     "debug:lan-map-transfer": "bun scripts/lan-room-map-transfer-flow.ts",
     "server:dev": "cd server && bun run dev",
     "server:dev:debug": "cd server && bun run dev:debug",
+    "server:test": "cd server && bun run test",
     "server:build": "cd server && bun run typecheck"
   },
   "dependencies": {
