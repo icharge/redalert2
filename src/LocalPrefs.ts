@@ -21,6 +21,7 @@ export enum StorageKey {
     TauntsEnabled = "_r_taunts",
     LanPlayerName = "_r_lanPlayerName",
     LanRecentPlays = "_r_lanRecentPlays",
+    OnlinePlayerName = "_r_onlinePlayerName",
     UploadedBots = "_r_uploadedBots"
 }
 export class LocalPrefs {

@@ -136,12 +136,12 @@ function generateShortCode(): string {
     return generateId().replace(/-/g, '').slice(0, 6).toUpperCase();
 }
 
-function createPeerConnection(): RTCPeerConnection {
+function createPeerConnection(iceServers: RTCIceServer[]): RTCPeerConnection {
     if (typeof RTCPeerConnection === 'undefined') {
         throw new Error('This browser does not support WebRTC.');
     }
     return new RTCPeerConnection({
-        iceServers: [],
+        iceServers,
     });
 }
 
@@ -162,8 +162,16 @@ export class LanMeshSession {
     public readonly onChat = new EventDispatcher<this, LanMeshChatEntry>();
     public readonly onAppMessage = new EventDispatcher<this, LanMeshAppMessage>();
 
-    constructor() {
+    constructor(private iceServers: RTCIceServer[] = []) {
         this.members.set(this.self.id, this.self);
+    }
+
+    /**
+     * Updates the ICE server list used for links created from now on. Has no
+     * effect on already-established peer connections.
+     */
+    setIceServers(iceServers: RTCIceServer[]): void {
+        this.iceServers = iceServers;
     }
 
     getSnapshot(): LanMeshSnapshot {
@@ -288,6 +296,93 @@ export class LanMeshSession {
         });
     }
 
+    /**
+     * Binds this session to a room id assigned by an external control plane
+     * (e.g. a Colyseus room), bypassing local short-code generation.
+     */
+    bindExternalRoom(roomId: string): void {
+        this.roomId = roomId;
+        this.dispatchSnapshot();
+    }
+
+    /**
+     * Registers a peer as a known room member before any direct link exists,
+     * so the UI can show them (e.g. from a control-plane membership list)
+     * while the mesh link is still being negotiated.
+     */
+    registerMember(peer: LanPeerIdentity): void {
+        if (peer.id === this.self.id || this.members.has(peer.id)) {
+            return;
+        }
+        this.members.set(peer.id, { ...peer });
+        this.dispatchSnapshot();
+    }
+
+    /**
+     * Removes a peer that a control plane reported as gone, tearing down any
+     * direct link to it. Public counterpart to the QR-path's internal
+     * member-leave handling.
+     */
+    unregisterMember(peerId: string, reason: 'left' | 'disconnect'): void {
+        if (peerId === this.self.id) {
+            return;
+        }
+        this.removePeer(peerId, reason);
+    }
+
+    /**
+     * Creates an outgoing offer for a peer known via an external signaling
+     * channel (no QR payload involved). Caller is responsible for relaying
+     * the returned description to the peer and feeding back the answer via
+     * {@link acceptRemoteAnswer}.
+     */
+    async createOfferForPeer(peer: LanPeerIdentity): Promise<RTCSessionDescriptionInit> {
+        if (peer.id === this.self.id) {
+            throw new Error('Cannot create an offer for self.');
+        }
+        if (this.directLinks.has(peer.id)) {
+            throw new Error(`Already have a direct link to ${peer.name}.`);
+        }
+        this.registerMember(peer);
+        const context = this.createOutgoingLink(peer, 'mesh-offerer');
+        await context.pc.setLocalDescription(await context.pc.createOffer());
+        await this.waitForIceGatheringComplete(context.pc);
+        this.logLinkDiagnostics(context, `to ${peer.name} online offer`);
+        return context.pc.localDescription!;
+    }
+
+    /**
+     * Accepts a remote offer relayed via an external signaling channel and
+     * returns the local answer to relay back.
+     */
+    async acceptRemoteOffer(peer: LanPeerIdentity, description: RTCSessionDescriptionInit): Promise<RTCSessionDescriptionInit> {
+        if (peer.id === this.self.id) {
+            throw new Error('Cannot accept an offer from self.');
+        }
+        if (this.directLinks.has(peer.id)) {
+            throw new Error(`Already have a direct link to ${peer.name}.`);
+        }
+        this.registerMember(peer);
+        const context = this.createIncomingLink(peer, 'mesh-answerer');
+        await context.pc.setRemoteDescription(description);
+        await context.pc.setLocalDescription(await context.pc.createAnswer());
+        await this.waitForIceGatheringComplete(context.pc);
+        this.logLinkDiagnostics(context, `to ${peer.name} online answer`);
+        return context.pc.localDescription!;
+    }
+
+    /**
+     * Completes an outgoing link started via {@link createOfferForPeer} once
+     * the peer's answer has been relayed back.
+     */
+    async acceptRemoteAnswer(peerId: string, description: RTCSessionDescriptionInit): Promise<void> {
+        const context = this.directLinks.get(peerId);
+        if (!context) {
+            throw new Error(`No pending outgoing link to ${peerId} was found.`);
+        }
+        await context.pc.setRemoteDescription(description);
+    }
+
     leaveRoom(): void {
         if (this.isInRoom()) {
             this.broadcastEnvelope({
@@ -373,7 +468,7 @@ export class LanMeshSession {
         const context: LinkContext = {
             key: generateId(),
             peer,
-            pc: createPeerConnection(),
+            pc: createPeerConnection(this.iceServers),
             role,
             status: 'connecting',
         };
@@ -393,7 +488,7 @@ export class LanMeshSession {
         const context: LinkContext = {
             key: generateId(),
             peer,
-            pc: createPeerConnection(),
+            pc: createPeerConnection(this.iceServers),
             role,
             status: 'connecting',
         };

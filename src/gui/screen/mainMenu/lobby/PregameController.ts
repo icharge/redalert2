@@ -259,6 +259,24 @@ export class PregameController {
         }
     }
 
+    setMaxOpenSlots(maxPlayers: number): void {
+        const gameOpts = this.requireGameOpts();
+        const slotsInfo = this.requireSlotsInfo();
+        const cap = Math.max(1, Math.min(Math.floor(maxPlayers), gameOpts.maxSlots));
+        for (let slotIndex = 1; slotIndex < gameOpts.maxSlots; slotIndex += 1) {
+            const slot = slotsInfo[slotIndex];
+            if (!slot) {
+                continue;
+            }
+            if (slotIndex >= cap && slot.type === NetSlotType.Open) {
+                slot.type = NetSlotType.Closed;
+            }
+            else if (slotIndex < cap && slot.type === NetSlotType.Closed) {
+                slot.type = NetSlotType.Open;
+            }
+        }
+    }
+
     applyMapSelection(params: PregameMapSelectionResult): void {
         const gameOpts = this.requireGameOpts();
         const slotsInfo = this.requireSlotsInfo();

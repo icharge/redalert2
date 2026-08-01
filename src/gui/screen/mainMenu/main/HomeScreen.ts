@@ -83,6 +83,16 @@ export class HomeScreen implements Screen {
                     }
                 }
             },
+            {
+                label: 'Online Play',
+                tooltip: 'Browse and join online rooms, or host your own',
+                onClick: () => {
+                    console.log('[HomeScreen] Online Setup clicked');
+                    if (this.controller) {
+                        this.controller.pushScreen(MainMenuScreenType.OnlineSetup);
+                    }
+                }
+            },
         ];
         if (this.storageEnabled) {
             buttons.push({

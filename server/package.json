@@ -1,0 +1,23 @@
+{
+  "name": "redalert2-online-server",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "dev:debug": "DEBUG=colyseus:* bun --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "typecheck": "bun --bun tsc --noEmit"
+  },
+  "dependencies": {
+    "@colyseus/bun-websockets": "0.17.13",
+    "@colyseus/core": "0.17.45",
+    "@colyseus/schema": "4.0.30",
+    "colyseus": "0.17.10"
+  },
+  "devDependencies": {
+    "@colyseus/sdk": "0.17.43",
+    "@types/bun": "latest",
+    "typescript": "5.9.3"
+  }
+}

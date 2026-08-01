@@ -223,6 +223,31 @@ export class MainMenuRootScreen extends RootScreen {
             }
             screen = new screenClass(this.rootController, this.strings, this.jsxRenderer, rules, mapFileLoader, mapList, gameModes, this.localPrefs, this.messageBoxApi, mapDir);
         }
+        else if (screenType === MainMenuScreenType.OnlineSetup) {
+            const { ErrorHandler } = await import('../../../ErrorHandler.js');
+            const { Rules } = await import('../../../game/rules/Rules.js');
+            const { MapFileLoader } = await import('../game/MapFileLoader.js');
+            const { Engine } = await import('../../../engine/Engine.js');
+            const errorHandler = new ErrorHandler(this.messageBoxApi, this.strings);
+            const rules = new Rules(Engine.getRules());
+            const { ResourceLoader } = await import('../../../engine/ResourceLoader.js');
+            const mapResourceLoader = new ResourceLoader(this.config.mapsBaseUrl ?? '');
+            const mapFileLoader = new MapFileLoader(mapResourceLoader, Engine.vfs);
+            const mapList = Engine.getMapList();
+            const gameModes = Engine.getMpModes();
+            let mapDir: any = undefined;
+            try {
+                const mapDirHandle = await Engine.getMapDir();
+                if (mapDirHandle) {
+                    const { RealFileSystemDir } = await import('../../../data/vfs/RealFileSystemDir.js');
+                    mapDir = new RealFileSystemDir(mapDirHandle);
+                }
+            }
+            catch (error) {
+                console.error("[MainMenuRootScreen] Couldn't get map dir for online setup", error);
+            }
+            screen = new screenClass(this.rootController, this.strings, this.jsxRenderer, rules, mapFileLoader, mapList, gameModes, this.localPrefs, this.messageBoxApi, this.config.colyseusUrl, mapDir);
+        }
         else if (screenType === MainMenuScreenType.Home) {
             screen = new screenClass(this.strings, this.messageBoxApi, this.appVersion, false, false, this.fullScreen);
         }

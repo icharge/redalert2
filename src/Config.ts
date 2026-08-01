@@ -67,6 +67,9 @@ export class Config {
     get serversUrl(): string {
         return this.generalData.getString("serversUrl", "servers.ini");
     }
+    get colyseusUrl(): string {
+        return this.generalData.getString("colyseusUrl", "ws://localhost:2567");
+    }
     get gameresBaseUrl(): string | undefined {
         const url = this.generalData.getString("gameresBaseUrl");
         return url === "" ? undefined : url;

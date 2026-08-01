@@ -40,11 +40,15 @@
     "debug:lan-entry": "bun scripts/lan-entry-shot.mjs",
     "debug:lan-lockstep": "bun scripts/lan-lockstep-flow.mjs",
     "debug:lan-match-session": "bun scripts/lan-match-session-flow.ts",
-    "debug:lan-map-transfer": "bun scripts/lan-room-map-transfer-flow.ts"
+    "debug:lan-map-transfer": "bun scripts/lan-room-map-transfer-flow.ts",
+    "server:dev": "cd server && bun run dev",
+    "server:dev:debug": "cd server && bun run dev:debug",
+    "server:build": "cd server && bun run typecheck"
   },
   "dependencies": {
     "7z-wasm": "^1.1.0",
     "@brakebein/threeoctree": "^2.0.1",
+    "@colyseus/sdk": "0.17.43",
     "@datastructures-js/priority-queue": "^6.3.5",
     "@ffmpeg/ffmpeg": "^0.12.15",
     "@puzzl/core": "^1.0.0-beta.1",

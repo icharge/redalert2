@@ -2,6 +2,8 @@
 
 This document explains the current state of the Westwood Online (WOL) / IRC-style online infrastructure, why the login screen is present but not functional, and the practical paths for replacing or modernizing it with WebSocket-based services such as Colyseus.
 
+> **Update (2026-07-27):** A guest-only "Online Play" path (browsable room list + Colyseus-relayed WebRTC signaling) has since been implemented, superseding the WOL/IRC login screen rather than reviving it. See [§11](#11-implementation-status-2026-07-27-guest-mvp-shipped) for what actually shipped, including corrections to some of the Colyseus API assumptions made in §10's original plan. Sections 1–9 below still accurately describe the *legacy WOL/IRC code*, which remains dead/unwired.
+
 ## 1. What is WOL/IRC in this project?
 
 The original *Command & Conquer: Red Alert 2* used **Westwood Online (WOL)** for internet multiplayer. WOL was IRC-like under the hood: players logged in with a nickname and password, joined lobby channels, created games, and relied on central services for matchmaking, ladder stats, and map transfers.
@@ -92,18 +94,18 @@ For a complete description of the working multiplayer stack, see [`networking.md
 - **Match:** Deterministic lockstep (`src/network/lan/LanMatchSession.ts` + `LanLockstepTurnManager.ts`).
 - **NAT traversal:** None currently (`iceServers: []`). Only local networks work.
 
-This is the **only working online path** today.
+This was the **only working online path** as of §1–9. As of the [implementation described in §11](#11-implementation-status-2026-07-27-guest-mvp-shipped), there is now a second path — internet-reachable "Online Play" — that reuses this exact stack (`LanRoomSession`, `LanMatchSession`, `LanLockstepTurnManager`, `LobbyForm` all unchanged) but forms the mesh via Colyseus-relayed signaling and STUN instead of QR codes, and gets its room browsing from a Colyseus server instead of manual invite exchange.
 
 ## 5. What is missing for true internet multiplayer?
 
-| Missing piece | Why it matters |
-|---|---|
-| Real WOL/IRC/WebSocket service implementation | The login screen and lobby screens need a working backend. |
-| Signaling server | WebRTC needs a way to exchange SDP between internet clients. |
-| STUN/TURN servers | Current WebRTC uses no ICE servers; most players are behind NAT. |
-| `gserv` game server connection | Server-relayed gameplay is not wired. |
-| Map transfer service | Custom maps are currently transferred peer-to-peer only. |
-| Login, lobby, matchmaking screens | They import missing WOL modules. |
+| Missing piece | Why it matters | Status |
+|---|---|---|
+| Real WOL/IRC/WebSocket service implementation | The login screen and lobby screens need a working backend. | Still missing — superseded by the new Online Play path instead of revived ([§11](#11-implementation-status-2026-07-27-guest-mvp-shipped)). |
+| Signaling server | WebRTC needs a way to exchange SDP between internet clients. | **Done.** Colyseus room relays offer/answer by session id ([§11](#11-implementation-status-2026-07-27-guest-mvp-shipped)). |
+| STUN/TURN servers | Current WebRTC uses no ICE servers; most players are behind NAT. | **Partially done.** STUN only, server-configurable; no TURN, so symmetric-NAT pairs can still fail to connect. |
+| `gserv` game server connection | Server-relayed gameplay is not wired. | Still not applicable — game traffic stays P2P by design. |
+| Map transfer service | Custom maps are currently transferred peer-to-peer only. | Unchanged — still P2P only, no server-hosted map storage. |
+| Login, lobby, matchmaking screens | They import missing WOL modules. | The *WOL* screens are still broken/unwired. A separate, working `OnlineSetupScreen` was added instead — it doesn't import WOL modules. |
 
 ## 6. Modernization options
 
@@ -132,6 +134,8 @@ Use Colyseus as the authoritative multiplayer server.
 **Cons:** Bigger architectural change; requires Node.js backend; binary action protocol must be carefully integrated.
 
 ### Option C: Hybrid — Colyseus for control plane, WebRTC for data plane
+
+**A guest-scoped MVP slice of this option has been implemented — see [§11](#11-implementation-status-2026-07-27-guest-mvp-shipped).** The full version described below (auth, ladder, chat, map hosting) remains a valid future direction; what shipped covers only room discovery/membership + signaling.
 
 This is the recommended architecture for most RTS remakes.
 
@@ -191,9 +195,9 @@ This gives you the best of both worlds: server-authoritative control and the low
 
 ## 9. Summary
 
-- **WOL/IRC is referenced but not implemented.** The working engine is WebRTC LAN/P2P.
-- **The login screen is the WOL authentication entry point, but it is not wired and cannot run** because its dependencies are missing.
-- **For modern internet multiplayer**, the best path is a hybrid: WebSocket/Colyseus for login, lobby, and signaling; WebRTC for the low-latency lockstep game data.
+- **WOL/IRC is referenced but not implemented.** The original working engine was WebRTC LAN/P2P only; there is now also an internet-reachable path (see [§11](#11-implementation-status-2026-07-27-guest-mvp-shipped)).
+- **The login screen is the WOL authentication entry point, but it is not wired and cannot run** because its dependencies are missing, and it was left as-is rather than revived.
+- **For modern internet multiplayer**, the chosen path was a guest-scoped slice of the hybrid option: Colyseus for room discovery/membership/signaling only; WebRTC for everything else (lobby state, chat, lockstep game data) via the existing, unmodified LAN stack.
 
 For the details of the working lockstep engine, see [`networking.md`](networking.md) and [`online-play.md`](online-play.md).
 
@@ -202,6 +206,8 @@ For the details of the working lockstep engine, see [`networking.md`](networking
 ## 10. Colyseus modernization plan (detailed)
 
 This section is a concrete, file-level plan for adopting **Colyseus 0.17** as the control plane while preserving the existing WebRTC lockstep data plane. It is based on the current source tree and Colyseus documentation as of mid-2026.
+
+> **This section predates implementation.** A guest-only subset actually shipped ([§11](#11-implementation-status-2026-07-27-guest-mvp-shipped)) and along the way several assumptions below turned out to be wrong against the real installed package APIs (`bunWebSockets()` factory, `client.getAvailableRooms()`, direct `.onAdd()` on schema collections — see §11.3 for the corrections). Treat the code samples here as an aspirational design for a *future, fuller* pass (auth, ladder, map hosting), not as a description of what exists in the tree today.
 
 ### 10.1 Why Colyseus 0.17 is a good fit
 
@@ -704,3 +710,44 @@ A practical order to avoid a big-bang rewrite:
 | `src/gui/screen/mainMenu/MainMenuRootScreen.ts` | Add login branch |
 
 This plan keeps the existing lockstep engine intact while replacing the missing WOL/IRC infrastructure with a modern, maintainable Colyseus control plane.
+
+---
+
+## 11. Implementation status (2026-07-27): guest MVP shipped
+
+A deliberately narrower slice of §10's plan was implemented and verified end-to-end (server room create/join/discovery, real `RTCPeerConnection`s reaching `connected` between browser tabs, ICE-server config fetch, room locking on game start). It is **guest-only** — no accounts, login, JWT, or database — and Colyseus owns **only room discovery and membership**, not lobby/slot/ready/game state, which stays entirely inside the existing, unmodified LAN stack.
+
+### 11.1 What was actually built
+
+| File | Role |
+|---|---|
+| `server/src/index.ts` | Bun + Colyseus bootstrap; also serves `GET /rooms` (browsable list, `matchMaker.query({name, locked: false})`) and `GET /ice-servers`. |
+| `server/src/config.ts` | Env-driven `PORT` / `ICE_SERVERS` (STUN only, no TURN, no auth config). |
+| `server/src/rooms/MatchmakingState.ts` | Minimal schema — `roomId`, `hostPeerId`, `members` map of `{peerId, name}`. Deliberately **no** `Slot`/`ready`/`gameOpts` fields. |
+| `server/src/rooms/MatchmakingRoom.ts` | `onCreate`/`onJoin`/`onLeave` for membership + metadata; a `"room-started"` message locks the room (drops it from `/rooms`) once the host starts the match. `onAuth` enforces an optional room password (kept as a private field, never put in schema state — only a `passwordProtected` boolean is exposed via metadata). |
+| `server/src/rooms/SignalingMessages.ts` | Pure WebRTC offer/answer relay by session id — no SDP interpretation server-side. |
+| `src/network/colyseus/ColyseusClient.ts` | Thin wrapper around `@colyseus/sdk`'s `Client`; room listing goes through `GET /rooms`, not an SDK method. |
+| `src/network/colyseus/OnlineRoomSession.ts` | Bridges Colyseus membership/signaling to `LanMeshSession`: deterministic `sessionId` tie-break decides which peer initiates each offer (avoids glare, no server orchestration). |
+| `src/network/lan/LanMeshSession.ts` | Additive-only: takes `iceServers` in its constructor, plus new public methods (`bindExternalRoom`, `registerMember`/`unregisterMember`, `createOfferForPeer`/`acceptRemoteOffer`/`acceptRemoteAnswer`) so it can be driven by Colyseus signaling. The QR/LAN code path is untouched. |
+| `src/gui/screen/mainMenu/online/OnlineSetupScreen.ts`, `component/OnlineSetup.tsx`, `component/OnlineRoomList.tsx` | New "Online Play" screen, modeled on `LanSetupScreen.ts`/`LanSetup.tsx`. Reuses `LanRoomSession`, `PregameController`, `LobbyForm`, `LanMatchSession`, `LanLockstepTurnManager` **completely unchanged** — once the mesh is formed, control hands off to the same code LAN play uses. Unlike LAN, "Create Room" goes straight into the waiting room via a dialog (room name, max players, optional password) instead of forcing a `MapSelScreen` detour first; "Change Map" still opens `MapSelScreen`, but applies the result to the already-created room (`applyHostPregameSnapshot`) rather than creating a second one. Joining a room opens a password prompt (flagged in the room list via `passwordProtected`) instead of joining immediately. |
+| `src/gui/screen/mainMenu/main/HomeScreen.ts`, `src/Gui.ts`, `MainMenuRootScreen.ts`, `ScreenType.ts`, `src/Config.ts` (`colyseusUrl`), `src/LocalPrefs.ts` | Wiring: "Online Play" button next to "LAN Multiplayer"; new `MainMenuScreenType.OnlineSetup`. |
+
+### 11.2 Deliberately deferred (not in this pass)
+
+- Accounts/login/JWT/database — guest name only.
+- Ranked ladder, chat persistence, map upload/hosting (S3/R2) — map transfer is still peer-to-peer only, same as LAN.
+- TURN servers — STUN only; symmetric-NAT-to-symmetric-NAT pairs can still fail to connect.
+- ICE trickling — waits for full ICE gathering before exchanging SDP, consistent with the existing LAN code's style but slower over the internet.
+- Reconnection handling (`onDrop`/`allowReconnection`) — relies on Colyseus's default `autoDispose`/disconnect behavior only.
+
+These remain valid future work and §10's fuller design (auth, ladder, map hosting) is still a reasonable reference for that follow-up.
+
+### 11.3 Corrections to §10's API assumptions
+
+Discovered by reading the actually-installed package `.d.ts` files rather than trusting the pre-implementation plan:
+
+- `@colyseus/bun-websockets` exports a **class** `BunWebSockets` (`new BunWebSockets()`), not a `bunWebSockets(...)` factory function.
+- The Colyseus 0.17 client SDK has **no `getAvailableRooms()`** method. Room listing is implemented as a custom server-side `GET /rooms` HTTP route using `matchMaker.query({name, locked})`, fetched directly by the client.
+- Listening for changes on a `MapSchema`/`ArraySchema` requires wrapping the room with `getStateCallbacks(room)` (from `@colyseus/sdk`) — `room.state.members.onAdd(...)` does **not** work directly in this version.
+- `@colyseus/schema`'s `@type(...)` decorators require legacy TypeScript decorators: `"experimentalDecorators": true, "useDefineForClassFields": false` in `tsconfig.json` — not the new TC39 decorator proposal (mismatched mode produces `TS1240` errors).
+- `defineRoom(RoomClass, options)`'s second argument's type resolves to the room's `onCreate` options parameter type, not a generic `{maxClients, ...}` config bag — set `maxClients` as an instance property on the `Room` subclass instead.
