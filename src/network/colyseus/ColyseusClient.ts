@@ -1,7 +1,7 @@
 import { Client } from '@colyseus/sdk';
 
 export interface OnlineRoomMetadata {
-    label: string;
+    description: string;
     hostName: string;
     mapTitle: string;
     mapOfficial: boolean;

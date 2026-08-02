@@ -2,11 +2,13 @@ import { defineRoom, defineServer, matchMaker } from "@colyseus/core";
 import { BunWebSockets } from "@colyseus/bun-websockets";
 import { config } from "./config.ts";
 import { MatchmakingRoom } from "./rooms/MatchmakingRoom.ts";
+import { LobbyRoom } from "./rooms/LobbyRoom.ts";
 
 export const server = defineServer({
     transport: new BunWebSockets(),
     rooms: {
         matchmaking: defineRoom(MatchmakingRoom),
+        lobby: defineRoom(LobbyRoom),
     },
     express: (app) => {
         app.get("/rooms", async (_req, res) => {

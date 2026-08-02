@@ -28,28 +28,28 @@ describe("MatchmakingRoom", () => {
         await colyseus.cleanup();
     });
 
-    it("defaults label from the host name and marks the room open", async () => {
+    it("defaults description to empty and marks the room open", async () => {
         const room = await colyseus.createRoom<MatchmakingRoom>("matchmaking", {
             peerId: "host-peer",
             name: "Alice",
         });
 
-        expect(room.metadata.label).toBe("Alice's game");
+        expect(room.metadata.description).toBe("");
         expect(room.metadata.hostName).toBe("Alice");
         expect(room.metadata.mapOfficial).toBe(true);
         expect(room.metadata.passwordProtected).toBe(false);
         expect(room.state.hostPeerId).toBe("host-peer");
     });
 
-    it("uses a custom label and flags the room as password protected", async () => {
+    it("uses a custom description and flags the room as password protected", async () => {
         const room = await colyseus.createRoom<MatchmakingRoom>("matchmaking", {
             peerId: "host-peer",
             name: "Alice",
-            label: "Alice's Arena",
+            description: "2 2 2 2",
             password: "secret",
         });
 
-        expect(room.metadata.label).toBe("Alice's Arena");
+        expect(room.metadata.description).toBe("2 2 2 2");
         expect(room.metadata.passwordProtected).toBe(true);
     });
 
@@ -116,22 +116,6 @@ describe("MatchmakingRoom", () => {
 
         const client = await colyseus.connectTo(room, { peerId: "guest-peer", name: "Bob", password: "secret" });
         expect(room.state.members.get(client.sessionId)?.peerId).toBe("guest-peer");
-    });
-
-    it("rejects a duplicate room name", async () => {
-        await colyseus.createRoom<MatchmakingRoom>("matchmaking", {
-            peerId: "host-peer",
-            name: "Alice",
-            label: "Alice's Arena",
-        });
-
-        await expect(
-            colyseus.createRoom<MatchmakingRoom>("matchmaking", {
-                peerId: "other-host-peer",
-                name: "Carol",
-                label: "Alice's Arena",
-            })
-        ).rejects.toThrow();
     });
 
     it("rejects a join with a player name already taken in the room", async () => {
@@ -253,28 +237,10 @@ describe("MatchmakingRoom", () => {
         const host = await colyseus.connectTo(room, { peerId: "host-peer", name: "Alice" });
         const guest = await colyseus.connectTo(room, { peerId: "guest-peer", name: "Bob" });
 
-        expect(room.metadata.label).toBe("Alice's game");
-
         host.send("transfer-host", { targetSessionId: guest.sessionId });
         await waitUntil(() => room.state.hostPeerId === "guest-peer");
 
         expect(room.state.hostPeerId).toBe("guest-peer");
-        expect(room.metadata.label).toBe("Bob's game");
-    });
-
-    it("does not rename a room whose label was customized at creation", async () => {
-        const room = await colyseus.createRoom<MatchmakingRoom>("matchmaking", {
-            peerId: "host-peer",
-            name: "Alice",
-            label: "Epic Battle",
-        });
-        const host = await colyseus.connectTo(room, { peerId: "host-peer", name: "Alice" });
-        const guest = await colyseus.connectTo(room, { peerId: "guest-peer", name: "Bob" });
-
-        host.send("transfer-host", { targetSessionId: guest.sessionId });
-        await waitUntil(() => room.state.hostPeerId === "guest-peer");
-
-        expect(room.metadata.label).toBe("Epic Battle");
     });
 
     it("does not close the room when the former host leaves after transferring ownership", async () => {

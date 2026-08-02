@@ -884,8 +884,31 @@ input[type="range"]:focus {
     color: gray;
 }
 
+#ra2web-root .online-room-list-header,
+#ra2web-root .online-room-list-item {
+    display: grid;
+    grid-template-columns: 1.4fr 1.6fr 60px 110px 50px;
+    align-items: center;
+    gap: 6px;
+}
+
 #ra2web-root .online-room-list-item.online-room-list-item-locked {
     opacity: 0.55;
+}
+
+#ra2web-root .online-room-map-cell {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#ra2web-root .online-room-map-cell img {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
 }
 
 #ra2web-root .online-room-lock-icon {
@@ -1264,14 +1287,16 @@ input[type="range"]:focus {
     box-sizing: border-box;
 }
 
-#ra2web-root .lan-setup-form[data-lan-view="entry"] {
+#ra2web-root .lan-setup-form[data-lan-view="entry"],
+#ra2web-root .lan-setup-form[data-online-view="entry"] {
     height: 100%;
     min-height: 100%;
     display: flex;
     flex-direction: column;
 }
 
-#ra2web-root .lan-setup-form[data-lan-view="waiting"] {
+#ra2web-root .lan-setup-form[data-lan-view="waiting"],
+#ra2web-root .lan-setup-form[data-online-view="waiting"] {
     /* padding: 18px 30px 22px; */
     height: 100%;
     min-height: 100%;
@@ -1309,11 +1334,118 @@ input[type="range"]:focus {
     flex: 0 0 auto;
 }
 
+/* Online Play only — a compact single-line name row (no header/description
+   text, matching the reference layout) instead of the full profile panel
+   LAN Multiplayer still uses, to reclaim vertical space for the room list +
+   lobby chat/player-list row below it. */
+#ra2web-root .lan-setup-form .lan-entry-profile-panel-compact {
+    flex: 0 0 44px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 10px;
+    box-sizing: border-box;
+}
+#ra2web-root .lan-setup-form .lan-entry-profile-panel-compact .lan-input-label {
+    display: inline;
+    margin: 0;
+    white-space: nowrap;
+}
+#ra2web-root .lan-setup-form .lan-entry-profile-panel-compact .lan-text-input {
+    width: 220px;
+    flex: 0 0 auto;
+}
+
 #ra2web-root .lan-setup-form .lan-entry-profile-grid {
     display: grid;
     grid-template-columns: minmax(260px, 1.2fr) minmax(220px, 0.9fr);
     gap: 16px;
     align-items: stretch;
+}
+
+#ra2web-root .lan-setup-form .online-room-list-panel {
+    flex: 0 0 220px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+#ra2web-root .lan-setup-form .online-room-list-panel .online-room-list {
+    flex: 1 1 auto;
+    overflow-y: auto;
+}
+
+#ra2web-root .lan-setup-form .lan-lobby-row {
+    /* Fixed height, not flex:1 1 auto — a growing/shrinking row here meant
+       its actual size depended on the fixed game window's leftover space at
+       runtime, which pushed the whole page taller than the window whenever
+       content (room count, player count) grew. A fixed box with internal
+       overflow-y: auto on its children is stable regardless of content. */
+    flex: 0 0 220px;
+    display: grid;
+    grid-template-columns: minmax(0, 2.2fr) minmax(200px, 1fr);
+    gap: 14px;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+#ra2web-root .lan-setup-form .lan-lobby-chat-panel,
+#ra2web-root .lan-setup-form .lobby-player-list-panel {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
+#ra2web-root .lan-setup-form .lan-lobby-chat-panel .chat-wrapper {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+#ra2web-root .lan-setup-form .lan-lobby-chat-panel .chat-wrapper .messages {
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 0;
+}
+
+#ra2web-root .lan-setup-form .lobby-player-list-panel .lobby-player-list {
+    flex: 1 1 auto;
+    overflow-y: auto;
+}
+
+#ra2web-root .lan-setup-form .lobby-player-list-item {
+    display: block;
+    padding: 3px 6px;
+}
+
+/* Entry screen only (not the in-room lobby, not LAN Multiplayer) — denser
+   headers/spacing to match the reference layout's compact table feel now
+   that four stacked panels share the same fixed window height. */
+#ra2web-root .lan-setup-form[data-online-view="entry"] .lan-panel-header h3 {
+    font-size: 15px;
+}
+#ra2web-root .lan-setup-form[data-online-view="entry"] .lan-panel-header {
+    margin-bottom: 4px;
+}
+#ra2web-root .lan-setup-form[data-online-view="entry"] .lan-panel {
+    padding: 6px 8px;
+}
+#ra2web-root .lan-setup-form[data-online-view="entry"] .lan-entry-layout {
+    gap: 8px;
+}
+#ra2web-root .lan-setup-form[data-online-view="entry"] .lan-lobby-row {
+    gap: 8px;
+}
+#ra2web-root .lan-setup-form[data-online-view="entry"] .online-room-list-header,
+#ra2web-root .lan-setup-form[data-online-view="entry"] .online-room-list-item,
+#ra2web-root .lan-setup-form[data-online-view="entry"] .lobby-player-list-item {
+    font-size: 12px;
+}
+#ra2web-root .lan-setup-form[data-online-view="entry"] .chat-wrapper .message {
+    font-size: 12px;
 }
 
 #ra2web-root .lan-setup-form .lan-entry-profile-editor {
@@ -1762,7 +1894,8 @@ input[type="range"]:focus {
     }
 
     #ra2web-root .lan-setup-form .lan-entry-profile-grid,
-    #ra2web-root .lan-setup-form .lan-entry-profile-stats {
+    #ra2web-root .lan-setup-form .lan-entry-profile-stats,
+    #ra2web-root .lan-setup-form .lan-lobby-row {
         grid-template-columns: 1fr;
     }
 

@@ -16,6 +16,7 @@ import { SlotType as NetSlotType } from '@/network/gameopt/SlotInfo';
 import { OBS_COUNTRY_ID } from '@/game/gameopts/constants';
 import { ColyseusClient, OnlineRoomListing } from '@/network/colyseus/ColyseusClient';
 import { OnlineRoomSession } from '@/network/colyseus/OnlineRoomSession';
+import { LobbyChannelSession } from '@/network/colyseus/LobbyChannelSession';
 import { OnlineRoomScreen } from '@/gui/screen/mainMenu/online/OnlineRoomScreen';
 
 interface Rules {
@@ -119,12 +120,15 @@ export class OnlineSetupScreen extends MainMenuScreen {
     private resetNonce = 0;
     private busy = false;
     private roomScreen?: OnlineRoomScreen;
+    private selectedRoom?: OnlineRoomListing;
 
     private readonly meshSession: LanMeshSession;
     private readonly chatHistory = new ChatHistory();
     private readonly roomSession: LanRoomSession;
     private readonly colyseusClient: ColyseusClient;
     private readonly onlineSession: OnlineRoomSession;
+    private readonly lobbySession: LobbyChannelSession;
+    private readonly lobbyChatHistory = new ChatHistory();
     private pregameController: PregameController;
 
     constructor(
@@ -152,6 +156,7 @@ export class OnlineSetupScreen extends MainMenuScreen {
         this.roomSession = new LanRoomSession(this.meshSession, this.gameModes, this.mapFileLoader, this.mapDir, this.mapList);
         this.colyseusClient = new ColyseusClient(this.colyseusUrl);
         this.onlineSession = new OnlineRoomSession(this.meshSession, this.colyseusClient);
+        this.lobbySession = new LobbyChannelSession(this.colyseusClient);
     }
 
     onEnter(): void {
@@ -159,11 +164,13 @@ export class OnlineSetupScreen extends MainMenuScreen {
         this.initView();
         this.refreshSidebarButtons();
         this.controller.showSidebarButtons();
+        void this.joinLobbyChannel();
     }
 
     async onLeave(): Promise<void> {
         await this.controller.hideSidebarButtons();
         this.form = undefined;
+        this.lobbySession.leave();
     }
 
     async onStack(): Promise<void> {
@@ -176,6 +183,19 @@ export class OnlineSetupScreen extends MainMenuScreen {
         this.refreshSidebarButtons();
         this.refreshView();
         this.controller.showSidebarButtons();
+        void this.joinLobbyChannel();
+    }
+
+    private async joinLobbyChannel(): Promise<void> {
+        if (this.lobbySession.isConnected()) {
+            return;
+        }
+        try {
+            await this.lobbySession.join(this.meshSession.getSelf().name);
+        }
+        catch {
+            // Non-fatal — room browsing still works without global chat/presence.
+        }
     }
 
     private createPregameController(): PregameController {
@@ -213,27 +233,33 @@ export class OnlineSetupScreen extends MainMenuScreen {
         return {
             meshSession: this.meshSession,
             onlineSession: this.onlineSession,
+            lobbySession: this.lobbySession,
+            lobbyChatHistory: this.lobbyChatHistory,
             resetNonce: this.resetNonce,
+            strings: this.strings,
             onCommitName: (name: string) => {
                 this.persistOnlinePlayerName(name);
+                this.lobbySession.rename(name);
             },
             onRequestJoinRoom: (room: OnlineRoomListing) => {
                 this.openJoinRoomDialog(room);
+            },
+            onSelectRoom: (room: OnlineRoomListing | undefined) => {
+                this.selectedRoom = room;
+                this.refreshSidebarButtons();
             },
         };
     }
 
     private openCreateRoomDialog(): void {
-        const defaultRoomName = `${this.meshSession.getSelf().name || 'Player'}'s room`;
         const valuesRef: { current: CreateRoomFormValues } = {
-            current: { roomName: defaultRoomName, maxPlayers: 8, password: '' },
+            current: { description: '', maxPlayers: 8, password: '' },
         };
         const submit = () => {
-            const roomName = valuesRef.current.roomName.trim() || defaultRoomName;
-            void this.submitCreateRoom({ ...valuesRef.current, roomName });
+            void this.submitCreateRoom(valuesRef.current);
         };
         this.messageBoxApi.show(
-            React.createElement(CreateRoomForm, { defaultRoomName, valuesRef, onSubmit: submit }),
+            React.createElement(CreateRoomForm, { valuesRef, onSubmit: submit }),
             [
                 { label: 'Create Room', onClick: submit },
                 { label: 'Cancel' },
@@ -249,7 +275,8 @@ export class OnlineSetupScreen extends MainMenuScreen {
         };
         this.messageBoxApi.show(
             React.createElement(JoinRoomForm, {
-                roomLabel: room.metadata.label || room.roomId,
+                hostName: room.metadata.hostName,
+                description: room.metadata.description || undefined,
                 passwordRequired: room.metadata.passwordProtected,
                 valuesRef,
                 onSubmit: submit,
@@ -262,23 +289,23 @@ export class OnlineSetupScreen extends MainMenuScreen {
         );
     }
 
-    private async submitCreateRoom(details: { roomName: string; maxPlayers: number; password: string }): Promise<void> {
+    private async submitCreateRoom(details: { description: string; maxPlayers: number; password: string }): Promise<void> {
         if (!this.pregameController.isInitialized()) {
             await this.pregameController.initialize();
         }
         this.pregameController.updateSelfName(this.meshSession.getSelf().name);
         this.pregameController.setMaxOpenSlots(details.maxPlayers);
-        await this.finishCreateRoom(details.roomName, details.password || undefined);
+        await this.finishCreateRoom(details.description, details.password || undefined);
     }
 
-    private async finishCreateRoom(roomName: string, password?: string): Promise<void> {
+    private async finishCreateRoom(description: string, password?: string): Promise<void> {
         const gameOpts = this.pregameController.getGameOpts();
         this.busy = true;
         this.refreshSidebarButtons();
         let enteredRoom = false;
         try {
             await this.onlineSession.createRoom({
-                label: roomName,
+                description: description.trim(),
                 mapTitle: gameOpts.mapTitle,
                 mapOfficial: gameOpts.mapOfficial,
                 gameModeLabel: this.strings.get(this.gameModes.getById(gameOpts.gameMode).label),
@@ -371,11 +398,21 @@ export class OnlineSetupScreen extends MainMenuScreen {
     private refreshSidebarButtons(): void {
         this.controller.setSidebarButtons([
             {
-                label: 'Create Room',
-                tooltip: 'Set room name, player limit, and optional password',
+                label: 'Create Game',
+                tooltip: 'Set room description, player limit, and optional password',
                 disabled: this.busy,
                 onClick: () => {
                     this.openCreateRoomDialog();
+                },
+            },
+            {
+                label: 'Join Game',
+                tooltip: this.selectedRoom ? 'Join the selected room' : 'Select a room from the list first',
+                disabled: this.busy || !this.selectedRoom,
+                onClick: () => {
+                    if (this.selectedRoom) {
+                        this.openJoinRoomDialog(this.selectedRoom);
+                    }
                 },
             },
             {

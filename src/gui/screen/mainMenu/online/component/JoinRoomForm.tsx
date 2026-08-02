@@ -1,13 +1,14 @@
 import React, { useEffect, useRef } from 'react';
 
 interface JoinRoomFormProps {
-    roomLabel: string;
+    hostName: string;
+    description?: string;
     passwordRequired: boolean;
     valuesRef: { current: { password: string } };
     onSubmit: () => void;
 }
 
-export const JoinRoomForm: React.FC<JoinRoomFormProps> = ({ roomLabel, passwordRequired, valuesRef, onSubmit }) => {
+export const JoinRoomForm: React.FC<JoinRoomFormProps> = ({ hostName, description, passwordRequired, valuesRef, onSubmit }) => {
     const passwordInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
@@ -21,7 +22,8 @@ export const JoinRoomForm: React.FC<JoinRoomFormProps> = ({ roomLabel, passwordR
 
     return (
         <form onSubmit={handleSubmit} autoComplete="off">
-            <p>{roomLabel}</p>
+            <p>{hostName}'s room</p>
+            {description ? <p>{description}</p> : null}
             <div className="field">
                 <label htmlFor="online-join-password">
                     {passwordRequired ? 'Password (required)' : 'Password (leave blank if none)'}

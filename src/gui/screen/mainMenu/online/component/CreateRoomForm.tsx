@@ -1,24 +1,24 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 export interface CreateRoomFormValues {
-    roomName: string;
+    description: string;
     maxPlayers: number;
     password: string;
 }
 
 interface CreateRoomFormProps {
-    defaultRoomName: string;
     valuesRef: { current: CreateRoomFormValues };
     onSubmit: () => void;
 }
 
 const MAX_PLAYER_OPTIONS = [2, 3, 4, 5, 6, 7, 8];
 
-export const CreateRoomForm: React.FC<CreateRoomFormProps> = ({ defaultRoomName, valuesRef, onSubmit }) => {
-    const nameInputRef = useRef<HTMLInputElement>(null);
+export const CreateRoomForm: React.FC<CreateRoomFormProps> = ({ valuesRef, onSubmit }) => {
+    const descriptionInputRef = useRef<HTMLInputElement>(null);
+    const [passwordEnabled, setPasswordEnabled] = useState(false);
 
     useEffect(() => {
-        setTimeout(() => nameInputRef.current?.focus(), 50);
+        setTimeout(() => descriptionInputRef.current?.focus(), 50);
     }, []);
 
     const handleSubmit = (event?: React.FormEvent) => {
@@ -29,16 +29,15 @@ export const CreateRoomForm: React.FC<CreateRoomFormProps> = ({ defaultRoomName,
     return (
         <form onSubmit={handleSubmit} autoComplete="off">
             <div className="field">
-                <label htmlFor="online-create-room-name">Room Name</label>
+                <label htmlFor="online-create-description">Room Description (optional)</label>
                 <input
-                    id="online-create-room-name"
-                    ref={nameInputRef}
+                    id="online-create-description"
+                    ref={descriptionInputRef}
                     type="text"
-                    maxLength={40}
-                    defaultValue={defaultRoomName}
+                    maxLength={60}
                     autoComplete="off"
                     data-lpignore="true"
-                    onChange={(event) => { valuesRef.current.roomName = event.target.value; }}
+                    onChange={(event) => { valuesRef.current.description = event.target.value; }}
                 />
             </div>
             <div className="field">
@@ -54,11 +53,25 @@ export const CreateRoomForm: React.FC<CreateRoomFormProps> = ({ defaultRoomName,
                 </select>
             </div>
             <div className="field">
-                <label htmlFor="online-create-password">Password (optional)</label>
+                <label htmlFor="online-create-password-enabled">
+                    <input
+                        id="online-create-password-enabled"
+                        type="checkbox"
+                        checked={passwordEnabled}
+                        onChange={(event) => {
+                            setPasswordEnabled(event.target.checked);
+                            if (!event.target.checked) {
+                                valuesRef.current.password = '';
+                            }
+                        }}
+                    />
+                    {' '}Password
+                </label>
                 <input
                     id="online-create-password"
                     type="password"
                     maxLength={32}
+                    disabled={!passwordEnabled}
                     autoComplete="off"
                     data-lpignore="true"
                     onChange={(event) => { valuesRef.current.password = event.target.value; }}

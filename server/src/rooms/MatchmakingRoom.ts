@@ -1,11 +1,11 @@
-import { Room, type Client, matchMaker } from "@colyseus/core";
+import { Room, type Client } from "@colyseus/core";
 import { Member, MatchmakingState } from "./MatchmakingState.ts";
 import { signalingMessages } from "./SignalingMessages.ts";
 
 const RECONNECT_GRACE_SECONDS = 10;
 
 export interface MatchmakingRoomMetadata {
-    label: string;
+    description: string;
     hostName: string;
     mapTitle: string;
     mapOfficial: boolean;
@@ -30,10 +30,6 @@ export class MatchmakingRoom extends Room<{ state: MatchmakingState; metadata: M
     maxClients = 8;
     state = new MatchmakingState();
     private password?: string;
-    // Tracks whether the label is still the auto-generated "<host>'s game"
-    // default (vs. a name the creator explicitly typed), so a host transfer
-    // knows whether it's safe to rename the room after them.
-    private labelIsDefault = true;
     messages = {
         ...signalingMessages,
         "room-started"(this: MatchmakingRoom) {
@@ -63,27 +59,15 @@ export class MatchmakingRoom extends Room<{ state: MatchmakingState; metadata: M
                 return;
             }
             this.state.hostPeerId = target.peerId;
-            if (this.labelIsDefault) {
-                void this.setMetadata({ label: `${target.name}'s game` });
-            }
         },
     };
 
     async onCreate(options: MatchmakingCreateOptions): Promise<void> {
-        this.labelIsDefault = !options.label?.trim();
-        const label = options.label?.trim() || `${options.name}'s game`;
-        const existingRooms = await matchMaker.query({ name: "matchmaking", locked: false });
-        const labelTaken = existingRooms.some((room) =>
-            (room.metadata as MatchmakingRoomMetadata | undefined)?.label?.trim().toLowerCase() === label.toLowerCase());
-        if (labelTaken) {
-            throw new Error("Room name already in use");
-        }
-
         this.state.roomId = this.roomId;
         this.state.hostPeerId = options.peerId;
         this.password = options.password?.trim() || undefined;
         this.metadata = {
-            label,
+            description: options.description?.trim() ?? "",
             hostName: options.name,
             mapTitle: options.mapTitle ?? "",
             mapOfficial: options.mapOfficial ?? true,
