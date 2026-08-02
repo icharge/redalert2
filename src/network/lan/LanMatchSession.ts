@@ -15,6 +15,7 @@ interface LanMatchSnapshotMember {
 }
 
 interface LanMatchTransportSnapshot {
+    isInRoom: boolean;
     members: LanMatchSnapshotMember[];
 }
 
@@ -391,6 +392,9 @@ export class LanMatchSession {
     }
 
     private refreshLocalControlTurns(): void {
+        if (!this.lastSnapshot.isInRoom) {
+            return;
+        }
         const localPeerId = this.transport.getSelf().id;
         if (this.getControlPeerId() !== localPeerId) {
             return;

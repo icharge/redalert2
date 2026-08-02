@@ -480,7 +480,7 @@ export class GameScreen extends RootScreen {
         };
         this.errorHandler.handle(error, message, skipGoToMenu ? undefined : () => {
             cleanup();
-            this.controller?.goToScreen('MainMenuRoot');
+            this.controller?.goToScreen(ScreenType.MainMenuRoot);
         });
         if (skipGoToMenu) {
             cleanup();
