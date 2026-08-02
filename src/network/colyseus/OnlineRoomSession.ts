@@ -28,6 +28,10 @@ export interface OnlineLogEntry {
     text: string;
 }
 
+interface MatchmakingStateLike {
+    locked: boolean;
+}
+
 /**
  * Bridges a Colyseus room (discovery, membership, WebRTC signaling relay)
  * to a LanMeshSession, which owns the actual peer-to-peer mesh. Colyseus
@@ -41,6 +45,7 @@ export class OnlineRoomSession {
 
     public readonly onLog = new EventDispatcher<this, OnlineLogEntry>();
     public readonly onDisconnected = new EventDispatcher<this, void>();
+    public readonly onLockChanged = new EventDispatcher<this, boolean>();
 
     constructor(
         private readonly meshSession: LanMeshSession,
@@ -96,6 +101,33 @@ export class OnlineRoomSession {
         this.room?.send('room-started');
     }
 
+    setLocked(locked: boolean): void {
+        this.room?.send(locked ? 'lock-room' : 'unlock-room');
+    }
+
+    isLocked(): boolean {
+        return (this.room?.state as MatchmakingStateLike | undefined)?.locked ?? false;
+    }
+
+    /**
+     * Hands room ownership to another currently-connected member, identified
+     * by peerId (resolved to their Colyseus sessionId server-side needs it,
+     * so we look that up here rather than pushing session-id bookkeeping
+     * onto callers).
+     */
+    transferHost(targetPeerId: string): void {
+        if (!this.room) {
+            return;
+        }
+        const members = this.room.state.members as Map<string, MemberState>;
+        for (const [sessionId, member] of members) {
+            if (member.peerId === targetPeerId) {
+                this.room.send('transfer-host', { targetSessionId: sessionId });
+                return;
+            }
+        }
+    }
+
     leaveRoom(): void {
         this.unbindRoom();
         const room = this.room;
@@ -110,18 +142,29 @@ export class OnlineRoomSession {
 
         const stateProxy = getStateCallbacks(room)(room.state);
 
-        stateProxy.members.onAdd((member: MemberState, sessionId: string) => {
-            if (sessionId === room.sessionId) {
-                return;
-            }
-            const peer: LanPeerIdentity = { id: member.peerId, name: member.name };
+        stateProxy.listen('locked', (locked: boolean) => {
+            this.onLockChanged.dispatch(this, locked);
+        });
+
+        // Deterministic tie-break so exactly one side of each pair offers.
+        // Reused both for a peer's initial join and for re-establishing a
+        // direct link after this client reconnects (see room.onReconnect
+        // below) — a Colyseus-level reconnect doesn't restore the
+        // independent WebRTC layer, so that has to be re-negotiated too.
+        const offerToPeerIfNeeded = (peer: LanPeerIdentity, sessionId: string) => {
             this.meshSession.registerMember(peer);
-            // Deterministic tie-break so exactly one side of each pair offers.
             if (room.sessionId < sessionId) {
                 this.meshSession.createOfferForPeer(peer)
                     .then((description) => room.send('webrtc-offer', { targetSessionId: sessionId, description }))
                     .catch((error) => this.log('warn', `Failed to create offer for ${peer.name}: ${(error as Error).message}`));
             }
+        };
+
+        stateProxy.members.onAdd((member: MemberState, sessionId: string) => {
+            if (sessionId === room.sessionId) {
+                return;
+            }
+            offerToPeerIfNeeded({ id: member.peerId, name: member.name }, sessionId);
         });
 
         stateProxy.members.onRemove((member: MemberState) => {
@@ -141,12 +184,31 @@ export class OnlineRoomSession {
                 .catch((error) => this.log('warn', `Failed to accept answer: ${(error as Error).message}`));
         });
 
+        const unbindHostLost = room.onMessage('host-lost', () => {
+            this.log('warn', 'The host disconnected and did not return in time; the room has closed.');
+        });
+
+        room.onReconnect(() => {
+            this.log('info', 'Reconnected to the room; re-establishing direct links...');
+            const connectedPeerIds = new Set(
+                this.meshSession.getSnapshot().members
+                    .filter((snapshotMember) => snapshotMember.status === 'connected')
+                    .map((snapshotMember) => snapshotMember.id)
+            );
+            (room.state.members as Map<string, MemberState>).forEach((member, sessionId) => {
+                if (sessionId === room.sessionId || connectedPeerIds.has(member.peerId)) {
+                    return;
+                }
+                offerToPeerIfNeeded({ id: member.peerId, name: member.name }, sessionId);
+            });
+        });
+
         room.onLeave(() => {
             this.room = undefined;
             this.onDisconnected.dispatch(this);
         });
 
-        this.unbindHandlers = [unbindOffer, unbindAnswer];
+        this.unbindHandlers = [unbindOffer, unbindAnswer, unbindHostLost];
     }
 
     private unbindRoom(): void {

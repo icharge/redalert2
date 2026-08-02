@@ -118,6 +118,34 @@ describe("MatchmakingRoom", () => {
         expect(room.state.members.get(client.sessionId)?.peerId).toBe("guest-peer");
     });
 
+    it("rejects a duplicate room name", async () => {
+        await colyseus.createRoom<MatchmakingRoom>("matchmaking", {
+            peerId: "host-peer",
+            name: "Alice",
+            label: "Alice's Arena",
+        });
+
+        await expect(
+            colyseus.createRoom<MatchmakingRoom>("matchmaking", {
+                peerId: "other-host-peer",
+                name: "Carol",
+                label: "Alice's Arena",
+            })
+        ).rejects.toThrow();
+    });
+
+    it("rejects a join with a player name already taken in the room", async () => {
+        const room = await colyseus.createRoom<MatchmakingRoom>("matchmaking", {
+            peerId: "host-peer",
+            name: "Alice",
+        });
+        await colyseus.connectTo(room, { peerId: "host-peer", name: "Alice" });
+
+        await expect(
+            colyseus.connectTo(room, { peerId: "guest-peer", name: "Alice" })
+        ).rejects.toThrow();
+    });
+
     it("relays a webrtc-offer only to its targeted peer", async () => {
         const room = await colyseus.createRoom<MatchmakingRoom>("matchmaking", {
             peerId: "host-peer",
@@ -169,4 +197,151 @@ describe("MatchmakingRoom", () => {
 
         expect(room.locked).toBe(true);
     });
+
+    it("lets the host lock and unlock the room", async () => {
+        const room = await colyseus.createRoom<MatchmakingRoom>("matchmaking", {
+            peerId: "host-peer",
+            name: "Alice",
+        });
+        const host = await colyseus.connectTo(room, { peerId: "host-peer", name: "Alice" });
+
+        host.send("lock-room");
+        await waitUntil(() => room.state.locked === true);
+        expect(room.locked).toBe(true);
+
+        host.send("unlock-room");
+        await waitUntil(() => room.state.locked === false);
+        expect(room.locked).toBe(false);
+    });
+
+    it("ignores a lock-room request from a non-host client", async () => {
+        const room = await colyseus.createRoom<MatchmakingRoom>("matchmaking", {
+            peerId: "host-peer",
+            name: "Alice",
+        });
+        await colyseus.connectTo(room, { peerId: "host-peer", name: "Alice" });
+        const guest = await colyseus.connectTo(room, { peerId: "guest-peer", name: "Bob" });
+
+        guest.send("lock-room");
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        expect(room.state.locked).toBe(false);
+        expect(room.locked).toBe(false);
+    });
+
+    it("closes the room for everyone when the host leaves on purpose without transferring", async () => {
+        const room = await colyseus.createRoom<MatchmakingRoom>("matchmaking", {
+            peerId: "host-peer",
+            name: "Alice",
+        });
+        const host = await colyseus.connectTo(room, { peerId: "host-peer", name: "Alice" });
+        const guest = await colyseus.connectTo(room, { peerId: "guest-peer", name: "Bob" });
+
+        // Register the listener before triggering the leave — a consented
+        // leave broadcasts host-lost synchronously server-side, so awaiting
+        // host.leave() first can miss it.
+        const hostLost = guest.waitForMessage("host-lost", 2000);
+        await host.leave(); // consented — the default
+        await hostLost;
+    });
+
+    it("lets the host transfer ownership to another member", async () => {
+        const room = await colyseus.createRoom<MatchmakingRoom>("matchmaking", {
+            peerId: "host-peer",
+            name: "Alice",
+        });
+        const host = await colyseus.connectTo(room, { peerId: "host-peer", name: "Alice" });
+        const guest = await colyseus.connectTo(room, { peerId: "guest-peer", name: "Bob" });
+
+        expect(room.metadata.label).toBe("Alice's game");
+
+        host.send("transfer-host", { targetSessionId: guest.sessionId });
+        await waitUntil(() => room.state.hostPeerId === "guest-peer");
+
+        expect(room.state.hostPeerId).toBe("guest-peer");
+        expect(room.metadata.label).toBe("Bob's game");
+    });
+
+    it("does not rename a room whose label was customized at creation", async () => {
+        const room = await colyseus.createRoom<MatchmakingRoom>("matchmaking", {
+            peerId: "host-peer",
+            name: "Alice",
+            label: "Epic Battle",
+        });
+        const host = await colyseus.connectTo(room, { peerId: "host-peer", name: "Alice" });
+        const guest = await colyseus.connectTo(room, { peerId: "guest-peer", name: "Bob" });
+
+        host.send("transfer-host", { targetSessionId: guest.sessionId });
+        await waitUntil(() => room.state.hostPeerId === "guest-peer");
+
+        expect(room.metadata.label).toBe("Epic Battle");
+    });
+
+    it("does not close the room when the former host leaves after transferring ownership", async () => {
+        const room = await colyseus.createRoom<MatchmakingRoom>("matchmaking", {
+            peerId: "host-peer",
+            name: "Alice",
+        });
+        const host = await colyseus.connectTo(room, { peerId: "host-peer", name: "Alice" });
+        const guest = await colyseus.connectTo(room, { peerId: "guest-peer", name: "Bob" });
+
+        host.send("transfer-host", { targetSessionId: guest.sessionId });
+        await waitUntil(() => room.state.hostPeerId === "guest-peer");
+
+        await host.leave();
+        await new Promise((resolve) => setTimeout(resolve, 150));
+
+        expect(room.state.members.has(guest.sessionId)).toBe(true);
+        expect(room.state.hostPeerId).toBe("guest-peer");
+    });
+
+    it("ignores a transfer-host request from a non-host client", async () => {
+        const room = await colyseus.createRoom<MatchmakingRoom>("matchmaking", {
+            peerId: "host-peer",
+            name: "Alice",
+        });
+        await colyseus.connectTo(room, { peerId: "host-peer", name: "Alice" });
+        const guest = await colyseus.connectTo(room, { peerId: "guest-peer", name: "Bob" });
+        const guest2 = await colyseus.connectTo(room, { peerId: "guest2-peer", name: "Carol" });
+
+        guest.send("transfer-host", { targetSessionId: guest2.sessionId });
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        expect(room.state.hostPeerId).toBe("host-peer");
+    });
+
+    it("keeps a disconnected host's seat and identity if they reconnect within the grace window", async () => {
+        const room = await colyseus.createRoom<MatchmakingRoom>("matchmaking", {
+            peerId: "host-peer",
+            name: "Alice",
+        });
+        const host = await colyseus.connectTo(room, { peerId: "host-peer", name: "Alice" });
+        const hostSessionId = host.sessionId;
+        const reconnectionToken = host.reconnectionToken;
+
+        await host.leave(false); // simulates an involuntary disconnect, not a consented leave
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        // Still held open during the grace window — not evicted immediately.
+        expect(room.state.members.has(hostSessionId)).toBe(true);
+
+        const reconnectedHost = await colyseus.sdk.reconnect(reconnectionToken);
+        expect(reconnectedHost.sessionId).toBe(hostSessionId);
+        expect(room.state.members.has(hostSessionId)).toBe(true);
+        expect(room.state.hostPeerId).toBe("host-peer");
+
+        await reconnectedHost.leave();
+    });
+
+    it("closes the room and notifies remaining members if the host never reconnects", async () => {
+        const room = await colyseus.createRoom<MatchmakingRoom>("matchmaking", {
+            peerId: "host-peer",
+            name: "Alice",
+        });
+        const host = await colyseus.connectTo(room, { peerId: "host-peer", name: "Alice" });
+        const guest = await colyseus.connectTo(room, { peerId: "guest-peer", name: "Bob" });
+
+        await host.leave(false);
+        await guest.waitForMessage("host-lost", 15000);
+    }, 20000);
 });

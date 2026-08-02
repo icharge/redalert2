@@ -15,6 +15,7 @@ export interface OnlineRoomListing {
     clients: number;
     maxClients: number;
     metadata: OnlineRoomMetadata;
+    locked: boolean;
 }
 
 function toHttpUrl(colyseusUrl: string): string {

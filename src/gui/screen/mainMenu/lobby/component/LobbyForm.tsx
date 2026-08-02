@@ -67,6 +67,7 @@ interface LobbyFormProps {
     onStartPosSelect: (pos: any, slotIndex: number) => void;
     onTeamSelect: (team: any, slotIndex: number) => void;
     beforeChatContent?: React.ReactNode;
+    onTransferHost?: (slotIndex: number) => void;
 }
 export class LobbyForm extends React.Component<LobbyFormProps> {
     private getFirstAvailableAiDifficulty(): AiDifficulty {
@@ -78,6 +79,10 @@ export class LobbyForm extends React.Component<LobbyFormProps> {
         return AiDifficulty[key as keyof typeof AiDifficulty] ?? AiDifficulty.Easy;
     }
     onPlayerSelect = (value: string, slotIndex: number) => {
+        if (value === 'TransferHost') {
+            this.props.onTransferHost?.(slotIndex);
+            return;
+        }
         let occupation: number;
         let aiDifficulty: any;
         let customBotId: string | undefined;
@@ -306,6 +311,9 @@ export class LobbyForm extends React.Component<LobbyFormProps> {
                 const resolvedName = key.startsWith('Custom:') ? name : strings.get(name);
                 optionsMap.set(key, resolvedName);
             });
+        }
+        if (isHost && this.props.onTransferHost && displayOccupation === SlotOccupation.Occupied && slot.type === SlotType.Player) {
+            optionsMap.set('TransferHost', 'Make Host');
         }
         return (<Select initialValue={"" + selectedValue} disabled={!isHost} onSelect={(value) => this.onPlayerSelect(value, index)} className="player-name" tooltip={isSingleplayer
                 ? strings.get("STT:SkirmishComboAiPlayer")

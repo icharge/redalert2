@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { List, ListHeader, ListItem } from '@/gui/component/List';
+import { Image } from '@/gui/component/Image';
 import { OnlineRoomListing } from '@/network/colyseus/ColyseusClient';
 import { OnlineRoomSession } from '@/network/colyseus/OnlineRoomSession';
 
@@ -20,7 +21,10 @@ export const OnlineRoomList: React.FC<OnlineRoomListProps> = ({ onlineSession, o
         setLoading(true);
         try {
             const listing = await onlineSession.listRooms();
-            setRooms(listing);
+            // Locked rooms (manually locked, or already in-game) stay visible
+            // rather than vanishing — sorted after everything joinable.
+            const sorted = [...listing].sort((left, right) => Number(left.locked) - Number(right.locked));
+            setRooms(sorted);
             setError(undefined);
         }
         catch (err) {
@@ -58,9 +62,17 @@ export const OnlineRoomList: React.FC<OnlineRoomListProps> = ({ onlineSession, o
                         <span />
                     </ListHeader>
                     {rooms.map((room) => (
-                        <ListItem className="online-room-list-item" key={room.roomId}>
+                        <ListItem className={`online-room-list-item${room.locked ? ' online-room-list-item-locked' : ''}`} key={room.roomId}>
                             <span>
-                                {room.metadata.passwordProtected ? <span title="Password protected">🔒 </span> : null}
+                                {room.locked ? (
+                                    <span className="online-room-lock-icon" title="Room locked — not accepting new players">
+                                        <Image src="wolpriv.pcx"/>
+                                    </span>
+                                ) : room.metadata.passwordProtected ? (
+                                    <span className="online-room-lock-icon" title="Password protected">
+                                        <Image src="wolpriv.pcx"/>
+                                    </span>
+                                ) : null}
                                 {room.metadata.label || room.roomId}
                             </span>
                             <span>{room.metadata.hostName}</span>
@@ -69,7 +81,7 @@ export const OnlineRoomList: React.FC<OnlineRoomListProps> = ({ onlineSession, o
                             <button
                                 type="button"
                                 className="dialog-button"
-                                disabled={busy || room.clients >= room.maxClients}
+                                disabled={busy || room.locked || room.clients >= room.maxClients}
                                 onClick={() => onJoin(room)}
                             >
                                 Join

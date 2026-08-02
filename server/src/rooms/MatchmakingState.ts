@@ -9,4 +9,5 @@ export class MatchmakingState extends Schema {
     @type("string") roomId: string = "";
     @type("string") hostPeerId: string = "";
     @type({ map: Member }) members = new MapSchema<Member>();
+    @type("boolean") locked: boolean = false;
 }

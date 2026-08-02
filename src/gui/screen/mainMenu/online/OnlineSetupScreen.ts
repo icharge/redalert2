@@ -1,28 +1,22 @@
+import React from 'react';
 import { MainMenuScreen } from '@/gui/screen/mainMenu/MainMenuScreen';
 import { HtmlView } from '@/gui/jsx/HtmlView';
 import { jsx } from '@/gui/jsx/jsx';
 import { OnlineSetup } from '@/gui/screen/mainMenu/online/component/OnlineSetup';
+import { CreateRoomForm, CreateRoomFormValues } from '@/gui/screen/mainMenu/online/component/CreateRoomForm';
+import { JoinRoomForm } from '@/gui/screen/mainMenu/online/component/JoinRoomForm';
 import { MusicType } from '@/engine/sound/Music';
-import { LanMatchSession } from '@/network/lan/LanMatchSession';
 import { LanMeshSession } from '@/network/lan/LanMeshSession';
 import { ChatHistory } from '@/gui/chat/ChatHistory';
 import { LanRoomSession } from '@/network/lan/LanRoomSession';
-import { PregameController, PregameMapSelectionResult } from '@/gui/screen/mainMenu/lobby/PregameController';
-import { MainMenuScreenType, ScreenType } from '@/gui/screen/ScreenType';
-import { LobbyType } from '@/gui/screen/mainMenu/lobby/component/viewmodel/lobby';
-import { MapPreviewRenderer } from '@/gui/screen/mainMenu/lobby/MapPreviewRenderer';
-import { MapFile } from '@/data/MapFile';
-import { MainMenuRoute } from '@/gui/screen/mainMenu/MainMenuRoute';
+import { PregameController } from '@/gui/screen/mainMenu/lobby/PregameController';
+import { MainMenuScreenType } from '@/gui/screen/ScreenType';
 import { StorageKey } from '@/LocalPrefs';
-import { uint8ArrayToBase64String } from '@/util/string';
 import { SlotType as NetSlotType } from '@/network/gameopt/SlotInfo';
 import { OBS_COUNTRY_ID } from '@/game/gameopts/constants';
-import { ColyseusClient } from '@/network/colyseus/ColyseusClient';
+import { ColyseusClient, OnlineRoomListing } from '@/network/colyseus/ColyseusClient';
 import { OnlineRoomSession } from '@/network/colyseus/OnlineRoomSession';
-
-interface RootController {
-    goToScreen(screenType: number, params?: any): void;
-}
+import { OnlineRoomScreen } from '@/gui/screen/mainMenu/online/OnlineRoomScreen';
 
 interface Rules {
     getMultiplayerCountries(): any[];
@@ -65,7 +59,7 @@ interface LocalPrefs {
 }
 
 interface MessageBoxApi {
-    show(message: string, buttonText?: string, onClose?: () => void): void;
+    show(message: any, buttons?: any, callback?: any): void;
 }
 
 interface MapDirectory {
@@ -73,7 +67,49 @@ interface MapDirectory {
     writeFile(file: any): Promise<void>;
 }
 
+interface RootController {
+    goToScreen(screenType: number, params?: any): void;
+}
+
 const DEFAULT_ICE_SERVERS: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }];
+// Matches MatchmakingRoom's RECONNECT_GRACE_SECONDS on the server.
+const LINK_DROP_GRACE_MILLIS = 10000;
+
+function generatePeerId(): string {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+        return crypto.randomUUID();
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {
+        const random = (Math.random() * 16) | 0;
+        const value = char === 'x' ? random : (random & 0x3) | 0x8;
+        return value.toString(16);
+    });
+}
+
+const SESSION_PEER_ID_KEY = '_r_onlinePeerId';
+
+/**
+ * Deliberately backed by sessionStorage, not the shared LocalPrefs
+ * (localStorage): this id needs to survive a reload of *this* tab (so a
+ * reconnecting client can be recognized as the same peer) while staying
+ * independent per browser tab — localStorage is shared across every tab of
+ * the same origin, which would collide two tabs open in the same browser
+ * onto the same "self" id.
+ */
+function getOrCreateSessionPeerId(): string {
+    try {
+        const existing = sessionStorage.getItem(SESSION_PEER_ID_KEY);
+        if (existing) {
+            return existing;
+        }
+        const generated = generatePeerId();
+        sessionStorage.setItem(SESSION_PEER_ID_KEY, generated);
+        return generated;
+    }
+    catch {
+        return generatePeerId();
+    }
+}
 
 export class OnlineSetupScreen extends MainMenuScreen {
     declare public title: string;
@@ -81,17 +117,15 @@ export class OnlineSetupScreen extends MainMenuScreen {
 
     private form?: any;
     private resetNonce = 0;
-    private createRoomRequestId = 0;
-    private previewRequestId = 0;
     private busy = false;
+    private roomScreen?: OnlineRoomScreen;
 
-    private readonly meshSession = new LanMeshSession(DEFAULT_ICE_SERVERS);
+    private readonly meshSession: LanMeshSession;
     private readonly chatHistory = new ChatHistory();
     private readonly roomSession: LanRoomSession;
     private readonly colyseusClient: ColyseusClient;
     private readonly onlineSession: OnlineRoomSession;
     private pregameController: PregameController;
-    private activeMatchSession?: LanMatchSession;
 
     constructor(
         private readonly rootController: RootController,
@@ -109,6 +143,7 @@ export class OnlineSetupScreen extends MainMenuScreen {
         super();
         this.title = '';
         this.musicType = MusicType.Intro;
+        this.meshSession = new LanMeshSession(DEFAULT_ICE_SERVERS, getOrCreateSessionPeerId(), LINK_DROP_GRACE_MILLIS);
         const savedOnlinePlayerName = this.localPrefs.getItem(StorageKey.OnlinePlayerName)?.trim();
         if (savedOnlinePlayerName) {
             this.meshSession.updateSelfName(savedOnlinePlayerName);
@@ -122,19 +157,11 @@ export class OnlineSetupScreen extends MainMenuScreen {
     onEnter(): void {
         this.controller.toggleMainVideo(false);
         this.initView();
-        this.subscribeRoomEvents();
         this.refreshSidebarButtons();
-        this.refreshSidebarMpText();
-        void this.refreshSidebarPreview();
         this.controller.showSidebarButtons();
     }
 
     async onLeave(): Promise<void> {
-        this.previewRequestId += 1;
-        this.roomSession.onSnapshotChange.unsubscribe(this.handleRoomSnapshot);
-        this.meshSession.onSnapshotChange.unsubscribe(this.handleMeshSnapshot);
-        this.roomSession.onLaunch.unsubscribe(this.handleLaunch);
-        this.onlineSession.onDisconnected.unsubscribe(this.handleOnlineDisconnected);
         await this.controller.hideSidebarButtons();
         this.form = undefined;
     }
@@ -143,61 +170,12 @@ export class OnlineSetupScreen extends MainMenuScreen {
         await this.onLeave();
     }
 
-    onUnstack(params?: PregameMapSelectionResult): void {
-        this.subscribeRoomEvents();
-        if (params) {
-            this.pregameController.applyMapSelection(params);
-            this.pregameController.updateSelfName(this.meshSession.getSelf().name);
-            const roomSnapshot = this.roomSession.getSnapshot();
-            if (roomSnapshot.isHost && roomSnapshot.roomState) {
-                this.roomSession.applyHostPregameSnapshot(this.pregameController.getSnapshot());
-            }
-        }
+    onUnstack(): void {
+        this.pregameController = this.createPregameController();
+        this.resetNonce += 1;
         this.refreshSidebarButtons();
-        this.refreshSidebarMpText();
-        void this.refreshSidebarPreview();
         this.refreshView();
         this.controller.showSidebarButtons();
-    }
-
-    private handleMeshSnapshot = () => {
-        this.refreshSidebarButtons();
-    };
-
-    private handleRoomSnapshot = () => {
-        this.refreshSidebarButtons();
-        this.refreshSidebarMpText();
-        void this.refreshSidebarPreview();
-    };
-
-    private handleOnlineDisconnected = () => {
-        void this.handleLeaveRoom();
-    };
-
-    private handleLaunch = (descriptor: any) => {
-        this.activeMatchSession?.dispose();
-        this.activeMatchSession = new LanMatchSession(this.meshSession, descriptor);
-        this.onlineSession.notifyGameStarted();
-        this.rootController.goToScreen(ScreenType.Game, {
-            create: true,
-            lanLaunch: descriptor,
-            lanMatchSession: this.activeMatchSession,
-            lanMapDataBase64: this.roomSession.getResolvedCustomMapFile()
-                ? uint8ArrayToBase64String(this.roomSession.getResolvedCustomMapFile()!.getBytes())
-                : undefined,
-            returnTo: new MainMenuRoute(MainMenuScreenType.OnlineSetup, {}),
-        });
-    };
-
-    private subscribeRoomEvents(): void {
-        this.roomSession.onSnapshotChange.unsubscribe(this.handleRoomSnapshot);
-        this.meshSession.onSnapshotChange.unsubscribe(this.handleMeshSnapshot);
-        this.roomSession.onLaunch.unsubscribe(this.handleLaunch);
-        this.onlineSession.onDisconnected.unsubscribe(this.handleOnlineDisconnected);
-        this.roomSession.onSnapshotChange.subscribe(this.handleRoomSnapshot);
-        this.meshSession.onSnapshotChange.subscribe(this.handleMeshSnapshot);
-        this.roomSession.onLaunch.subscribe(this.handleLaunch);
-        this.onlineSession.onDisconnected.subscribe(this.handleOnlineDisconnected);
     }
 
     private createPregameController(): PregameController {
@@ -233,50 +211,55 @@ export class OnlineSetupScreen extends MainMenuScreen {
 
     private buildComponentProps(): any {
         return {
-            strings: this.strings,
             meshSession: this.meshSession,
-            roomSession: this.roomSession,
             onlineSession: this.onlineSession,
-            chatHistory: this.chatHistory,
-            pregameController: this.pregameController,
             resetNonce: this.resetNonce,
-            createRoomRequestId: this.createRoomRequestId,
-            onSubmitCreateRoom: async (details: { roomName: string; maxPlayers: number; password: string }) => {
-                await this.submitCreateRoom(details);
-            },
-            onStartGame: async () => {
-                await this.startOnlineGame();
-            },
-            onLeaveRoom: async () => {
-                await this.handleLeaveRoom();
-            },
-            onChangeMap: async () => {
-                await this.handleChangeMap();
-            },
-            onToggleReady: async () => {
-                const selfMember = this.roomSession.getSnapshot().members.find((member) => member.isSelf);
-                if (!selfMember) {
-                    return;
-                }
-                await this.roomSession.setReady(!selfMember.ready);
-            },
-            onHostPregameChanged: () => {
-                this.roomSession.applyHostPregameSnapshot(this.pregameController.getSnapshot());
-                this.refreshSidebarMpText();
-                void this.refreshSidebarPreview();
-            },
             onCommitName: (name: string) => {
                 this.persistOnlinePlayerName(name);
             },
-            onJoinRoom: async (roomId: string, password?: string) => {
-                await this.handleJoinRoom(roomId, password);
+            onRequestJoinRoom: (room: OnlineRoomListing) => {
+                this.openJoinRoomDialog(room);
             },
         };
     }
 
-    private requestCreateRoomDialog(): void {
-        this.createRoomRequestId += 1;
-        this.refreshView();
+    private openCreateRoomDialog(): void {
+        const defaultRoomName = `${this.meshSession.getSelf().name || 'Player'}'s room`;
+        const valuesRef: { current: CreateRoomFormValues } = {
+            current: { roomName: defaultRoomName, maxPlayers: 8, password: '' },
+        };
+        const submit = () => {
+            const roomName = valuesRef.current.roomName.trim() || defaultRoomName;
+            void this.submitCreateRoom({ ...valuesRef.current, roomName });
+        };
+        this.messageBoxApi.show(
+            React.createElement(CreateRoomForm, { defaultRoomName, valuesRef, onSubmit: submit }),
+            [
+                { label: 'Create Room', onClick: submit },
+                { label: 'Cancel' },
+            ],
+            { className: 'prompt-box' }
+        );
+    }
+
+    private openJoinRoomDialog(room: OnlineRoomListing): void {
+        const valuesRef: { current: { password: string } } = { current: { password: '' } };
+        const submit = () => {
+            void this.handleJoinRoom(room.roomId, valuesRef.current.password.trim() || undefined);
+        };
+        this.messageBoxApi.show(
+            React.createElement(JoinRoomForm, {
+                roomLabel: room.metadata.label || room.roomId,
+                passwordRequired: room.metadata.passwordProtected,
+                valuesRef,
+                onSubmit: submit,
+            }),
+            [
+                { label: 'Join', onClick: submit },
+                { label: 'Cancel' },
+            ],
+            { className: 'prompt-box' }
+        );
     }
 
     private async submitCreateRoom(details: { roomName: string; maxPlayers: number; password: string }): Promise<void> {
@@ -292,6 +275,7 @@ export class OnlineSetupScreen extends MainMenuScreen {
         const gameOpts = this.pregameController.getGameOpts();
         this.busy = true;
         this.refreshSidebarButtons();
+        let enteredRoom = false;
         try {
             await this.onlineSession.createRoom({
                 label: roomName,
@@ -302,13 +286,19 @@ export class OnlineSetupScreen extends MainMenuScreen {
                 password,
             });
             this.roomSession.startHosting(this.createHostSnapshot());
+            await this.enterRoomScreen();
+            enteredRoom = true;
         }
         catch (error) {
-            this.messageBoxApi.show(`Failed to create online room: ${(error as Error).message}`);
+            this.messageBoxApi.show(`Failed to create online room: ${(error as Error).message}`, 'OK');
         }
         finally {
             this.busy = false;
-            this.refreshSidebarButtons();
+            // Once enterRoomScreen() has navigated away, this screen no longer
+            // owns the sidebar — refreshing it here would stomp on OnlineRoomScreen's.
+            if (!enteredRoom) {
+                this.refreshSidebarButtons();
+            }
         }
     }
 
@@ -319,37 +309,48 @@ export class OnlineSetupScreen extends MainMenuScreen {
         this.pregameController.updateSelfName(this.meshSession.getSelf().name);
         this.busy = true;
         this.refreshSidebarButtons();
+        let enteredRoom = false;
         try {
             await this.onlineSession.joinRoom(roomId, password);
+            await this.enterRoomScreen();
+            enteredRoom = true;
+        }
+        catch (error) {
+            this.messageBoxApi.show(`Failed to join online room: ${(error as Error).message}`, 'OK');
         }
         finally {
             this.busy = false;
-            this.refreshSidebarButtons();
+            if (!enteredRoom) {
+                this.refreshSidebarButtons();
+            }
         }
     }
 
-    private async handleChangeMap(): Promise<void> {
-        if (!this.roomSession.getSnapshot().isHost || !this.roomSession.getSnapshot().roomState) {
-            return;
-        }
-        await this.controller.pushScreen(MainMenuScreenType.MapSelection, {
-            lobbyType: LobbyType.MultiplayerHost,
-            gameOpts: this.pregameController.getGameOpts(),
-            usedSlots: () => this.pregameController.getUsedSlots(),
+    private async enterRoomScreen(): Promise<void> {
+        this.ensureRoomScreenRegistered();
+        await this.controller.pushScreen(MainMenuScreenType.OnlineRoom, {
+            meshSession: this.meshSession,
+            roomSession: this.roomSession,
+            onlineSession: this.onlineSession,
+            pregameController: this.pregameController,
+            chatHistory: this.chatHistory,
         });
     }
 
-    private async handleLeaveRoom(): Promise<void> {
-        this.roomSession.leaveRoom();
-        this.onlineSession.leaveRoom();
-        this.meshSession.reset();
-        this.chatHistory.reset();
-        this.pregameController = this.createPregameController();
-        this.resetNonce += 1;
-        this.refreshSidebarButtons();
-        this.refreshSidebarMpText();
-        this.controller.setSidebarPreview();
-        this.refreshView();
+    private ensureRoomScreenRegistered(): void {
+        if (this.roomScreen) {
+            return;
+        }
+        this.roomScreen = new OnlineRoomScreen(
+            this.rootController,
+            this.strings,
+            this.jsxRenderer,
+            this.mapFileLoader,
+            this.gameModes,
+            this.messageBoxApi
+        );
+        this.roomScreen.setController(this.controller);
+        this.controller.addScreen(MainMenuScreenType.OnlineRoom, this.roomScreen);
     }
 
     private createHostSnapshot(): any {
@@ -367,142 +368,23 @@ export class OnlineSetupScreen extends MainMenuScreen {
         return snapshot;
     }
 
-    private async startOnlineGame(): Promise<void> {
-        const roomSnapshot = this.roomSession.getSnapshot();
-        if (!roomSnapshot.isHost) {
-            return;
-        }
-        if (!roomSnapshot.canStart) {
-            this.messageBoxApi.show('Some members have not finished connection or map sync.');
-            return;
-        }
-        this.roomSession.startGame({
-            screenType: MainMenuScreenType.OnlineSetup,
-            params: {},
-        });
-    }
-
     private refreshSidebarButtons(): void {
-        const meshSnapshot = this.meshSession.getSnapshot();
-        const roomSnapshot = this.roomSession.getSnapshot();
-        const inWaitingRoom = roomSnapshot.isRoomActive || meshSnapshot.isInRoom;
-
-        if (!inWaitingRoom) {
-            this.controller.setSidebarButtons([
-                {
-                    label: 'Create Room',
-                    tooltip: 'Set room name, player limit, and optional password',
-                    disabled: this.busy,
-                    onClick: () => {
-                        this.requestCreateRoomDialog();
-                    },
-                },
-                {
-                    label: 'Back',
-                    tooltip: 'Return to main menu',
-                    isBottom: true,
-                    onClick: () => this.controller.popScreen(),
-                },
-            ]);
-            return;
-        }
-
-        const selfMember = roomSnapshot.members.find((member) => member.isSelf);
-        const buttons: any[] = [];
-
-        buttons.push({
-            label: 'Start Game',
-            tooltip: roomSnapshot.isHost
-                ? roomSnapshot.canStart
-                    ? 'Broadcast game start descriptor to all members'
-                    : 'Wait for connection and map sync to complete'
-                : 'Only the host can start the game',
-            disabled: !roomSnapshot.isHost || !roomSnapshot.canStart,
-            onClick: () => {
-                void this.startOnlineGame();
-            },
-        });
-
-        if (roomSnapshot.isRoomActive && roomSnapshot.isHost) {
-            buttons.push({
-                label: 'Change Map',
-                tooltip: 'Reselect mode and map',
+        this.controller.setSidebarButtons([
+            {
+                label: 'Create Room',
+                tooltip: 'Set room name, player limit, and optional password',
+                disabled: this.busy,
                 onClick: () => {
-                    void this.handleChangeMap();
+                    this.openCreateRoomDialog();
                 },
-            });
-        }
-        else if (roomSnapshot.isRoomActive && selfMember) {
-            buttons.push({
-                label: selfMember.ready ? 'Unready' : 'Ready',
-                tooltip: 'Toggle your ready status',
-                onClick: () => {
-                    void this.roomSession.setReady(!selfMember.ready);
-                },
-            });
-        }
-
-        buttons.push({
-            label: 'Leave Room',
-            tooltip: 'Leave the current online room and return to the entry page',
-            isBottom: true,
-            onClick: () => {
-                void this.handleLeaveRoom();
             },
-        });
-
-        this.controller.setSidebarButtons(buttons, true);
-    }
-
-    private refreshSidebarMpText(): void {
-        const roomSnapshot = this.roomSession.getSnapshot();
-        if (roomSnapshot.roomState) {
-            const gameOpts = roomSnapshot.roomState.gameOpts;
-            this.controller.setSidebarMpContent({
-                text: this.strings.get(this.gameModes.getById(gameOpts.gameMode).label) + '\n\n' + gameOpts.mapTitle,
-                icon: gameOpts.mapOfficial ? 'gt18.pcx' : 'settings.png',
-                tooltip: gameOpts.mapOfficial ? 'This room uses an official map' : 'This room uses a custom map',
-            });
-            return;
-        }
-        this.controller.setSidebarMpContent({
-            text: '',
-        });
-    }
-
-    private async refreshSidebarPreview(): Promise<void> {
-        const roomSnapshot = this.roomSession.getSnapshot();
-        const roomState = roomSnapshot.roomState;
-        if (!roomState) {
-            this.controller.toggleSidebarPreview(false);
-            this.controller.setSidebarPreview();
-            return;
-        }
-
-        const requestId = ++this.previewRequestId;
-        try {
-            let mapFile = this.roomSession.getResolvedCustomMapFile() ?? this.pregameController.getCurrentMapFile();
-            if (!mapFile) {
-                mapFile = await this.mapFileLoader.load(roomState.gameOpts.mapName);
-            }
-            if (requestId !== this.previewRequestId) {
-                return;
-            }
-            const preview = new MapPreviewRenderer(this.strings).render(
-                new MapFile(mapFile),
-                roomSnapshot.isHost ? LobbyType.MultiplayerHost : LobbyType.MultiplayerGuest,
-                this.controller.getSidebarPreviewSize()
-            );
-            this.controller.toggleSidebarPreview(true);
-            this.controller.setSidebarPreview(preview);
-        }
-        catch (error) {
-            if (requestId !== this.previewRequestId) {
-                return;
-            }
-            console.warn('[OnlineSetupScreen] Failed to refresh sidebar preview', error);
-            this.controller.setSidebarPreview();
-        }
+            {
+                label: 'Back',
+                tooltip: 'Return to main menu',
+                isBottom: true,
+                onClick: () => this.controller.popScreen(),
+            },
+        ]);
     }
 
     private persistOnlinePlayerName(name: string): void {

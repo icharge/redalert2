@@ -174,13 +174,20 @@ export class LanSetupScreen extends MainMenuScreen {
         });
     };
 
+    private handleKicked = (entry: { reason: string }) => {
+        void this.handleLeaveRoom();
+        this.messageBoxApi.show(`You were removed from the room by the host (${entry.reason}).`, 'OK');
+    };
+
     private subscribeRoomEvents(): void {
         this.roomSession.onSnapshotChange.unsubscribe(this.handleRoomSnapshot);
         this.meshSession.onSnapshotChange.unsubscribe(this.handleMeshSnapshot);
         this.roomSession.onLaunch.unsubscribe(this.handleLaunch);
+        this.roomSession.onKicked.unsubscribe(this.handleKicked);
         this.roomSession.onSnapshotChange.subscribe(this.handleRoomSnapshot);
         this.meshSession.onSnapshotChange.subscribe(this.handleMeshSnapshot);
         this.roomSession.onLaunch.subscribe(this.handleLaunch);
+        this.roomSession.onKicked.subscribe(this.handleKicked);
     }
 
     private createPregameController(): PregameController {

@@ -78,9 +78,11 @@ export interface LanRoomMemberSnapshot {
     isSelf: boolean;
     isHost: boolean;
     isConnected: boolean;
+    isReconnecting: boolean;
     slotIndex?: number;
     ready: boolean;
     mapTransfer: LanMapTransferPeerState;
+    ping?: number;
 }
 
 export interface LanRoomSnapshot {
@@ -95,6 +97,7 @@ export interface LanRoomSnapshot {
     canInvite: boolean;
     canStart: boolean;
     launchDescriptor?: LanLaunchDescriptor;
+    countdown?: { endsAt: number };
 }
 
 type LanRoomMessage =
@@ -146,6 +149,18 @@ type LanRoomMessage =
     | {
         type: 'host-handover';
         hostPeerId: string;
+    }
+    | {
+        type: 'kicked';
+        reason: string;
+    }
+    | {
+        type: 'start-countdown';
+        endsAt: number;
+    }
+    | {
+        type: 'cancel-countdown';
+        reason: string;
     };
 
 interface IncomingMapTransfer {
@@ -289,10 +304,14 @@ export class LanRoomSession {
     private lastMeshSnapshot: LanMeshSnapshot;
     private launchDescriptor?: LanLaunchDescriptor;
     private disposed = false;
+    private countdown?: { endsAt: number };
+    private countdownReturnRoute?: { screenType: number; params?: any };
+    private countdownTimeoutId?: ReturnType<typeof setTimeout>;
 
     public readonly onSnapshotChange = new EventDispatcher<this, LanRoomSnapshot>();
     public readonly onLog = new EventDispatcher<this, { level: 'info' | 'warn' | 'error'; text: string; timestamp: number }>();
     public readonly onLaunch = new EventDispatcher<this, LanLaunchDescriptor>();
+    public readonly onKicked = new EventDispatcher<this, { reason: string }>();
 
     constructor(
         private readonly meshSession: LanMeshSession,
@@ -313,6 +332,9 @@ export class LanRoomSession {
             return;
         }
         this.disposed = true;
+        if (this.countdownTimeoutId !== undefined) {
+            clearTimeout(this.countdownTimeoutId);
+        }
         this.meshSession.onSnapshotChange.unsubscribe(this.handleMeshSnapshot);
         this.meshSession.onAppMessage.unsubscribe(this.handleAppMessage);
     }
@@ -361,6 +383,14 @@ export class LanRoomSession {
         this.currentCustomMapFile = snapshot.gameOpts.mapOfficial || !snapshot.currentMapFile
             ? undefined
             : VirtualFile.fromBytes(snapshot.currentMapFile.getBytes(), snapshot.gameOpts.mapName);
+        // Changing pregame settings invalidates everyone's prior ready state
+        // (except the host, who has no ready toggle) so canStart() re-requires
+        // everyone to confirm the new settings before the host can start.
+        for (const peerId of Object.keys(this.roomState.readyStateByPeerId)) {
+            if (peerId !== this.roomState.hostPeerId) {
+                this.roomState.readyStateByPeerId[peerId] = false;
+            }
+        }
         this.reconcileRoomStateWithMesh();
         this.broadcastStateSync();
         this.scheduleCustomMapTransfers();
@@ -374,6 +404,7 @@ export class LanRoomSession {
         }
         if (this.isHost()) {
             this.roomState.readyStateByPeerId[self.id] = ready;
+            this.maybeAutoCancelCountdown('A player is no longer ready');
             this.broadcastStateSync();
             this.dispatchSnapshot();
             return;
@@ -398,8 +429,17 @@ export class LanRoomSession {
         } satisfies LanRoomMessage);
     }
 
-    leaveRoom(): void {
-        if (this.roomState && this.isHost()) {
+    /**
+     * @param options.autoMigrateHost When the leaving peer is the host,
+     * whether to automatically hand off to the next member (LAN's existing
+     * behavior, kept as the default). Online Play passes `false` — a host
+     * leaving there closes the room outright (server broadcasts 'host-lost'
+     * and disconnects everyone) unless they used transferHost() first, so an
+     * automatic mesh-level handover would just be a confusing moment where a
+     * guest briefly looks like the new host right before getting kicked.
+     */
+    leaveRoom(options?: { autoMigrateHost?: boolean }): void {
+        if (this.roomState && this.isHost() && options?.autoMigrateHost !== false) {
             const nextHostPeerId = this.findNextHostPeerId(this.roomState.hostPeerId);
             if (nextHostPeerId) {
                 this.meshSession.broadcastAppMessage({
@@ -408,11 +448,40 @@ export class LanRoomSession {
                 } satisfies LanRoomMessage);
             }
         }
+        this.clearCountdown();
         this.roomState = undefined;
         this.currentCustomMapFile = undefined;
         this.incomingTransfers.clear();
         this.launchDescriptor = undefined;
         this.dispatchSnapshot();
+    }
+
+    /**
+     * Host-only: explicitly hands ownership to a currently-connected member,
+     * while staying in the room yourself (unlike leaveRoom()'s handover,
+     * which only happens because you're departing). reconcileRoomStateWithMesh()
+     * moves the new host into slot 0 as part of its normal reconciliation.
+     */
+    transferHost(newHostPeerId: string): void {
+        if (!this.roomState || !this.isHost() || newHostPeerId === this.roomState.hostPeerId) {
+            return;
+        }
+        if (!this.lastMeshSnapshot.members.some((member) => member.id === newHostPeerId && member.status === 'connected')) {
+            return;
+        }
+        this.roomState.hostPeerId = newHostPeerId;
+        this.reconcileRoomStateWithMesh();
+        this.broadcastStateSync();
+        this.dispatchSnapshot();
+    }
+
+    private clearCountdown(): void {
+        if (this.countdownTimeoutId !== undefined) {
+            clearTimeout(this.countdownTimeoutId);
+            this.countdownTimeoutId = undefined;
+        }
+        this.countdown = undefined;
+        this.countdownReturnRoute = undefined;
     }
 
     startGame(returnRoute: { screenType: number; params?: any }): LanLaunchDescriptor {
@@ -446,9 +515,75 @@ export class LanRoomSession {
         return descriptor;
     }
 
+    /**
+     * Host-only: begins a cancellable countdown instead of launching
+     * immediately. Broadcasts the countdown so every member can render it,
+     * and auto-cancels (see {@link maybeAutoCancelCountdown}) if the room
+     * stops satisfying canStart() before it elapses (a member leaves,
+     * un-readies, etc).
+     */
+    startGameCountdown(returnRoute: { screenType: number; params?: any }, seconds = 5): void {
+        if (!this.roomState || !this.isHost()) {
+            throw new Error('Only the host can start the game.');
+        }
+        if (!this.canStart()) {
+            throw new Error('The room cannot start the game yet.');
+        }
+        this.clearCountdown();
+        const endsAt = Date.now() + seconds * 1000;
+        this.countdown = { endsAt };
+        this.countdownReturnRoute = returnRoute;
+        this.countdownTimeoutId = setTimeout(() => this.finalizeCountdown(), seconds * 1000);
+        this.meshSession.broadcastAppMessage({
+            type: 'start-countdown',
+            endsAt,
+        } satisfies LanRoomMessage);
+        this.log('info', `Starting the game in ${seconds} seconds...`);
+        this.dispatchSnapshot();
+    }
+
+    /** Host-only: cancels an in-progress countdown, if any. */
+    cancelCountdown(reason: string): void {
+        if (!this.countdown || !this.isHost()) {
+            return;
+        }
+        this.clearCountdown();
+        this.meshSession.broadcastAppMessage({
+            type: 'cancel-countdown',
+            reason,
+        } satisfies LanRoomMessage);
+        this.log('info', `Countdown cancelled: ${reason}`);
+        this.dispatchSnapshot();
+    }
+
+    private finalizeCountdown(): void {
+        if (!this.countdown || !this.countdownReturnRoute) {
+            return;
+        }
+        const returnRoute = this.countdownReturnRoute;
+        this.countdown = undefined;
+        this.countdownReturnRoute = undefined;
+        this.countdownTimeoutId = undefined;
+        try {
+            this.startGame(returnRoute);
+        }
+        catch (error) {
+            this.log('warn', `Failed to start the game after the countdown: ${(error as Error).message}`);
+            this.dispatchSnapshot();
+        }
+    }
+
+    /** Host-only: cancels a live countdown if the room no longer satisfies canStart(). */
+    private maybeAutoCancelCountdown(reason: string): void {
+        if (this.countdown && this.isHost() && !this.canStart()) {
+            this.cancelCountdown(reason);
+        }
+    }
+
     private handleMeshSnapshot(snapshot: LanMeshSnapshot): void {
         this.lastMeshSnapshot = snapshot;
         if (!snapshot.isInRoom) {
+            this.clearCountdown();
             this.roomState = undefined;
             this.currentCustomMapFile = undefined;
             this.incomingTransfers.clear();
@@ -508,6 +643,15 @@ export class LanRoomSession {
             case 'host-handover':
                 this.handleHostHandover(message);
                 return;
+            case 'kicked':
+                this.handleKicked(message);
+                return;
+            case 'start-countdown':
+                this.handleStartCountdown(message);
+                return;
+            case 'cancel-countdown':
+                this.handleCancelCountdown(message);
+                return;
             default:
                 return;
         }
@@ -554,6 +698,7 @@ export class LanRoomSession {
         human.colorId = message.colorId;
         human.startPos = message.startPos;
         human.teamId = message.teamId;
+        this.roomState.readyStateByPeerId[from.id] = false;
         this.broadcastStateSync();
         this.dispatchSnapshot();
     }
@@ -563,6 +708,7 @@ export class LanRoomSession {
             return;
         }
         this.roomState.readyStateByPeerId[from.id] = message.ready;
+        this.maybeAutoCancelCountdown('A player is no longer ready');
         this.broadcastStateSync();
         this.dispatchSnapshot();
     }
@@ -668,6 +814,27 @@ export class LanRoomSession {
         this.dispatchSnapshot();
     }
 
+    private handleStartCountdown(message: Extract<LanRoomMessage, { type: 'start-countdown' }>): void {
+        this.countdown = { endsAt: message.endsAt };
+        this.dispatchSnapshot();
+    }
+
+    private handleCancelCountdown(message: Extract<LanRoomMessage, { type: 'cancel-countdown' }>): void {
+        this.clearCountdown();
+        this.log('info', `Countdown cancelled: ${message.reason}`);
+        this.dispatchSnapshot();
+    }
+
+    private handleKicked(message: Extract<LanRoomMessage, { type: 'kicked' }>): void {
+        this.clearCountdown();
+        this.roomState = undefined;
+        this.currentCustomMapFile = undefined;
+        this.incomingTransfers.clear();
+        this.launchDescriptor = undefined;
+        this.onKicked.dispatch(this, { reason: message.reason });
+        this.dispatchSnapshot();
+    }
+
     private reconcileRoomStateWithMesh(): void {
         if (!this.roomState) {
             return;
@@ -705,12 +872,14 @@ export class LanRoomSession {
         });
         this.roomState.readyStateByPeerId = readyStateByPeerId;
         this.roomState.mapTransferStateByPeerId = mapTransferStateByPeerId;
-        this.syncHumanAssignments(activeMembers);
+        const evictedPeerIds = this.syncHumanAssignments(activeMembers);
+        evictedPeerIds.forEach((peerId) => this.meshSession.kickMember(peerId, 'Removed by host'));
+        this.maybeAutoCancelCountdown('A player left or joined the room');
     }
 
-    private syncHumanAssignments(activeMembers: Array<{ id: string; name: string }>): void {
+    private syncHumanAssignments(activeMembers: Array<{ id: string; name: string }>): string[] {
         if (!this.roomState) {
-            return;
+            return [];
         }
         const state = this.roomState;
         const activeMemberMap = new Map(activeMembers.map((member) => [member.id, member]));
@@ -730,6 +899,30 @@ export class LanRoomSession {
         const nextAssignments: LanHumanAssignment[] = [];
         const takenSlots = new Set<number>();
         const visibleSlots = this.computeVisibleSlots(state);
+        const evictedPeerIds: string[] = [];
+
+        // The host always occupies slot 0. If the host peer's previous slot
+        // wasn't 0 (a migration just happened), swap them directly with
+        // whoever previously held slot 0 instead of letting the general
+        // slot-finder below place the displaced occupant — that finder
+        // prefers genuinely never-used "Open" slots over one that was *just*
+        // vacated by this exact swap, so it would skip right past it and
+        // strand the displaced player in some unrelated later slot. A no-op
+        // in the common case since the host is already in slot 0 from
+        // startHosting() onward. Several things assume slot 0 is the host
+        // (e.g. computeVisibleSlots reads gameOpts.humanPlayers[0] for the
+        // observer check).
+        const slotOverrides = new Map<string, number>();
+        if (activeMemberMap.has(state.hostPeerId)) {
+            const hostPreviousAssignment = previousAssignments.find((candidate) => candidate.peerId === state.hostPeerId);
+            if (hostPreviousAssignment && hostPreviousAssignment.slotIndex !== 0) {
+                slotOverrides.set(state.hostPeerId, 0);
+                const previousSlot0Occupant = previousAssignments.find((candidate) => candidate.slotIndex === 0);
+                if (previousSlot0Occupant && activeMemberMap.has(previousSlot0Occupant.peerId)) {
+                    slotOverrides.set(previousSlot0Occupant.peerId, hostPreviousAssignment.slotIndex);
+                }
+            }
+        }
 
         state.memberOrder.forEach((peerId) => {
             const member = activeMemberMap.get(peerId);
@@ -737,7 +930,19 @@ export class LanRoomSession {
                 return;
             }
             const previousAssignment = previousAssignments.find((candidate) => candidate.peerId === peerId);
-            let slotIndex = previousAssignment?.slotIndex;
+            // If the host just set this member's previous (still in-range)
+            // slot to something other than Player, that's an explicit
+            // eviction — remove the member instead of silently reshuffling
+            // them into another slot, which would otherwise undo the host's
+            // Closed/Open selection on the very next reconcile.
+            if (previousAssignment
+                && previousAssignment.slotIndex >= 0
+                && previousAssignment.slotIndex < visibleSlots
+                && state.slotsInfo[previousAssignment.slotIndex]?.type !== NetSlotType.Player) {
+                evictedPeerIds.push(peerId);
+                return;
+            }
+            let slotIndex = slotOverrides.get(peerId) ?? previousAssignment?.slotIndex;
             if (slotIndex === undefined || slotIndex < 0 || slotIndex >= visibleSlots || takenSlots.has(slotIndex)) {
                 slotIndex = this.findNextAssignableSlot(state, takenSlots, visibleSlots, departedHumanSlots);
             }
@@ -792,6 +997,7 @@ export class LanRoomSession {
         state.gameOpts.humanPlayers = nextHumans;
         state.gameOpts.aiPlayers = nextAiPlayers;
         state.slotsInfo = nextSlotsInfo;
+        return evictedPeerIds;
     }
 
     private computeVisibleSlots(state: LanRoomState): number {
@@ -967,6 +1173,10 @@ export class LanRoomSession {
         if (connectedMembers.length !== this.lastMeshSnapshot.members.length) {
             return false;
         }
+        const nonHostAssignments = this.roomState.humanAssignments.filter((assignment) => assignment.peerId !== this.roomState!.hostPeerId);
+        if (!nonHostAssignments.every((assignment) => this.roomState!.readyStateByPeerId[assignment.peerId])) {
+            return false;
+        }
         if (!this.roomState.gameOpts.mapOfficial) {
             return this.lastMeshSnapshot.members.every((member) => this.roomState!.mapTransferStateByPeerId[member.id]?.status === 'complete');
         }
@@ -1002,9 +1212,11 @@ export class LanRoomSession {
                 isSelf: member.isSelf,
                 isHost: hostPeerId === member.id,
                 isConnected: member.isSelf || member.status === 'connected',
+                isReconnecting: member.status === 'reconnecting',
                 slotIndex: assignment?.slotIndex,
                 ready: roomState?.readyStateByPeerId[member.id] ?? false,
                 mapTransfer: roomState?.mapTransferStateByPeerId[member.id] ?? createTransferState('idle'),
+                ping: member.ping,
             };
         });
 
@@ -1020,6 +1232,7 @@ export class LanRoomSession {
             canInvite: this.canInvite(),
             canStart: this.canStart(),
             launchDescriptor: this.launchDescriptor,
+            countdown: this.countdown,
         };
     }
 

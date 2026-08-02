@@ -85,7 +85,8 @@ interface ActiveQrPayload {
 export interface LanMemberSnapshot extends LanPeerIdentity {
     isSelf: boolean;
     isDirect: boolean;
-    status: 'self' | 'known' | 'connected' | 'connecting';
+    status: 'self' | 'known' | 'connected' | 'connecting' | 'reconnecting';
+    ping?: number;
 }
 
 export interface LanMeshSnapshot {
@@ -120,6 +121,12 @@ export interface LanMeshAppMessage {
 }
 
 const ICE_GATHER_TIMEOUT_MILLIS = 10000;
+// If no new candidate has arrived for this long (and at least one candidate
+// exists), assume gathering has effectively stalled (e.g. an unreachable STUN
+// server) and proceed with what we have instead of waiting out the full
+// ICE_GATHER_TIMEOUT_MILLIS ceiling.
+const ICE_GATHER_QUIET_MILLIS = 500;
+const PING_POLL_INTERVAL_MILLIS = 2000;
 
 function generateId(): string {
     if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -146,24 +153,86 @@ function createPeerConnection(iceServers: RTCIceServer[]): RTCPeerConnection {
 }
 
 export class LanMeshSession {
-    private readonly self: LanPeerIdentity = {
-        id: generateId(),
-        name: `Player-${generateShortCode()}`,
-    };
+    private readonly self: LanPeerIdentity;
     private roomId?: string;
     private readonly members = new Map<string, LanPeerIdentity>();
     private readonly linksByKey = new Map<string, LinkContext>();
     private readonly directLinks = new Map<string, LinkContext>();
     private pendingInvite?: PendingInvite;
     private activeQrPayload?: ActiveQrPayload;
+    private readonly pingByPeerId = new Map<string, number>();
+    private readonly pendingRemovals = new Map<string, ReturnType<typeof setTimeout>>();
 
     public readonly onSnapshotChange = new EventDispatcher<this, LanMeshSnapshot>();
     public readonly onLog = new EventDispatcher<this, LanMeshLogEntry>();
     public readonly onChat = new EventDispatcher<this, LanMeshChatEntry>();
     public readonly onAppMessage = new EventDispatcher<this, LanMeshAppMessage>();
 
-    constructor(private iceServers: RTCIceServer[] = []) {
+    /**
+     * @param selfId Stable peer id to use instead of generating a fresh one.
+     * Additive-only: LAN play never passes this and keeps its existing
+     * ephemeral-per-session identity. Online Play passes a persisted id
+     * (see LocalPrefs.OnlinePeerId) so a reconnecting client can be matched
+     * back to its previous slot/host status.
+     * @param linkDropGraceMillis When a direct link drops involuntarily
+     * (ICE 'disconnected'/'failed', not an explicit close), how long to keep
+     * the peer registered as 'reconnecting' before actually removing them,
+     * giving a fresh offer/answer time to land. 0 (default) preserves LAN's
+     * existing immediate-removal behavior; Online Play passes a grace window
+     * matching the server's own reconnection grace (see MatchmakingRoom).
+     */
+    constructor(private iceServers: RTCIceServer[] = [], selfId?: string, private readonly linkDropGraceMillis = 0) {
+        this.self = {
+            id: selfId ?? generateId(),
+            name: `Player-${generateShortCode()}`,
+        };
         this.members.set(this.self.id, this.self);
+        if (typeof setInterval !== 'undefined') {
+            setInterval(() => void this.pollConnectionStats(), PING_POLL_INTERVAL_MILLIS);
+        }
+    }
+
+    /**
+     * Periodically samples RTT for every connected direct link via
+     * RTCPeerConnection.getStats(), so the lobby UI's ping indicator has real
+     * data instead of always rendering blank.
+     */
+    private async pollConnectionStats(): Promise<void> {
+        const connectedLinks = Array.from(this.directLinks.entries()).filter(([, context]) => context.status === 'connected');
+        if (!connectedLinks.length) {
+            return;
+        }
+        let changed = false;
+        await Promise.all(connectedLinks.map(async ([peerId, context]) => {
+            let rtt: number | undefined;
+            try {
+                const stats = await context.pc.getStats();
+                stats.forEach((report) => {
+                    if (report.type === 'candidate-pair' && report.state === 'succeeded' && typeof report.currentRoundTripTime === 'number') {
+                        if (report.nominated || rtt === undefined) {
+                            rtt = report.currentRoundTripTime;
+                        }
+                    }
+                });
+            }
+            catch {
+                return;
+            }
+            const pingMillis = rtt === undefined ? undefined : Math.round(rtt * 1000);
+            if (pingMillis === undefined) {
+                if (this.pingByPeerId.delete(peerId)) {
+                    changed = true;
+                }
+                return;
+            }
+            if (this.pingByPeerId.get(peerId) !== pingMillis) {
+                this.pingByPeerId.set(peerId, pingMillis);
+                changed = true;
+            }
+        }));
+        if (changed) {
+            this.dispatchSnapshot();
+        }
     }
 
     /**
@@ -331,6 +400,27 @@ export class LanMeshSession {
     }
 
     /**
+     * Forcibly removes a peer at the host's request: best-effort notifies
+     * them (so their client can show why they were disconnected and leave
+     * cleanly) before tearing down the local link/member, mirroring an
+     * ordinary disconnect.
+     */
+    kickMember(peerId: string, reason: string): void {
+        if (peerId === this.self.id || !this.members.has(peerId)) {
+            return;
+        }
+        if (this.directLinks.has(peerId)) {
+            try {
+                this.sendAppMessage(peerId, { type: 'kicked', reason });
+            }
+            catch {
+                // Best effort — the peer may already be gone.
+            }
+        }
+        this.removePeer(peerId, 'left');
+    }
+
+    /**
      * Creates an outgoing offer for a peer known via an external signaling
      * channel (no QR payload involved). Caller is responsible for relaying
      * the returned description to the peer and feeding back the answer via
@@ -404,6 +494,8 @@ export class LanMeshSession {
         this.members.clear();
         this.members.set(this.self.id, { ...this.self });
         this.activeQrPayload = undefined;
+        this.pendingRemovals.forEach((timeoutId) => clearTimeout(timeoutId));
+        this.pendingRemovals.clear();
         this.dispatchSnapshot();
     }
 
@@ -430,10 +522,11 @@ export class LanMeshSession {
                     status: member.id === this.self.id
                         ? 'self'
                         : !directLink
-                            ? 'known'
+                            ? this.pendingRemovals.has(member.id) ? 'reconnecting' : 'known'
                             : directLink.status === 'connected'
                                 ? 'connected'
                                 : 'connecting',
+                    ping: member.id === this.self.id ? 0 : this.pingByPeerId.get(member.id),
                 } satisfies LanMemberSnapshot;
             })
             .sort((left, right) => {
@@ -538,6 +631,7 @@ export class LanMeshSession {
             context.status = 'connected';
             if (context.peer) {
                 this.members.set(context.peer.id, { ...context.peer });
+                this.cancelPendingRemoval(context.peer.id);
             }
             this.handleLinkOpened(context);
             this.dispatchSnapshot();
@@ -673,7 +767,12 @@ export class LanMeshSession {
 
         if (context.peer) {
             this.directLinks.delete(context.peer.id);
-            if (this.members.delete(context.peer.id)) {
+            this.pingByPeerId.delete(context.peer.id);
+            if (this.linkDropGraceMillis > 0 && reason === 'disconnect') {
+                this.log('warn', `${context.peer.name} disconnected; waiting up to ${Math.round(this.linkDropGraceMillis / 1000)}s for them to reconnect.`);
+                this.schedulePendingRemoval(context.peer.id, context.peer.name);
+            }
+            else if (this.members.delete(context.peer.id)) {
                 this.log(reason === 'left' ? 'info' : 'warn', `${context.peer.name} left the room.`);
             }
         }
@@ -681,6 +780,26 @@ export class LanMeshSession {
         this.disposeLink(context);
         this.broadcastRoomSync();
         this.dispatchSnapshot();
+    }
+
+    private schedulePendingRemoval(peerId: string, name: string): void {
+        this.cancelPendingRemoval(peerId);
+        const timeoutId = setTimeout(() => {
+            this.pendingRemovals.delete(peerId);
+            if (this.members.delete(peerId)) {
+                this.log('warn', `${name} did not reconnect in time and was removed.`);
+                this.dispatchSnapshot();
+            }
+        }, this.linkDropGraceMillis);
+        this.pendingRemovals.set(peerId, timeoutId);
+    }
+
+    private cancelPendingRemoval(peerId: string): void {
+        const timeoutId = this.pendingRemovals.get(peerId);
+        if (timeoutId !== undefined) {
+            clearTimeout(timeoutId);
+            this.pendingRemovals.delete(peerId);
+        }
     }
 
     private handleChannelMessage(context: LinkContext, data: string | ArrayBuffer | Blob): void {
@@ -829,6 +948,7 @@ export class LanMeshSession {
     }
 
     private removePeer(peerId: string, reason: 'left' | 'disconnect'): void {
+        this.cancelPendingRemoval(peerId);
         const member = this.members.get(peerId);
         this.members.delete(peerId);
         const link = this.directLinks.get(peerId);
@@ -900,25 +1020,58 @@ export class LanMeshSession {
             return;
         }
 
-        await new Promise<void>((resolve, reject) => {
-            const timeoutId = window.setTimeout(() => {
+        await new Promise<void>((resolve) => {
+            let candidateCount = 0;
+            let quietId: number | undefined;
+
+            const finish = (reason: 'complete' | 'quiet' | 'timeout') => {
                 cleanup();
-                reject(new Error('ICE candidate gathering timed out; please try again later.'));
-            }, ICE_GATHER_TIMEOUT_MILLIS);
+                if (reason !== 'complete') {
+                    // STUN/TURN gathering can stall (unreachable server, restrictive
+                    // network) without ever reaching 'complete'. Proceed with
+                    // whatever candidates (typically at least host candidates) were
+                    // gathered so far rather than aborting the connection outright —
+                    // those are often sufficient for same-machine/same-LAN peers.
+                    this.log('warn', `ICE candidate gathering ${reason === 'quiet' ? 'stalled' : 'timed out'}; proceeding with the candidates gathered so far.`);
+                }
+                resolve();
+            };
+
+            const timeoutId = window.setTimeout(() => finish('timeout'), ICE_GATHER_TIMEOUT_MILLIS);
+
+            const armQuietTimer = () => {
+                if (quietId !== undefined) {
+                    window.clearTimeout(quietId);
+                }
+                if (candidateCount > 0) {
+                    quietId = window.setTimeout(() => finish('quiet'), ICE_GATHER_QUIET_MILLIS);
+                }
+            };
+
+            const handleCandidate = (event: RTCPeerConnectionIceEvent) => {
+                if (event.candidate) {
+                    candidateCount += 1;
+                    armQuietTimer();
+                }
+            };
 
             const handleChange = () => {
                 if (pc.iceGatheringState === 'complete') {
-                    cleanup();
-                    resolve();
+                    finish('complete');
                 }
             };
 
             const cleanup = () => {
                 clearTimeout(timeoutId);
+                if (quietId !== undefined) {
+                    window.clearTimeout(quietId);
+                }
                 pc.removeEventListener('icegatheringstatechange', handleChange);
+                pc.removeEventListener('icecandidate', handleCandidate as EventListener);
             };
 
             pc.addEventListener('icegatheringstatechange', handleChange);
+            pc.addEventListener('icecandidate', handleCandidate as EventListener);
         });
     }
 

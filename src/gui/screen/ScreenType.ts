@@ -26,5 +26,6 @@ export enum MainMenuScreenType {
     OptionsStorage = 19,
     TestEntry = 20,
     LanSetup = 21,
-    OnlineSetup = 22
+    OnlineSetup = 22,
+    OnlineRoom = 23
 }

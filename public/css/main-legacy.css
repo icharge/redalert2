@@ -884,6 +884,22 @@ input[type="range"]:focus {
     color: gray;
 }
 
+#ra2web-root .online-room-list-item.online-room-list-item-locked {
+    opacity: 0.55;
+}
+
+#ra2web-root .online-room-lock-icon {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    margin-right: 3px;
+    vertical-align: middle;
+}
+
+#ra2web-root .online-room-lock-icon img {
+    vertical-align: middle;
+}
+
 #ra2web-root .gamebrowser-wrapper {
     padding: 16px;
     box-sizing: border-box;
@@ -1244,7 +1260,7 @@ input[type="range"]:focus {
 }
 
 #ra2web-root .lan-setup-form {
-    padding: 20px 34px 26px;
+    padding: 12px;
     box-sizing: border-box;
 }
 
@@ -1256,7 +1272,7 @@ input[type="range"]:focus {
 }
 
 #ra2web-root .lan-setup-form[data-lan-view="waiting"] {
-    padding: 18px 30px 22px;
+    /* padding: 18px 30px 22px; */
     height: 100%;
     min-height: 100%;
     display: flex;
@@ -1514,7 +1530,8 @@ input[type="range"]:focus {
 }
 
 #ra2web-root .lan-setup-form .lan-room-form-shell > .lobby-form .messages {
-    height: 54px;
+    /* height: 54px; */
+    height: 108px;
     margin-bottom: 6px;
 }
 
