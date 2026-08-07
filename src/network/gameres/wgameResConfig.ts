@@ -1,0 +1,1 @@
+export const GAME_RES_RETRY_DURATION_MILLIS = 300_000;

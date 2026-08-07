@@ -15,6 +15,8 @@ import { PaletteBasicMaterial } from '../../gfx/material/PaletteBasicMaterial';
 import { BatchedMesh, BatchMode } from '../../gfx/batch/BatchedMesh';
 import { HealthLevel } from '../../../game/gameobject/unit/HealthLevel';
 import { DebugLabel } from './unit/DebugLabel';
+import { UnitCastBarSprite } from './UnitCastBarSprite';
+import { SecureProgressSprite } from './SecureProgressSprite';
 import * as THREE from 'three';
 const HEALTH_BAR_OFFSET = -1;
 const CONTROL_GROUP_SIZE = { width: 8, height: 11 };
@@ -193,6 +195,8 @@ export class PipOverlay {
     private rootObj?: THREE.Object3D;
     private healthBar?: THREE.Object3D;
     private selectionBox?: THREE.Mesh;
+    private unitCastBarSprite?: UnitCastBarSprite;
+    private secureProgressSprite?: SecureProgressSprite;
     private pipsSprite?: THREE.Mesh;
     private controlGroupSprite?: THREE.Mesh;
     private primaryFactorySprite?: THREE.Mesh;
@@ -281,12 +285,23 @@ export class PipOverlay {
                     this.pipsSprite = occupationInfo;
                 }
                 this.lastPipsDataKey = this.gameObject.garrisonTrait?.units.length;
+                if ((this.gameObject as any).secureProgressTrait) {
+                    const secureProgressSprite = this.secureProgressSprite = new SecureProgressSprite(this.gameObject, this.camera, this.viewer, this.alliances, this.selectionModel);
+                    secureProgressSprite.create3DObject();
+                    rootObj.add(secureProgressSprite.get3DObject()!);
+                }
             }
             else {
                 const { healthBarWrapper, selectionBox } = this.createUnitHealthBar(this.gameObject);
                 this.healthBar = healthBarWrapper;
                 this.selectionBox = selectionBox;
                 rootObj.add(this.healthBar);
+                if ((this.gameObject as any).castProgressTrait) {
+                    const pipBrdImage = PipOverlay.pipBrdFile.getImage(1);
+                    const unitCastBarSprite = this.unitCastBarSprite = new UnitCastBarSprite((this.gameObject as any).castProgressTrait, this.camera, pipBrdImage.width - 2, -1, Math.floor(pipBrdImage.height / 2), this.healthBar.position.y);
+                    unitCastBarSprite.create3DObject();
+                    rootObj.add(unitCastBarSprite.get3DObject()!);
+                }
                 if (this.gameObject.art.isVoxel &&
                     (this.gameObject.rules.consideredAircraft || this.gameObject.isAircraft()) &&
                     !this.gameObject.rules.missileSpawn) {
@@ -815,6 +830,7 @@ export class PipOverlay {
             this.updateRallyPointLine(rallyPoint, this.rallyLine);
         }
         if (gameObject.isBuilding()) {
+            this.secureProgressSprite?.update(deltaTime);
             const repairState = !gameObject.autoRepairTrait?.isDisabled();
             if (this.lastRepairState !== repairState) {
                 this.lastRepairState = repairState;
@@ -822,6 +838,7 @@ export class PipOverlay {
             }
         }
         else {
+            this.unitCastBarSprite?.update(deltaTime);
             if (this.lastVeteranLevel !== gameObject.veteranLevel) {
                 this.lastVeteranLevel = gameObject.veteranLevel;
                 this.updateVeteranIndicatorSprite(gameObject);
@@ -1090,6 +1107,8 @@ export class PipOverlay {
     }
     dispose(): void {
         this.disposables.dispose();
+        this.unitCastBarSprite?.dispose();
+        this.secureProgressSprite?.dispose();
         this.repairWrench?.dispose();
         this.flyHelper?.dispose();
         this.behindAnim?.dispose();

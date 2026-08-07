@@ -38,6 +38,7 @@ import { GameLoader } from './gui/screen/game/GameLoader.js';
 import { Rules } from './game/rules/Rules.js';
 import { VxlGeometryPool } from './engine/renderable/builder/vxlGeometry/VxlGeometryPool.js';
 import { VxlGeometryCache } from './engine/gfx/geometry/VxlGeometryCache.js';
+import { WorkerHost } from './worker/workerHost.js';
 import { GameResConfig } from './engine/gameRes/GameResConfig.js';
 import { KeyBinds } from './gui/screen/game/worldInteraction/keyboard/KeyBinds.js';
 import { ClientApi } from './ClientApi.js';
@@ -73,7 +74,9 @@ export class Gui {
     private palettes: Map<string, Palette> = new Map();
     private animationId?: number;
     private lastTime: number = 0;
-    constructor(appVersion: string, strings: Strings, config: Config, viewport: BoxedVar<ViewportRect>, rootEl: HTMLElement, cdnResourceLoader?: any, gameResConfig?: GameResConfig, runtimeVars?: any, generalOptions?: GeneralOptions, fullScreen?: FullScreen) {
+    private appLocale: string;
+    private cfTurnstile?: any;
+    constructor(appVersion: string, strings: Strings, config: Config, viewport: BoxedVar<ViewportRect>, rootEl: HTMLElement, cdnResourceLoader?: any, gameResConfig?: GameResConfig, runtimeVars?: any, generalOptions?: GeneralOptions, fullScreen?: FullScreen, appLocale?: string, cfTurnstile?: any) {
         this.appVersion = appVersion;
         this.strings = strings;
         this.config = config;
@@ -85,6 +88,8 @@ export class Gui {
         this.runtimeVars = runtimeVars;
         this.generalOptions = generalOptions;
         this.fullScreen = fullScreen;
+        this.appLocale = appLocale ?? "en-US";
+        this.cfTurnstile = cfTurnstile;
     }
     async init(): Promise<void> {
         console.log('[Gui] Initializing GUI system');
@@ -305,6 +310,22 @@ export class Gui {
         const { TestEntryScreen } = await import('./gui/screen/mainMenu/main/TestEntryScreen.js');
         subScreens.set(MainMenuScreenType.TestEntry, TestEntryScreen);
         subScreens.set(MainMenuScreenType.LanSetup, LanSetupScreen);
+        const { LoginScreen } = await import('./gui/screen/mainMenu/login/LoginScreen.js');
+        subScreens.set(MainMenuScreenType.Login, LoginScreen);
+        const { NewAccountScreen } = await import('./gui/screen/mainMenu/newAccount/NewAccountScreen.js');
+        subScreens.set(MainMenuScreenType.NewAccount, NewAccountScreen);
+        const { QuickGameScreen } = await import('./gui/screen/mainMenu/quickGame/QuickGameScreen.js');
+        subScreens.set(MainMenuScreenType.QuickGame, QuickGameScreen);
+        const { LobbyScreen } = await import('./gui/screen/mainMenu/lobby/LobbyScreen.js');
+        subScreens.set(MainMenuScreenType.Lobby, LobbyScreen);
+        const { CustomGameScreen } = await import('./gui/screen/mainMenu/customGame/CustomGameScreen.js');
+        subScreens.set(MainMenuScreenType.CustomGame, CustomGameScreen);
+        const { LadderScreen } = await import('./gui/screen/mainMenu/ladder/LadderScreen.js');
+        subScreens.set(MainMenuScreenType.Ladder, LadderScreen);
+        const { RealmSelectionScreen } = await import('./gui/screen/mainMenu/realmSelection/RealmSelectionScreen.js');
+        subScreens.set(MainMenuScreenType.RealmSelection, RealmSelectionScreen);
+        const { NicknameSelectionScreen } = await import('./gui/screen/mainMenu/nicknameSelection/NicknameSelectionScreen.js');
+        subScreens.set(MainMenuScreenType.NicknameSelection, NicknameSelectionScreen);
         const { InfoAndCreditsScreen } = await import('./gui/screen/mainMenu/infoAndCredits/InfoAndCreditsScreen.js');
         const { CreditsScreen } = await import('./gui/screen/mainMenu/credits/CreditsScreen.js');
         subScreens.set(MainMenuScreenType.InfoAndCredits, InfoAndCreditsScreen);
@@ -334,7 +355,7 @@ export class Gui {
             const { ReplayStorageMemStorage } = await import('./gui/replay/ReplayStorageMemStorage.js');
             replayManager = new ReplayManager(new ReplayStorageMemStorage());
         }
-        const mainMenuRootScreen = new MainMenuRootScreen(subScreens, this.uiScene, this.strings, Engine.images, this.jsxRenderer, this.messageBoxApi, this.appVersion, this.config, videoSrc, this.sound, this.music, this.generalOptions, this.localPrefs, this.fullScreen, this.mixer, this.keyBinds, this.rootController);
+        const mainMenuRootScreen = new MainMenuRootScreen(subScreens, this.uiScene, this.strings, Engine.images, this.jsxRenderer, this.messageBoxApi, this.appVersion, this.config, videoSrc, this.sound, this.music, this.generalOptions, this.localPrefs, this.fullScreen, this.mixer, this.keyBinds, this.rootController, this.appLocale, this.cfTurnstile);
         (mainMenuRootScreen as any).replayManager = replayManager;
         this.rootController.addScreen(ScreenType.MainMenuRoot, mainMenuRootScreen);
         const { GameScreen } = await import('./gui/screen/game/GameScreen.js');
@@ -367,11 +388,12 @@ export class Gui {
         gameMenuSubScreens.set((await import('./gui/screen/game/gameMenu/ScreenType.js')).ScreenType.OptionsKeyboard, new (await import('./gui/screen/options/KeyboardScreen.js')).KeyboardScreen(this.strings, this.jsxRenderer!, this.keyBinds!));
         const sharedVxlGeometryPool = new VxlGeometryPool(new VxlGeometryCache(null, Engine.getActiveMod?.() ?? null), this.generalOptions!.graphics.models.value);
         const buildingImageDataCache = new Map();
-        const gameScreen = new GameScreen(undefined, undefined, undefined, undefined, undefined, this.appVersion, '', errorHandler, gameMenuSubScreens, loadingScreenApiFactory, undefined, undefined, this.config, this.strings, this.renderer, this.uiScene, this.runtimeVars || {}, this.messageBoxApi, this.toastApi, this.uiAnimationLoop, this.viewport, this.jsxRenderer, this.pointer, this.sound, this.music, this.mixer, this.keyBinds, this.generalOptions, this.localPrefs, undefined, undefined, replayManager, this.fullScreen, mapFileLoader, undefined, Engine.getMapList?.(), new GameLoader(this.appVersion, undefined, gameResLoader, gameResLoader, rules, gameModes, this.sound, (console as any), undefined, speedCheat, this.gameResConfig!, sharedVxlGeometryPool, buildingImageDataCache, (this as any).runtimeVars?.debugBotIndex, this.config.devMode ?? false), sharedVxlGeometryPool, buildingImageDataCache, mutedPlayers, tauntsEnabled, speedCheat, undefined, clientApi.battleControl);
+        const workerHost = new WorkerHost();
+        const gameScreen = new GameScreen(workerHost, undefined, undefined, undefined, undefined, this.appVersion, '', errorHandler, gameMenuSubScreens, loadingScreenApiFactory, undefined, undefined, this.config, this.strings, this.renderer, this.uiScene, this.runtimeVars || {}, this.messageBoxApi, this.toastApi, this.uiAnimationLoop, this.viewport, this.jsxRenderer, this.pointer, this.sound, this.music, this.mixer, this.keyBinds, this.generalOptions, this.localPrefs, undefined, undefined, replayManager, this.fullScreen, mapFileLoader, undefined, Engine.getMapList?.(), new GameLoader(this.appVersion, workerHost, gameResLoader, gameResLoader, rules, gameModes, this.sound, (console as any), undefined, speedCheat, this.gameResConfig!, sharedVxlGeometryPool, buildingImageDataCache, (this as any).runtimeVars?.debugBotIndex, this.config.devMode ?? false), sharedVxlGeometryPool, buildingImageDataCache, mutedPlayers, tauntsEnabled, speedCheat, undefined, clientApi.battleControl);
         (gameScreen as any).setController?.(this.rootController);
         this.rootController.addScreen(ScreenType.Game, gameScreen as any);
         const { ReplayScreen } = await import('./gui/screen/replay/ReplayScreen.js');
-        const replayGameLoader = new GameLoader(this.appVersion, undefined, gameResLoader, gameResLoader, rules, gameModes, this.sound, (console as any), undefined, speedCheat, this.gameResConfig!, sharedVxlGeometryPool, buildingImageDataCache, (this as any).runtimeVars?.debugBotIndex, this.config.devMode ?? false);
+        const replayGameLoader = new GameLoader(this.appVersion, workerHost, gameResLoader, gameResLoader, rules, gameModes, this.sound, (console as any), undefined, speedCheat, this.gameResConfig!, sharedVxlGeometryPool, buildingImageDataCache, (this as any).runtimeVars?.debugBotIndex, this.config.devMode ?? false);
         const replayScreen = new ReplayScreen(this.appVersion, '', errorHandler, gameMenuSubScreens, loadingScreenApiFactory, this.config as any, this.strings, this.renderer as any, this.uiScene as any, this.runtimeVars || {} as any, this.messageBoxApi as any, this.uiAnimationLoop as any, this.viewport as any, this.jsxRenderer as any, this.pointer as any, this.sound as any, this.music as any, this.keyBinds as any, this.generalOptions as any, undefined as any, this.fullScreen as any, mapFileLoader as any, replayGameLoader as any, sharedVxlGeometryPool as any, buildingImageDataCache as any, (params?: any) => {
             this.rootController!.goToScreen(ScreenType.MainMenuRoot, params);
         }, clientApi.battleControl);

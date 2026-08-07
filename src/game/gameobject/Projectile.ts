@@ -1,3 +1,4 @@
+import { SpecialWarheadType } from "@/game/SpecialWarheadType";
 import { GameObject } from './GameObject';
 import { ObjectType } from '@/engine/type/ObjectType';
 import { Weapon } from '@/game/Weapon';
@@ -725,7 +726,7 @@ export class Projectile extends GameObject {
                 player: this.fromPlayer,
                 weapon: weapon,
                 obj: this.fromObject,
-            }, this.isShrapnel, this.impactAnim, undefined);
+            }, this.isShrapnel ? SpecialWarheadType.Shrapnel : SpecialWarheadType.None, this.impactAnim, undefined);
         }
         if (warhead.rules.nukeMaker) {
             let nukeProjectile: Projectile;

@@ -38,6 +38,8 @@ export interface GameOpts {
     destroyableBridges: boolean;
     multiEngineer: boolean;
     noDogEngiKills: boolean;
+    instantCapture: boolean;
+    delayedOils: boolean;
     mapName: string;
     mapTitle: string;
     mapDigest: string;

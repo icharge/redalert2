@@ -1,3 +1,4 @@
+import React from "react";
 import { jsx } from "@/gui/jsx/jsx";
 import { WolError } from "@/network/WolError";
 import { LoginBox } from "@/gui/screen/mainMenu/login/LoginBox";
@@ -5,112 +6,88 @@ import { ScreenType } from "@/gui/screen/mainMenu/ScreenType";
 import { HtmlView } from "@/gui/jsx/HtmlView";
 import { Task } from "@puzzl/core/lib/async/Task";
 import { sleep } from "@puzzl/core/lib/async/sleep";
-import { StorageKey } from "LocalPrefs";
+import { ServerRegions, Region } from "@/network/ServerRegions";
+import { StorageKey, LocalPrefs } from "@/LocalPrefs";
 import { MainMenuScreen } from "@/gui/screen/mainMenu/MainMenuScreen";
-import { ServerPings } from "@/gui/screen/mainMenu/login/ServerPings";
 import { OperationCanceledError, CancellationToken } from "@puzzl/core/lib/async/cancellation";
 import { MainMenuRoute } from "@/gui/screen/mainMenu/MainMenuRoute";
-interface Region {
-    id: string;
-    wolUrl: string;
-    wladderUrl: string;
-    wgameresUrl: string;
-    mapTransferUrl: string;
-}
-interface ServerRegions {
-    load(regions: any[]): void;
-    isAvailable(regionId: string): boolean;
-    get(regionId: string): Region;
-    getAll(): Region[];
-    getFirstAvailable(): Region | undefined;
-    setSelectedRegion(regionId: string): void;
-}
-interface WolService {
-    loadServerList(url: string, cancellationToken?: CancellationToken): Promise<any[]>;
-    validateGameVersion(region: Region): Promise<void>;
-    isConnected(): boolean;
-    getConnection(): {
-        getCurrentUser(): string;
-    };
-    connectAndLogin(config: {
-        url: string;
-        user: string;
-        pass: string;
-    }, onQueue?: (status: {
-        position: number;
-        avgWaitSeconds: number;
-    }) => void): Promise<any[]>;
-    closeWolConnection(): void;
-}
-interface WladderService {
-    setUrl(url: string): void;
-}
-interface WgameresService {
-    setUrl(url: string): void;
-}
-interface MapTransferService {
-    setUrl(url: string): void;
-}
-interface MessageBoxApi {
-    show(message: string, buttonText?: string, onClose?: () => void): void;
-    destroy(): void;
-}
-interface ErrorHandler {
-    handle(error: any, message: string, onClose: () => void): void;
-}
-interface LocalPrefs {
-    getItem(key: string): string | undefined;
-    setItem(key: string, value: string): void;
-}
-interface RootController {
-    goToScreen(screenType: any, params: any): void;
-}
+import { NicknameClaimPrompt } from "@/gui/screen/mainMenu/login/NicknameClaimPrompt";
+import { DownloadError } from "@/network/HttpRequest";
+import { WolService } from "@/network/WolService";
+import { WLadderService } from "@/network/ladder/WLadderService";
+import { WGameResService } from "@/network/WGameResService";
+import { MapTransferService } from "@/network/MapTransferService";
+import { ErrorHandler } from "@/ErrorHandler";
+import { Strings } from "@/data/Strings";
+import { JsxRenderer } from "@/gui/jsx/JsxRenderer";
+import { MessageBoxApi } from "@/gui/component/MessageBoxApi";
+import { CfTurnstile } from "@/util/CfTurnstile";
+import { AuthProvidersConfig, AuthProvider } from "@/conf/AuthProvidersConfig";
+import { AuthPopupApi } from "@/gui/screen/mainMenu/login/AuthPopupApi";
+import { AuthService } from "@/network/AuthService";
+import { RealmService } from "@/network/RealmService";
+import { SessionService } from "@/network/SessionService";
+import { RealmSession } from "@/network/CreateRealmSessionResponse";
+import { NicknameClaim } from "@/network/ClaimNicknameResponse";
+
 interface LoginScreenParams {
-    clearCredentials?: boolean;
-    useCredentials?: {
-        regionId: string;
-        user: string;
-        pass: string;
-    };
-    forceUser?: string;
-    afterLogin: (messages: any[]) => MainMenuRoute | {
+    afterLogin: (messages: { text: string }[]) => MainMenuRoute | {
         screenType: any;
         params: any;
     };
+    forceRestoreSession?: boolean;
 }
+
 interface LoginBoxApi {
     submit(): void;
+    resetTurnstile(): void;
 }
-let savedCredentials: {
-    regionId: string;
-    user: string;
-    pass: string;
-} | undefined = undefined;
+
+interface NicknameClaimResponseWithError {
+    nickname?: string;
+    error?: string;
+}
+
+interface NicknameClaimPromptDismissal {
+    realmId: string;
+    nickname: string;
+    skippedAt: number;
+}
+
 export class LoginScreen extends MainMenuScreen {
+    static NICKNAME_CLAIM_PROMPT_DISMISSAL_MILLIS = 6048e5;
+
     private wolService: WolService;
-    private wladderService: WladderService;
-    private wgameresService: WgameresService;
+    private wladderService: WLadderService;
+    private wgameresService: WGameResService;
     private mapTransferService: MapTransferService;
-    private strings: any;
-    private jsxRenderer: any;
+    private strings: Strings;
+    private jsxRenderer: JsxRenderer;
     private messageBoxApi: MessageBoxApi;
-    private serverRegions: ServerRegions;
     private serversUrl: string;
     private breakingNewsUrl: string;
-    private wolLogger: any;
     private errorHandler: ErrorHandler;
     private localPrefs: LocalPrefs;
-    private rootController: RootController;
+    private rootController: any;
+    private devMode: boolean;
+    private cfTurnstile: CfTurnstile;
+    private legacyRegistrationEnabled: boolean;
+    private authProvidersConfig: AuthProvidersConfig;
+    private authPopupApi: AuthPopupApi;
+    private authService?: AuthService;
+    private realmService?: RealmService;
+    private sessionService: SessionService;
+    private serverRegions = new ServerRegions();
     private params!: LoginScreenParams;
-    private needsServerListRefresh: boolean = false;
     private selectedRegion?: Region;
-    private serverPings!: ServerPings;
     private loginBoxApi?: LoginBoxApi | null;
     private loginBox?: any;
     private isBusy: boolean = false;
     private formRendered: boolean = false;
+    private turnstileToken?: string;
     private serversUpdateTask?: Task<void>;
-    constructor(wolService: WolService, wladderService: WladderService, wgameresService: WgameresService, mapTransferService: MapTransferService, strings: any, jsxRenderer: any, messageBoxApi: MessageBoxApi, serverRegions: ServerRegions, serversUrl: string, breakingNewsUrl: string, wolLogger: any, errorHandler: ErrorHandler, localPrefs: LocalPrefs, rootController: RootController) {
+
+    constructor(wolService: WolService, wladderService: WLadderService, wgameresService: WGameResService, mapTransferService: MapTransferService, strings: Strings, jsxRenderer: JsxRenderer, messageBoxApi: MessageBoxApi, serversUrl: string, breakingNewsUrl: string, errorHandler: ErrorHandler, localPrefs: LocalPrefs, rootController: any, devMode: boolean, cfTurnstile: CfTurnstile, legacyRegistrationEnabled: boolean, authProvidersConfig: AuthProvidersConfig, authPopupApi: AuthPopupApi, authService: AuthService | undefined, realmService: RealmService | undefined, sessionService: SessionService) {
         super();
         this.wolService = wolService;
         this.wladderService = wladderService;
@@ -119,36 +96,164 @@ export class LoginScreen extends MainMenuScreen {
         this.strings = strings;
         this.jsxRenderer = jsxRenderer;
         this.messageBoxApi = messageBoxApi;
-        this.serverRegions = serverRegions;
         this.serversUrl = serversUrl;
         this.breakingNewsUrl = breakingNewsUrl;
-        this.wolLogger = wolLogger;
         this.errorHandler = errorHandler;
         this.localPrefs = localPrefs;
         this.rootController = rootController;
+        this.devMode = devMode;
+        this.cfTurnstile = cfTurnstile;
+        this.legacyRegistrationEnabled = legacyRegistrationEnabled;
+        this.authProvidersConfig = authProvidersConfig;
+        this.authPopupApi = authPopupApi;
+        this.authService = authService;
+        this.realmService = realmService;
+        this.sessionService = sessionService;
         this.title = this.strings.get("GUI:Login");
-        this.needsServerListRefresh = false;
-        this.handleLoginSubmit = async (username: string, password: string) => {
-            if (!this.isBusy && this.loginBoxApi && this.controller) {
-                this.isBusy = true;
+        this.handleLoginSubmit = async (username: string, password: string, turnstileToken?: string) => {
+            if (!this.isBusy && this.loginBoxApi && this.controller && (!this.cfTurnstile.isEnabledForLogin() || turnstileToken)) {
                 const region = this.selectedRegion;
-                if (region) {
+                if (region?.available) {
+                    this.isBusy = true;
                     await this.controller.hideSidebarButtons();
-                    await this.login(username, password, region.id);
+                    if (username.match(/^[A-Za-z0-9-_]+$/)) {
+                        const connectingTask = this.startLongConnectMsgTask();
+                        let realmSession: RealmSession;
+                        try {
+                            const loginResult = await this.wolService.login(region, username, password, turnstileToken);
+                            realmSession = {
+                                realmId: region.id,
+                                nickname: loginResult.user,
+                                sessionToken: loginResult.sessionToken,
+                            };
+                            this.sessionService.selectRealm(region);
+                            this.sessionService.setRealmSession(realmSession);
+                            if (loginResult.claimToken && this.authService && this.realmService && this.authProvidersConfig.getAll().length) {
+                                this.sessionService.setNicknameClaim({
+                                    realmId: region.id,
+                                    nickname: loginResult.user,
+                                    claimToken: loginResult.claimToken,
+                                });
+                            }
+                            else {
+                                this.sessionService.clearNicknameClaim();
+                            }
+                            connectingTask.cancel();
+                            this.messageBoxApi.destroy();
+                        }
+                        catch (error) {
+                            connectingTask.cancel();
+                            this.messageBoxApi.destroy();
+                            if (error instanceof WolError && error.code === WolError.Code.BadLogin) {
+                                this.handleLoginError(error.reason ?? this.strings.get("TXT_BADPASS"));
+                            }
+                            else if (error instanceof WolError && error.code === WolError.Code.TurnstileVerificationFailed) {
+                                this.handleLoginError(this.strings.get("TS:TurnstileFailed"));
+                            }
+                            else if (error instanceof WolError && error.code === WolError.Code.BannedFromServer) {
+                                this.handleLoginError(error.reason ?? this.strings.get("TS:AccountBanned"));
+                            }
+                            else {
+                                this.handleWolError(error, this.strings.get("TS:ConnectFailed"), {
+                                    fatal: false,
+                                    netError: true,
+                                });
+                            }
+                            return;
+                        }
+                        if (this.wolService.validateGameVersion(region)) {
+                            await this.offerNicknameClaim();
+                            await this.connect(region, realmSession);
+                        }
+                        else {
+                            this.handleLoginError(this.strings.get("TS:OutdatedClient"));
+                        }
+                    }
+                    else {
+                        this.handleBadPass();
+                    }
                 }
             }
         };
+        this.handleAuthProviderLogin = (provider: AuthProvider) => {
+            if (!this.authPopupApi.open(provider, this.handleAuthProviderComplete)) {
+                window.location.assign(this.authPopupApi.getLoginUrl(provider, window.location.href));
+            }
+        };
+        this.handleAuthProviderComplete = async () => {
+            if (!this.authService) {
+                throw new Error("Missing auth service");
+            }
+            try {
+                const session = await this.authService.getSession();
+                this.sessionService.setAccount(session.account!);
+                this.goToRealmSelection();
+            }
+            catch (error) {
+                const message = error instanceof DownloadError && error.statusCode === 401
+                    ? this.strings.get("TS:SessionInvalidOrExpired")
+                    : this.strings.get("TS:ConnectFailed");
+                this.errorHandler.handle(error, message, () => {});
+            }
+        };
     }
-    private handleLoginSubmit: (username: string, password: string) => Promise<void>;
+
+    private handleLoginSubmit: (username: string, password: string, turnstileToken?: string) => Promise<void>;
+    private handleAuthProviderLogin: (provider: AuthProvider) => void;
+    private handleAuthProviderComplete: () => Promise<void>;
+
     async onEnter(params: LoginScreenParams): Promise<void> {
         this.params = params;
         this.formRendered = false;
+        this.turnstileToken = undefined;
         this.controller.toggleMainVideo(false);
-        if (params.clearCredentials) {
-            savedCredentials = undefined;
-        }
-        else if (params.useCredentials) {
-            savedCredentials = params.useCredentials;
+        const realmSession = this.sessionService.getRealmSession();
+        if (this.authService && this.realmService) {
+            if (realmSession) {
+                if (this.sessionService.getAccount()) {
+                    try {
+                        const realms = await this.realmService.loadRealmList();
+                        const realm = realms.find(realm => realm.id === realmSession!.realmId && realm.available);
+                        const preferredRegion = this.localPrefs.getItem(StorageKey.PreferredServerRegion);
+                        const preferredNickname = this.localPrefs.getItem(StorageKey.PreferredNickname);
+                        const matchesPrefs = preferredRegion === realmSession.realmId && preferredNickname === realmSession.nickname;
+                        if (realm && (matchesPrefs || params.forceRestoreSession)) {
+                            this.isBusy = true;
+                            this.connect(realm, realmSession);
+                        }
+                        else {
+                            this.sessionService.clearRealmSession();
+                            this.goToRealmSelection();
+                        }
+                        return;
+                    }
+                    catch (error) {
+                        if (!(error instanceof DownloadError && error.statusCode === 401)) {
+                            const message = error instanceof DownloadError && error.statusCode === 409
+                                ? this.strings.get("TS:OutdatedClient")
+                                : this.strings.get("TXT_NO_SERV_LIST");
+                            this.errorHandler.handle(error, message, () => this.controller?.goToScreen(ScreenType.Home));
+                            return;
+                        }
+                        this.sessionService.clearAccount();
+                    }
+                }
+            }
+            else {
+                try {
+                    if (!this.sessionService.getAccount()) {
+                        const session = await this.authService.getSession();
+                        this.sessionService.setAccount(session.account!);
+                    }
+                    this.goToRealmSelection();
+                    return;
+                }
+                catch (error) {
+                    if (!(error instanceof DownloadError && error.statusCode === 401)) {
+                        this.errorHandler.handle(error, this.strings.get("TS:ConnectFailed"), () => {});
+                    }
+                }
+            }
         }
         try {
             await this.loadServerList();
@@ -157,17 +262,22 @@ export class LoginScreen extends MainMenuScreen {
             this.handleWolError(error, this.strings.get("TXT_NO_SERV_LIST"), { fatal: true });
             return;
         }
-        this.needsServerListRefresh = false;
-        this.serverPings = new ServerPings(this.serverRegions, this.wolLogger);
-        if (savedCredentials && this.serverRegions.isAvailable(savedCredentials.regionId)) {
+        if (realmSession && this.serverRegions.isAvailable(realmSession.realmId)) {
             this.isBusy = true;
-            this.login(savedCredentials.user, savedCredentials.pass, savedCredentials.regionId);
+            const region = this.serverRegions.get(realmSession.realmId);
+            if (this.wolService.validateGameVersion(region)) {
+                this.connect(region, realmSession);
+            }
+            else {
+                this.handleLoginError(this.strings.get("TS:OutdatedClient"));
+            }
         }
         else {
             this.isBusy = false;
-            this.initView(true);
+            this.initView();
         }
     }
+
     private async loadServerList(cancellationToken?: CancellationToken): Promise<void> {
         let isShowingConnecting = false;
         const timeout = setTimeout(async () => {
@@ -176,13 +286,14 @@ export class LoginScreen extends MainMenuScreen {
         }, 1000);
         try {
             const serverList = await this.wolService.loadServerList(this.serversUrl, cancellationToken);
-            if (cancellationToken?.isCancelled())
+            if (cancellationToken?.isCancelled()) {
                 return;
+            }
             this.serverRegions.load(serverList);
             if (this.selectedRegion) {
                 this.selectedRegion = this.serverRegions
                     .getAll()
-                    .find((region) => region.id === this.selectedRegion!.id);
+                    .find(region => region.id === this.selectedRegion!.id);
             }
         }
         finally {
@@ -192,28 +303,20 @@ export class LoginScreen extends MainMenuScreen {
             }
         }
     }
-    private initView(updateServers: boolean = false): void {
-        if (!this.controller)
+
+    private initView(): void {
+        if (!this.controller) {
             return;
+        }
         this.updateSidebarButtons();
         if (!this.isBusy) {
             this.controller.showSidebarButtons();
         }
-        if (!this.selectedRegion) {
+        if (!this.selectedRegion || !this.serverRegions.isAvailable(this.selectedRegion.id)) {
             const savedRegionId = this.localPrefs.getItem(StorageKey.PreferredServerRegion);
-            const candidateRegion = savedRegionId && this.serverRegions.isAvailable(savedRegionId)
+            this.selectedRegion = savedRegionId && this.serverRegions.isAvailable(savedRegionId)
                 ? this.serverRegions.get(savedRegionId)
                 : this.serverRegions.getFirstAvailable();
-            const pings = this.serverPings.getPings();
-            if (!candidateRegion || (pings.has(candidateRegion) && pings.get(candidateRegion) === undefined)) {
-                this.selectedRegion = undefined;
-            }
-            else {
-                this.selectedRegion = candidateRegion;
-            }
-        }
-        if (updateServers && !this.params.forceUser && this.selectedRegion) {
-            this.updateServers();
         }
         const [component] = this.jsxRenderer.render(jsx(HtmlView, {
             width: "100%",
@@ -223,10 +326,9 @@ export class LoginScreen extends MainMenuScreen {
                 ref: (ref: LoginBoxApi) => (this.loginBoxApi = ref),
                 regions: this.serverRegions.getAll(),
                 selectedRegion: this.selectedRegion,
-                selectedUser: this.params.forceUser,
-                pings: this.serverPings.getPings(),
                 breakingNewsUrl: this.breakingNewsUrl,
                 strings: this.strings,
+                authProviders: this.authProvidersConfig.getAll(),
                 onRegionChange: (regionId: string) => {
                     this.selectedRegion = this.serverRegions.get(regionId);
                     this.loginBox?.applyOptions((options: any) => {
@@ -235,10 +337,16 @@ export class LoginScreen extends MainMenuScreen {
                     this.updateSidebarButtons();
                 },
                 onRequestRegionRefresh: () => {
-                    this.needsServerListRefresh = true;
                     this.updateServers();
                 },
+                onTurnstileTokenChange: (token?: string) => {
+                    this.turnstileToken = token;
+                    this.updateSidebarButtons();
+                },
                 onSubmit: this.handleLoginSubmit,
+                onAuthProviderLogin: this.handleAuthProviderLogin,
+                devMode: this.devMode,
+                cfTurnstile: this.cfTurnstile,
             },
             innerRef: (ref: any) => (this.loginBox = ref),
         }));
@@ -246,68 +354,69 @@ export class LoginScreen extends MainMenuScreen {
         this.updateSidebarButtons();
         this.formRendered = true;
     }
+
     private updateSidebarButtons(): void {
-        if (!this.controller)
+        if (!this.controller) {
             return;
-        this.controller.setSidebarButtons([
-            {
-                label: this.strings.get("GUI:Login"),
-                disabled: !this.selectedRegion,
-                onClick: () => {
-                    this.submitLoginForm();
-                },
+        }
+        this.controller.setSidebarButtons([{
+            label: this.strings.get("GUI:Login"),
+            disabled: !this.selectedRegion?.available || (this.cfTurnstile.isEnabledForLogin() && !this.turnstileToken),
+            onClick: () => {
+                this.submitLoginForm();
             },
-            {
-                label: this.strings.get("GUI:NewAccount"),
-                disabled: !!this.params.forceUser,
-                onClick: () => {
-                    this.controller?.goToScreen(ScreenType.NewAccount, {
-                        regionId: this.selectedRegion?.id,
-                        afterLogin: this.params.afterLogin,
-                    });
-                },
+        }, {
+            label: this.strings.get("GUI:NewAccount"),
+            disabled: !this.legacyRegistrationEnabled && !this.authProvidersConfig.getAll().length,
+            onClick: () => {
+                this.controller?.goToScreen(ScreenType.NewAccount, {
+                    regionId: this.selectedRegion?.id,
+                    serverRegions: this.serverRegions,
+                    afterLogin: this.params.afterLogin,
+                });
             },
-            {
-                label: this.strings.get("GUI:Back"),
-                isBottom: true,
-                onClick: () => {
-                    this.controller?.goToScreen(ScreenType.Home);
-                },
+        }, {
+            label: this.strings.get("GUI:Back"),
+            isBottom: true,
+            onClick: () => {
+                this.controller?.goToScreen(ScreenType.Home);
             },
-        ]);
+        }]);
     }
+
     private updateServers(): void {
-        if (this.isBusy || this.serversUpdateTask)
+        if (this.isBusy || this.serversUpdateTask) {
             return;
-        this.serverPings.getPings().clear();
-        this.handleServerPingsUpdate();
+        }
         this.serversUpdateTask = new Task(async (cancellationToken) => {
-            if (!this.formRendered) {
-                await sleep(500, cancellationToken);
-            }
-            if (this.needsServerListRefresh) {
-                this.needsServerListRefresh = false;
-                try {
-                    await this.loadServerList(cancellationToken);
+            try {
+                if (!this.formRendered) {
+                    await sleep(500, cancellationToken);
                 }
-                catch (error) {
-                    this.handleWolError(error, this.strings.get("TXT_NO_SERV_LIST"), { fatal: true });
-                    this.serversUpdateTask = undefined;
+                await this.loadServerList(cancellationToken);
+                if (cancellationToken.isCancelled()) {
                     return;
                 }
+                if (!this.selectedRegion || !this.serverRegions.isAvailable(this.selectedRegion.id)) {
+                    this.selectedRegion = this.serverRegions.getFirstAvailable();
+                }
+                this.loginBox?.applyOptions((options: any) => {
+                    options.selectedRegion = this.selectedRegion;
+                    options.regions = this.serverRegions.getAll();
+                });
+                this.updateSidebarButtons();
+                this.loginBox?.refresh();
             }
-            this.loginBox?.applyOptions((options: any) => {
-                options.selectedRegion = this.selectedRegion;
-                options.regions = this.serverRegions.getAll();
-            });
-            this.updateSidebarButtons();
-            try {
-                await this.serverPings.update(() => this.handleServerPingsUpdate(), cancellationToken);
+            catch (error) {
+                if (!(error instanceof OperationCanceledError)) {
+                    this.handleWolError(error, this.strings.get("TXT_NO_SERV_LIST"), {
+                        fatal: true,
+                    });
+                }
             }
             finally {
                 this.serversUpdateTask = undefined;
             }
-            this.handleServerPingsUpdate();
         });
         this.serversUpdateTask.start().catch((error) => {
             if (!(error instanceof OperationCanceledError)) {
@@ -315,62 +424,169 @@ export class LoginScreen extends MainMenuScreen {
             }
         });
     }
-    private handleServerPingsUpdate(): void {
-        if (!this.loginBoxApi)
-            return;
-        const currentRegion = this.selectedRegion;
-        const pings = this.serverPings.getPings();
-        if (currentRegion && pings.has(currentRegion) && pings.get(currentRegion) === undefined) {
-            this.selectedRegion = undefined;
-            this.loginBox?.applyOptions((options: any) => {
-                options.selectedRegion = undefined;
-            });
-            this.updateSidebarButtons();
-        }
-        this.loginBox?.refresh();
-    }
+
     private submitLoginForm(): void {
-        if (!this.isBusy && this.loginBoxApi && this.controller && this.selectedRegion) {
+        if (!this.isBusy && this.loginBoxApi && this.controller && this.selectedRegion?.available) {
             this.loginBoxApi.submit();
         }
     }
-    private async login(username: string, password: string, regionId: string): Promise<void> {
-        if (!username.match(/^[A-Za-z0-9-_]+$/)) {
-            this.handleBadPass();
+
+    private async offerNicknameClaim(): Promise<void> {
+        const nicknameClaim = this.sessionService.getNicknameClaim();
+        const authProviders = this.authProvidersConfig.getAll();
+        if (nicknameClaim && this.authService && this.realmService && authProviders.length) {
+            const dismissals = this.getNicknameClaimPromptDismissals();
+            const nickname = nicknameClaim.nickname.toLowerCase();
+            if (dismissals.some(dismissal => dismissal.realmId === nicknameClaim!.realmId && dismissal.nickname === nickname)) {
+                this.sessionService.clearNicknameClaim();
+            }
+            else {
+                await new Promise<void>((resolve) => {
+                    let resolved = false;
+                    const onDone = () => {
+                        if (!resolved) {
+                            resolved = true;
+                            this.sessionService.clearNicknameClaim();
+                            resolve();
+                        }
+                    };
+                    this.messageBoxApi.show(React.createElement(NicknameClaimPrompt, {
+                        nickname: nicknameClaim!.nickname,
+                        strings: this.strings,
+                        authProviders,
+                        onDontShowAgainChange: (checked: boolean) => this.setNicknameClaimPromptDismissed(nicknameClaim!, checked),
+                        onLogin: (provider: AuthProvider) => {
+                            this.handleNicknameClaimProviderLogin(provider, onDone);
+                        },
+                    }), [{
+                        label: this.strings.get("TS:SkipForNow"),
+                        onClick: onDone,
+                    }], {
+                        className: "claim-nickname-box",
+                    });
+                });
+            }
+        }
+    }
+
+    private async handleNicknameClaimProviderLogin(provider: AuthProvider, onDone: () => void): Promise<void> {
+        if (this.sessionService.getAccount()) {
+            await this.claimNickname();
+            onDone();
             return;
         }
-        this.serversUpdateTask?.cancel();
-        this.serversUpdateTask = undefined;
-        const connectingTask = new Task(async (cancellationToken) => {
-            await sleep(1000, cancellationToken);
-            if (!cancellationToken.isCancelled()) {
-                this.messageBoxApi.show(this.strings.get("TXT_CONNECTING"));
-            }
-        });
-        connectingTask.start().catch((error) => {
-            if (!(error instanceof OperationCanceledError)) {
-                console.error(error);
-            }
-        });
-        const region = this.serverRegions.get(regionId);
-        this.serverRegions.setSelectedRegion(regionId);
+        if (!this.authPopupApi.open(provider, () => this.handleNicknameClaimAuthComplete(onDone))) {
+            window.location.assign(this.authPopupApi.getLoginUrl(provider, window.location.href));
+        }
+    }
+
+    private async handleNicknameClaimAuthComplete(onDone: () => void): Promise<void> {
         try {
-            await this.wolService.validateGameVersion(region);
+            const session = await this.authService!.getSession();
+            this.sessionService.setAccount(session.account!);
+            await this.claimNickname();
         }
         catch (error) {
-            connectingTask.cancel();
-            this.messageBoxApi.destroy();
-            const message = error instanceof WolError && error.code === WolError.Code.OutdatedClient
-                ? this.strings.get("TS:OutdatedClient")
-                : this.strings.get("TXT_NO_SERV_LIST");
-            this.handleWolError(error, message, { fatal: false });
-            return;
+            await this.handleNicknameClaimError(error);
         }
+        onDone();
+    }
+
+    private async claimNickname(): Promise<void> {
+        const nicknameClaim = this.sessionService.getNicknameClaim();
+        const realmService = this.realmService;
+        if (nicknameClaim && realmService) {
+            try {
+                const result = await realmService.claimNickname(nicknameClaim.realmId, nicknameClaim.claimToken) as NicknameClaimResponseWithError;
+                if (result.error !== undefined) {
+                    await this.messageBoxApi.alert(result.error, this.strings.get("GUI:OK"));
+                }
+                else {
+                    await this.messageBoxApi.alert(this.strings.get("TS:NicknameClaimed", result.nickname), this.strings.get("GUI:OK"));
+                }
+            }
+            catch (error) {
+                if (error instanceof DownloadError && error.statusCode === 401) {
+                    this.sessionService.clearAccount();
+                }
+                await this.handleNicknameClaimError(error);
+            }
+        }
+    }
+
+    private async handleNicknameClaimError(error: any): Promise<void> {
+        const message = error instanceof DownloadError && error.statusCode === 401
+            ? this.strings.get("TS:SessionInvalidOrExpired")
+            : this.strings.get("TS:ConnectFailed");
+        await new Promise<void>((resolve) => this.errorHandler.handle(error, message, () => resolve()));
+    }
+
+    private getNicknameClaimPromptDismissals(now: number = Date.now()): NicknameClaimPromptDismissal[] {
+        const stored = this.localPrefs.getItem(StorageKey.NicknameClaimPromptDismissals);
+        if (!stored) {
+            return [];
+        }
+        let parsed: any;
+        try {
+            parsed = JSON.parse(stored);
+        }
+        catch {
+            this.localPrefs.removeItem(StorageKey.NicknameClaimPromptDismissals);
+            return [];
+        }
+        if (!Array.isArray(parsed)) {
+            this.localPrefs.removeItem(StorageKey.NicknameClaimPromptDismissals);
+            return [];
+        }
+        const valid = parsed.filter((entry: any) =>
+            typeof entry === "object" &&
+            entry !== null &&
+            typeof entry.realmId === "string" &&
+            entry.realmId.length > 0 &&
+            typeof entry.nickname === "string" &&
+            entry.nickname.length > 0 &&
+            typeof entry.skippedAt === "number" &&
+            Number.isFinite(entry.skippedAt));
+        const cutoff = now - LoginScreen.NICKNAME_CLAIM_PROMPT_DISMISSAL_MILLIS;
+        const filtered = valid.filter((entry: NicknameClaimPromptDismissal) => entry.skippedAt >= cutoff && entry.skippedAt <= now);
+        if (filtered.length !== valid.length || valid.length !== parsed.length) {
+            this.localPrefs.setItem(StorageKey.NicknameClaimPromptDismissals, JSON.stringify(filtered));
+        }
+        return filtered;
+    }
+
+    private setNicknameClaimPromptDismissed(nicknameClaim: NicknameClaim, dismissed: boolean): void {
+        const nickname = nicknameClaim.nickname.toLowerCase();
+        const dismissals = this.getNicknameClaimPromptDismissals().filter(dismissal => dismissal.realmId !== nicknameClaim.realmId || dismissal.nickname !== nickname);
+        if (dismissed) {
+            dismissals.push({
+                realmId: nicknameClaim.realmId,
+                nickname,
+                skippedAt: Date.now(),
+            });
+        }
+        this.localPrefs.setItem(StorageKey.NicknameClaimPromptDismissals, JSON.stringify(dismissals));
+    }
+
+    private goToRealmSelection(): void {
+        this.controller?.goToScreen(ScreenType.RealmSelection, {
+            afterLogin: this.params.afterLogin,
+        });
+    }
+
+    private async connect(region: Region, realmSession: RealmSession): Promise<void> {
+        this.serversUpdateTask?.cancel();
+        this.serversUpdateTask = undefined;
+        const connectingTask = this.startLongConnectMsgTask();
+        this.sessionService.selectRealm(region);
         let wasCancelled = false;
         try {
-            let messages: any[] = [];
+            let messages: { text: string }[] = [];
             if (!this.wolService.isConnected() || !this.wolService.getConnection().getCurrentUser()) {
-                messages = await this.wolService.connectAndLogin({ url: region.wolUrl, user: username, pass: password }, ({ position, avgWaitSeconds }) => {
+                messages = await this.wolService.connect({
+                    url: region.wolUrl,
+                    sessionToken: realmSession.sessionToken,
+                }, ({ position, avgWaitSeconds }: { position: number; avgWaitSeconds: number }) => {
                     connectingTask.cancel();
                     this.messageBoxApi.show(this.strings.get("TS:ServerFull") +
                         "\n\n\n" +
@@ -381,17 +597,16 @@ export class LoginScreen extends MainMenuScreen {
                             ? this.strings.get("TS:LoginAvgWaitTimeMinutes", avgWaitSeconds < 60 ? "<1" : "~" + Math.ceil(avgWaitSeconds / 60))
                             : this.strings.get("TS:LoginAvgWaitTimeUnavail")), this.strings.get("GUI:Cancel"), () => {
                         wasCancelled = true;
-                        this.wolService.closeWolConnection();
+                        this.sessionService.clearRealmSession();
                     });
                 });
-                this.wladderService.setUrl(region.wladderUrl);
-                this.wgameresService.setUrl(region.wgameresUrl);
-                this.mapTransferService.setUrl(region.mapTransferUrl);
-                savedCredentials = { user: username, pass: password, regionId };
+                this.wladderService.setUrl(region.wladderUrl!);
+                this.wgameresService.setUrl(region.wgameresUrl!);
+                this.mapTransferService.setUrl(region.mapTransferUrl!);
             }
             connectingTask.cancel();
             this.messageBoxApi.destroy();
-            this.localPrefs.setItem(StorageKey.PreferredServerRegion, regionId);
+            this.localPrefs.setItem(StorageKey.PreferredServerRegion, region.id);
             const result = this.params.afterLogin(messages);
             if (result instanceof MainMenuRoute) {
                 this.controller?.goToScreen(result.screenType, result.params);
@@ -415,16 +630,19 @@ export class LoginScreen extends MainMenuScreen {
                 return;
             }
             if (error instanceof WolError && error.code === WolError.Code.OutdatedClient) {
-                this.handleWolError(error, this.strings.get("TS:OutdatedClient"), { fatal: false });
+                this.handleWolError(error, this.strings.get("TS:OutdatedClient"), {
+                    fatal: false,
+                });
                 return;
             }
-            if (error instanceof WolError && error.code === WolError.Code.BadLogin) {
-                this.wolService.closeWolConnection();
-                this.handleBadPass();
-            }
-            else if (error instanceof WolError && error.code === WolError.Code.BannedFromServer) {
-                this.wolService.closeWolConnection();
-                this.handleLoginError(error.reason ?? "This account is banned");
+            if (error instanceof WolError && error.code === WolError.Code.BadSession) {
+                this.sessionService.clearRealmSession();
+                if (this.authService && this.realmService) {
+                    this.messageBoxApi.show(this.strings.get("TS:SessionInvalidOrExpired"), this.strings.get("GUI:Ok"), () => this.goToRealmSelection());
+                }
+                else {
+                    this.handleLoginError(this.strings.get("TS:SessionInvalidOrExpired"));
+                }
             }
             else if (error instanceof WolError && error.code === WolError.Code.ServerFull) {
                 this.handleLoginError(this.strings.get("TS:ServerFull"));
@@ -437,12 +655,31 @@ export class LoginScreen extends MainMenuScreen {
             }
         }
     }
+
+    private startLongConnectMsgTask(): Task<void> {
+        const task = new Task<void>(async (cancellationToken) => {
+            await sleep(1000, cancellationToken);
+            if (!cancellationToken.isCancelled()) {
+                this.messageBoxApi.show(this.strings.get("TXT_CONNECTING"));
+            }
+        });
+        task.start().catch((error) => {
+            if (!(error instanceof OperationCanceledError)) {
+                console.error(error);
+            }
+        });
+        return task;
+    }
+
     private handleBadPass(): void {
         this.handleLoginError(this.strings.get("TXT_BADPASS"));
     }
+
     private handleLoginError(message: string): void {
         this.messageBoxApi.show(message, this.strings.get("GUI:Ok"), () => {
             this.isBusy = false;
+            this.turnstileToken = undefined;
+            this.loginBoxApi?.resetTurnstile();
             if (this.formRendered) {
                 this.updateSidebarButtons();
                 this.controller.showSidebarButtons();
@@ -452,6 +689,7 @@ export class LoginScreen extends MainMenuScreen {
             }
         });
     }
+
     private handleWolError(error: any, message: string, { fatal, netError }: {
         fatal: boolean;
         netError?: boolean;
@@ -464,24 +702,30 @@ export class LoginScreen extends MainMenuScreen {
             if (fatal) {
                 this.controller?.goToScreen(ScreenType.Home);
             }
-            else if (this.formRendered) {
-                this.updateSidebarButtons();
-                this.controller?.showSidebarButtons();
-            }
             else {
-                if (netError) {
-                    this.needsServerListRefresh = true;
+                this.turnstileToken = undefined;
+                this.loginBoxApi?.resetTurnstile();
+                if (this.formRendered) {
+                    this.updateSidebarButtons();
+                    this.controller?.showSidebarButtons();
                 }
-                this.initView(!!netError);
+                else {
+                    this.initView();
+                    if (netError) {
+                        this.updateServers();
+                    }
+                }
             }
         });
     }
+
     async onLeave(): Promise<void> {
         this.loginBoxApi = null;
         this.loginBox = undefined;
         this.formRendered = false;
         this.serversUpdateTask?.cancel();
         this.serversUpdateTask = undefined;
+        this.authPopupApi.dispose();
         if (!this.isBusy) {
             await this.controller.hideSidebarButtons();
         }

@@ -1,6 +1,7 @@
 import { OperationCanceledError, CancellationToken } from "@puzzl/core/lib/async/cancellation";
 export class DownloadError extends Error {
     public statusCode?: number;
+    public headers: Record<string, string> = {};
     constructor(message: string, options?: ErrorOptions, statusCode?: number) {
         super(message, options);
         this.name = "DownloadError";
@@ -11,6 +12,7 @@ interface FetchOptions {
     body?: BodyInit | null;
     method?: string;
     headers?: HeadersInit;
+    credentials?: RequestCredentials;
     onProgress?: (loadedDelta: number, totalLength?: number) => void;
     allowHtmlMimeType?: boolean;
 }
@@ -51,6 +53,7 @@ export class HttpRequest {
                 body: options?.body,
                 method: options?.method,
                 headers: options?.headers,
+                credentials: options?.credentials,
             });
         }
         catch (error: any) {
@@ -64,7 +67,13 @@ export class HttpRequest {
             throw new DownloadError(`Fetch failed with error: ${error.name}: ${error.message}`, { cause: error });
         }
         if (!response.ok) {
-            throw new DownloadError(`Fetch failed with status ${response.status}: ${response.statusText}`, undefined, response.status);
+            const headers: Record<string, string> = {};
+            response.headers.forEach((value, key) => {
+                headers[key] = value;
+            });
+            const error = new DownloadError(`Fetch failed with status ${response.status}: ${response.statusText}`, undefined, response.status);
+            error.headers = headers;
+            throw error;
         }
         const contentType = response.headers.get("Content-Type");
         if (contentType && contentType.includes("text/html") && !options?.allowHtmlMimeType) {

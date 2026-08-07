@@ -18,5 +18,7 @@ export enum ScreenType {
     Options = 16,
     OptionsSound = 17,
     OptionsKeyboard = 18,
-    OptionsStorage = 19
+    OptionsStorage = 19,
+    RealmSelection = 22,
+    NicknameSelection = 23
 }

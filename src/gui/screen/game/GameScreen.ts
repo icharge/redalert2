@@ -631,7 +631,9 @@ export class GameScreen extends RootScreen {
         this.disposables.add(minimap, () => this.minimap = undefined);
         minimap.setPointerEvents(this.pointer.pointerEvents);
         const hudDimensions = { width: hud.sidebarWidth, height: hud.actionBarHeight } as any;
-        const worldView = new WorldView(hudDimensions, game, this.sound, this.renderer, this.runtimeVars, minimap, this.strings, this.generalOptions, this.vxlGeometryPool, this.buildingImageDataCache);
+        const now = new Date();
+        const aprilFools = now.getMonth() + 1 === 4 && now.getDate() === 1 && !this.isTournament;
+        const worldView = new WorldView(hudDimensions, game, this.sound, this.renderer, this.runtimeVars, minimap, this.strings, this.generalOptions, this.vxlGeometryPool, this.buildingImageDataCache, aprilFools);
         const worldViewInit = worldView.init(localPlayer, this.viewport.value, theater);
         console.log('[GameScreen.loadUi] hudDimensions', {
             sidebarWidth: hud.sidebarWidth,

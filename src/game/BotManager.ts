@@ -6,6 +6,8 @@ import { EventsApi } from './api/EventsApi';
 import { GameApi } from './api/GameApi';
 import { LoggerApi } from './api/LoggerApi';
 import { ProductionApi } from './api/ProductionApi';
+import { PlayerApi } from './api/PlayerApi';
+import { BotContext } from './bot/BotContext';
 
 const logger = AppLogger.get('BotManager');
 
@@ -70,9 +72,12 @@ export class BotManager {
                     continue;
                 }
                 bot.setGameApi(this.gameApi);
-                bot.setActionsApi(new ActionsApi(game, this.actionFactory, this.actionQueue, bot));
-                bot.setProductionApi(new ProductionApi(player.production));
+                const actionsApi = new ActionsApi(game, this.actionFactory, this.actionQueue, bot);
+                const playerApi = new PlayerApi(bot.name, this.gameApi, actionsApi, new ProductionApi(player.production));
+                bot.setActionsApi(actionsApi);
+                bot.setProductionApi(playerApi.production);
                 bot.setLogger(new LoggerApi(AppLogger.get(bot.name) as any, this.gameApi));
+                bot.setContext?.(new BotContext(this.gameApi, playerApi, new LoggerApi(AppLogger.get(bot.name) as any, this.gameApi)));
                 logger.info(`[BotManager] APIs set for bot "${bot.name}", calling onGameStart...`);
                 bot.onGameStart(this.gameApi);
                 logger.info(`[BotManager] Bot "${bot.name}" onGameStart completed successfully`);

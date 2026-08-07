@@ -30,6 +30,8 @@ interface LobbyFormProps {
     multiEngineer: boolean;
     multiEngineerCount?: number;
     noDogEngiKills: boolean;
+    instantCapture: boolean;
+    delayedOils: boolean;
     gameSpeed: number;
     credits: number;
     unitCount: number;
@@ -57,6 +59,8 @@ interface LobbyFormProps {
     onToggleDestroyableBridges?: (checked: boolean) => void;
     onToggleMultiEngineer?: (checked: boolean) => void;
     onToggleNoDogEngiKills?: (checked: boolean) => void;
+    onToggleInstantCapture?: (checked: boolean) => void;
+    onToggleDelayedOils?: (checked: boolean) => void;
     onChangeGameSpeed: (value: number) => void;
     onChangeCredits: (value: number) => void;
     onChangeUnitCount: (value: number) => void;
@@ -191,6 +195,18 @@ export class LobbyForm extends React.Component<LobbyFormProps> {
               <label>
                 <input type="checkbox" name="noDogEngiKills" checked={props.noDogEngiKills} onChange={(e) => this.props.onToggleNoDogEngiKills?.(e.target.checked)} disabled={!isHost}/>{" "}
                 <span>{strings.get("GUI:NoDogEngiKills")}</span>
+              </label>
+            </div>
+            <div data-r-tooltip={strings.get("STT:InstantCapture")}>
+              <label>
+                <input type="checkbox" name="instantCapture" checked={props.instantCapture || props.multiEngineer} onChange={(e) => this.props.onToggleInstantCapture?.(e.target.checked)} disabled={!isHost || props.multiEngineer}/>{" "}
+                <span>{strings.get("GUI:InstantCapture")}</span>
+              </label>
+            </div>
+            <div data-r-tooltip={strings.get("STT:DelayedOils")}>
+              <label>
+                <input type="checkbox" name="delayedOils" checked={props.delayedOils} onChange={(e) => this.props.onToggleDelayedOils?.(e.target.checked)} disabled={!isHost}/>{" "}
+                <span>{strings.get("GUI:DelayedOils")}</span>
               </label>
             </div>
           </div>

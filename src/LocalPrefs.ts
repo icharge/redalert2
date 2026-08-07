@@ -18,7 +18,11 @@ export enum StorageKey {
     PreferredGameOpts = "_r_hostOpts",
     LastConnection = "_r_lastCon",
     PreferredServerRegion = "_r_region",
+    PreferredNickname = "_r_nickname",
+    NicknameClaimPromptDismissals = "_r_nicknameClaimPromptDismissals",
+    AutoLogin = "_r_autoLogin",
     TauntsEnabled = "_r_taunts",
+    PartyNoInvites = "_r_partyNoInvites",
     LanPlayerName = "_r_lanPlayerName",
     LanRecentPlays = "_r_lanRecentPlays",
     UploadedBots = "_r_uploadedBots"

@@ -1,7 +1,7 @@
 import React from "react";
 import { Chat } from "@/gui/component/Chat";
 import { List } from "@/gui/component/List";
-import { ChannelUser } from "@/gui/component/ChannelUser";
+import ChannelUser from "@/gui/component/ChannelUser";
 import { ChatRecipientType } from "@/network/chat/ChatMessage";
 interface QuickGameChatProps {
     strings: any;
@@ -20,6 +20,7 @@ export const QuickGameChat: React.FC<QuickGameChatProps> = ({ strings, messages,
     chatHistory: chatHistory,
     localUsername: localUsername,
     onSendMessage: onSendMessage,
+    onCancelMessage: () => {},
     tooltips: {
         input: strings.get("STT:LobbyEditInput"),
         output: strings.get("STT:LobbyEditOutput"),

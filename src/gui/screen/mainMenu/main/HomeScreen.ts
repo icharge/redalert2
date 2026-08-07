@@ -6,6 +6,7 @@ import { MusicType } from '../../../../engine/sound/Music';
 import { MessageBoxApi } from '../../../component/MessageBoxApi';
 import { FullScreen } from '../../../FullScreen';
 import { getHumanReadableKey } from '@/gui/screen/options/component/getHumanReadableKey';
+import { MainMenuRoute } from '../MainMenuRoute';
 interface SidebarButton {
     label: string;
     tooltip?: string;
@@ -38,31 +39,55 @@ export class HomeScreen implements Screen {
     }
     onEnter(): void {
         console.log('[HomeScreen] Entering home screen');
-        const buttons: SidebarButton[] = [
-            {
-                label: 'Skirmish',
-                tooltip: 'Single-player skirmish against AI',
-                onClick: async () => {
-                    console.log('[HomeScreen] Skirmish clicked');
-                    try {
-                        if (this.controller) {
-                            this.controller.goToScreen(MainMenuScreenType.Skirmish);
-                        }
-                    }
-                    catch (error) {
-                        console.error('[HomeScreen] Failed to navigate to Skirmish:', error);
-                        await this.messageBoxApi.alert('Skirmish - Feature Under Development\n\nThe basic framework is configured, but the following components still need to be completed:\n• Game rules system\n• Map loader\n• AI opponent system\n• Game mode manager', this.strings.get('GUI:OK') || 'OK');
-                    }
-                }
-            },
-            {
-                label: 'Live Interaction',
-                tooltip: 'Enter live interaction mode: respond to join, like, and gift events to drive both sides into battle',
+        const buttons: SidebarButton[] = [];
+        if (this.quickMatchEnabled) {
+            buttons.push({
+                label: this.strings.get('GUI:QuickMatch') || 'Quick Match',
+                tooltip: this.strings.get('STT:MainButtonQuickMatch') || 'Join an online quick match',
                 onClick: () => {
-                    console.log('[HomeScreen] Live Interaction clicked');
-                    window.location.hash = '/liveinteraction';
+                    console.log('[HomeScreen] Quick Match clicked');
+                    if (this.controller) {
+                        this.controller.goToScreen(MainMenuScreenType.Login, {
+                            afterLogin: () => new MainMenuRoute(MainMenuScreenType.QuickGame, {}),
+                        });
+                    }
                 }
-            },
+            });
+        }
+        buttons.push({
+            label: this.strings.get('GUI:CustomGame') || 'Custom Game',
+            tooltip: this.strings.get('STT:MainButtonCustomGame') || 'Browse online custom games',
+            onClick: () => {
+                console.log('[HomeScreen] Custom Game clicked');
+                if (this.controller) {
+                    this.controller.goToScreen(MainMenuScreenType.Login, {
+                        afterLogin: () => new MainMenuRoute(MainMenuScreenType.CustomGame, {}),
+                    });
+                }
+            }
+        }, {
+            label: 'Skirmish',
+            tooltip: 'Single-player skirmish against AI',
+            onClick: async () => {
+                console.log('[HomeScreen] Skirmish clicked');
+                try {
+                    if (this.controller) {
+                        this.controller.goToScreen(MainMenuScreenType.Skirmish);
+                    }
+                }
+                catch (error) {
+                    console.error('[HomeScreen] Failed to navigate to Skirmish:', error);
+                    await this.messageBoxApi.alert('Skirmish - Feature Under Development\n\nThe basic framework is configured, but the following components still need to be completed:\n• Game rules system\n• Map loader\n• AI opponent system\n• Game mode manager', this.strings.get('GUI:OK') || 'OK');
+                }
+            }
+        }, {
+            label: 'Live Interaction',
+            tooltip: 'Enter live interaction mode: respond to join, like, and gift events to drive both sides into battle',
+            onClick: () => {
+                console.log('[HomeScreen] Live Interaction clicked');
+                window.location.hash = '/liveinteraction';
+            }
+        },
             {
                 label: 'Replays',
                 tooltip: 'View and replay game recordings',
@@ -83,7 +108,7 @@ export class HomeScreen implements Screen {
                     }
                 }
             },
-        ];
+        );
         if (this.storageEnabled) {
             buttons.push({
                 label: this.strings.get('GUI:Mods') || 'Mods',

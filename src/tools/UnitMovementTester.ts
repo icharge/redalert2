@@ -149,6 +149,8 @@ export class UnitMovementTester {
             destroyableBridges: true,
             multiEngineer: false,
             noDogEngiKills: false,
+            instantCapture: true,
+            delayedOils: false,
             mapName: "mp03t4.map",
             mapTitle: "Test",
             mapDigest: "",

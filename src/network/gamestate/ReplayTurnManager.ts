@@ -97,15 +97,19 @@ export class ReplayTurnManager {
         if (events) {
             for (const event of events) {
                 if (event.type === ReplayEventType.Chat) {
-                    this.onReplayEvent.dispatch(this, new ChatMessageReplayEvent({
+                    const chatEvent = new ChatMessageReplayEvent(tick);
+                    chatEvent.payload = {
                         playerId: event.playerId,
                         message: event.payload,
-                    }));
+                    };
+                    this.onReplayEvent.dispatch(this, chatEvent);
                 } else if (event.type === ReplayEventType.Taunt) {
-                    this.onReplayEvent.dispatch(this, new TauntReplayEvent({
+                    const tauntEvent = new TauntReplayEvent(tick);
+                    tauntEvent.payload = {
                         playerId: event.playerId,
                         tauntNo: parseInt(event.payload, 10),
-                    }));
+                    };
+                    this.onReplayEvent.dispatch(this, tauntEvent);
                 }
             }
         }

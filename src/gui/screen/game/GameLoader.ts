@@ -449,7 +449,7 @@ export class GameLoader {
                     this.workerHostApi.queueTask(async (worker) => {
                         while (filesToGenerate.length && !cancellationToken?.isCancelled()) {
                             const [filename, vxlFile] = filesToGenerate.pop()!;
-                            const geometry = await worker.generateVxlGeometry(vxlFile, modelQuality);
+                            const geometry = await worker.generateVxlGeometry(vxlFile.toPlain(), modelQuality);
                             persistTasks.push(() => this.vxlGeometryPool.persistToStorage(vxlFile, filename, geometry));
                             loaded++;
                             onProgress?.((loaded / vxlFiles.size) * 100);

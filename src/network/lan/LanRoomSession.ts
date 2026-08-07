@@ -195,6 +195,8 @@ function cloneGameOpts(gameOpts: GameOpts): GameOpts {
         destroyableBridges: gameOpts.destroyableBridges,
         multiEngineer: gameOpts.multiEngineer,
         noDogEngiKills: gameOpts.noDogEngiKills,
+        instantCapture: gameOpts.instantCapture,
+        delayedOils: gameOpts.delayedOils,
         mapName: gameOpts.mapName,
         mapTitle: gameOpts.mapTitle,
         mapDigest: gameOpts.mapDigest,

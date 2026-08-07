@@ -27,7 +27,7 @@ export class WorldView {
     constructor(private hudDimensions: {
         width: number;
         height: number;
-    }, private game: any, private sound: any, private renderer: any, private runtimeVars: any, private minimap: any, private strings: any, private generalOptions: any, private vxlGeometryPool: any, private buildingImageDataCache: any) { }
+    }, private game: any, private sound: any, private renderer: any, private runtimeVars: any, private minimap: any, private strings: any, private generalOptions: any, private vxlGeometryPool: any, private buildingImageDataCache: any, private aprilFools: boolean = false) { }
     init(localPlayer: any, viewport: any, theater: any): any {
         const mapScreenBounds = this.computeMapScreenBounds(this.game.map.mapBounds.getLocalSize());
         const worldViewport = this.computeWorldViewport(viewport, mapScreenBounds);
@@ -91,7 +91,7 @@ export class WorldView {
         this.mapRenderable = mapRenderable;
         const useInstancing = this.renderer.supportsInstancing?.() ?? false;
         const vxlBuilderFactory = new VxlBuilderFactory(this.vxlGeometryPool, useInstancing, worldScene.camera);
-        const renderableFactory = new RenderableFactory(localPlayer, this.game.getUnitSelection(), this.game.alliances, this.game.rules, this.game.art, mapRenderable, imageFinder, palettes, voxels, voxelAnims, theater, worldScene.camera, lighting, lightingDirector as any, this.runtimeVars.debugWireframes, this.runtimeVars.debugText, this.game.speed, worldSound, this.strings, this.generalOptions.flyerHelper, this.generalOptions.hiddenObjects, vxlBuilderFactory, this.buildingImageDataCache, true, useInstancing);
+        const renderableFactory = new RenderableFactory(localPlayer, this.game.getUnitSelection(), this.game.alliances, this.game.rules, this.game.art, mapRenderable, imageFinder, palettes, voxels, voxelAnims, theater, worldScene.camera, lighting, lightingDirector as any, this.runtimeVars.debugWireframes, this.runtimeVars.debugText, this.game.speed, worldSound, this.strings, this.generalOptions.flyerHelper, this.generalOptions.hiddenObjects, vxlBuilderFactory, this.buildingImageDataCache, true, useInstancing, this.aprilFools);
         const renderableManager = new RenderableManager(this.game.getWorld(), worldScene, worldScene.camera as any, renderableFactory);
         renderableManager.init();
         this.disposables.add(renderableManager, () => (this.renderableManager = undefined));

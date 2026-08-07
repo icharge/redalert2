@@ -1,9 +1,5 @@
 import React from "react";
-import classnames from "classnames";
-import { Image } from "@/gui/component/Image";
-import { ButtonSelect } from "@/gui/component/ButtonSelect";
-import { ColorSelect } from "@/gui/component/ColorSelect";
-import { CountrySelect } from "@/gui/component/CountrySelect";
+import ButtonSelect from "@/gui/component/ButtonSelect";
 import { Option } from "@/gui/component/Option";
 import { RankIndicator } from "@/gui/screen/mainMenu/lobby/component/RankIndicator";
 import { QuickGameChat } from "@/gui/screen/mainMenu/quickGame/component/QuickGameChat";
@@ -36,18 +32,20 @@ export const QuickGameForm: React.FC<QuickGameFormProps> = ({ strings, disabled,
         onSelect: (value: boolean) => onRankedChange(value),
         disabled: disabled || !unrankedEnabled,
     }, React.createElement(Option, {
-        value: true,
+        value: "ranked",
         label: strings.get("GUI:Yes"),
         key: "ranked",
     }), React.createElement(Option, {
-        value: false,
+        value: "unranked",
         label: strings.get("GUI:No"),
         key: "unranked",
         disabled: !unrankedEnabled,
     })))))), React.createElement("div", { className: "qm-player" }, React.createElement("div", { className: "qm-player-info" }, React.createElement("div", { className: "qm-player-name" }, playerName), playerProfile &&
         React.createElement(RankIndicator, {
-            rank: playerProfile.rank,
-            points: playerProfile.points,
+            playerProfile: {
+                name: playerName,
+                rankType: playerProfile.rankType,
+            },
             strings: strings,
         })))), React.createElement("div", { className: "qm-bottom" }, React.createElement(QuickGameChat, chatProps)));
 };

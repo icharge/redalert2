@@ -1,5 +1,5 @@
 import { GameBrowser } from './component/GameBrowser';
-import { ScreenType } from '../../ScreenType';
+import { ScreenType as MainMenuScreenType } from '../ScreenType';
 import { CompositeDisposable } from '../../../../util/disposable/CompositeDisposable';
 import { jsx } from '../../../jsx/jsx';
 import { HtmlView } from '../../../jsx/HtmlView';
@@ -41,9 +41,7 @@ interface PlayerProfile {
     name: string;
     rank?: number;
 }
-interface ServerRegion {
-    name: string;
-}
+
 interface ServerRegions {
     getSize(): number;
 }
@@ -75,11 +73,11 @@ interface ErrorHandler {
     handle(error: any, message: string, onClose: () => void): void;
 }
 export class CustomGameScreen extends MainMenuScreen {
-    public title: string;
-    public musicType: MusicType;
+    declare public title: string;
+    declare public musicType: MusicType;
     private engineModHash: string;
     private strings: any;
-    private wolCon: IrcConnection;
+    private wolCon: any;
     private wolService: WolService;
     private wladderService: WladderService;
     private jsxRenderer: JsxRenderer;
@@ -98,7 +96,7 @@ export class CustomGameScreen extends MainMenuScreen {
     private gameBrowser?: any;
     private refreshTimeoutId?: number;
     private ranksUpdateTask?: Task<void>;
-    constructor(engineModHash: string, strings: any, wolCon: IrcConnection, wolService: WolService, wladderService: WladderService, jsxRenderer: JsxRenderer, sound: Sound, serverRegions: ServerRegions, mapList: MapList, errorHandler: ErrorHandler) {
+    constructor(engineModHash: string, strings: any, wolCon: any, wolService: WolService, wladderService: WladderService, jsxRenderer: JsxRenderer, sound: Sound, serverRegions: ServerRegions, mapList: MapList, errorHandler: ErrorHandler) {
         super();
         this.engineModHash = engineModHash;
         this.strings = strings;
@@ -158,7 +156,7 @@ export class CustomGameScreen extends MainMenuScreen {
         if (message.to.type === ChatRecipientType.Whisper &&
             message.to.name !== this.wolCon.getServerName() &&
             message.from !== this.wolCon.getCurrentUser()) {
-            this.chatHistory!.lastWhisperFrom.value = message.from;
+            (this.chatHistory as any).lastWhisperFrom.value = message.from;
         }
     };
     private onWolClose = () => {
@@ -270,9 +268,9 @@ export class CustomGameScreen extends MainMenuScreen {
                     tooltip: this.strings.get("STT:ChangeServer"),
                     onClick: () => {
                         this.wolService.closeWolConnection();
-                        this.controller?.goToScreen(ScreenType.Login, {
+                        this.controller?.goToScreen(MainMenuScreenType.Login, {
                             clearCredentials: true,
-                            afterLogin: (messages: any) => new MainMenuRoute(ScreenType.CustomGame, { messages }),
+                            afterLogin: (messages: any) => new MainMenuRoute(MainMenuScreenType.CustomGame as any, { messages }),
                         });
                     },
                 }] : []),
@@ -282,7 +280,7 @@ export class CustomGameScreen extends MainMenuScreen {
                 isBottom: true,
                 onClick: () => {
                     this.wolService.closeWolConnection();
-                    this.controller?.goToScreen(ScreenType.Home);
+                    this.controller?.goToScreen(MainMenuScreenType.Home);
                 },
             },
         ];
@@ -307,7 +305,7 @@ export class CustomGameScreen extends MainMenuScreen {
                         if (this.wolCon.isOpen()) {
                             this.wolCon.sendChatMessage(message.value, message.recipient);
                             if (message.recipient.type === ChatRecipientType.Whisper) {
-                                this.chatHistory!.lastWhisperTo.value = message.recipient.name;
+                                (this.chatHistory as any).lastWhisperTo.value = message.recipient.name;
                             }
                         }
                     }
@@ -339,8 +337,8 @@ export class CustomGameScreen extends MainMenuScreen {
             await this.loadChannel(cancellationToken);
         }
         else {
-            this.controller.goToScreen(ScreenType.Login, {
-                afterLogin: (messages: any) => new MainMenuRoute(ScreenType.CustomGame, { messages }),
+            this.controller.goToScreen(MainMenuScreenType.Login, {
+                afterLogin: (messages: any) => new MainMenuRoute(MainMenuScreenType.CustomGame as any, { messages }),
             });
         }
     }
@@ -416,7 +414,7 @@ export class CustomGameScreen extends MainMenuScreen {
         this.selectedGame = undefined;
     }
     private async createGame() {
-        this.controller.goToScreen(ScreenType.Lobby, { create: true });
+        this.controller.goToScreen(MainMenuScreenType.Lobby, { create: true });
     }
     private async joinGame(game: Game) {
         this.joinRoom(game, false);
@@ -426,7 +424,7 @@ export class CustomGameScreen extends MainMenuScreen {
     }
     private joinRoom(game: Game, observe: boolean) {
         if (game.modHash === this.engineModHash) {
-            this.controller.goToScreen(ScreenType.Lobby, {
+            this.controller.goToScreen(MainMenuScreenType.Lobby, {
                 game,
                 observe,
             });
@@ -438,7 +436,7 @@ export class CustomGameScreen extends MainMenuScreen {
     private handleError(error: any, message: string) {
         this.errorHandler.handle(error, message, () => {
             this.wolService.closeWolConnection();
-            this.controller?.goToScreen(ScreenType.Home);
+            this.controller?.goToScreen(MainMenuScreenType.Home);
         });
         if (this.refreshTimeoutId) {
             clearInterval(this.refreshTimeoutId);

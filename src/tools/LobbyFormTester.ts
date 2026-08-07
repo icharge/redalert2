@@ -173,6 +173,8 @@ export class LobbyFormTester {
                 multiEngineer: false,
                 multiEngineerCount: 3,
                 noDogEngiKills: false,
+                instantCapture: true,
+                delayedOils: false,
                 gameSpeed: 6,
                 credits: 10000,
                 unitCount: 10,

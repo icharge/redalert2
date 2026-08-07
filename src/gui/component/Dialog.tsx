@@ -8,6 +8,7 @@ interface DialogViewport {
 export interface ButtonConfig {
     label: string;
     onClick?: () => void;
+    disabled?: boolean;
 }
 export interface DialogProps {
     children?: React.ReactNode;
@@ -36,7 +37,8 @@ export class Dialog extends React.Component<DialogProps> {
         return React.createElement('button', {
             key: index,
             className: 'dialog-button',
-            onClick: button.onClick
+            onClick: button.onClick,
+            disabled: !!button.disabled
         }, button.label);
     }
     private getWrapperStyle(): React.CSSProperties {

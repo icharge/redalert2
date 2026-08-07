@@ -3,6 +3,7 @@ export class AudioVisualRules {
     private ambientChangeRate: number = 0;
     private ambientChangeStep: number = 0;
     private behind: string = '';
+    private benderOfSpoons?: string;
     private bridgeExplosions: string[] = [];
     private chronoBeamColor: number[] = [];
     private chronoBlast: string = '';
@@ -44,6 +45,7 @@ export class AudioVisualRules {
         this.ambientChangeRate = ini.getNumber("AmbientChangeRate");
         this.ambientChangeStep = ini.getNumber("AmbientChangeStep");
         this.behind = ini.getString("Behind");
+        this.benderOfSpoons = ini.getString("BenderOfSpoons") || undefined;
         this.bridgeExplosions = ini.getArray("BridgeExplosions");
         this.chronoBeamColor = ini.getNumberArray("ChronoBeamColor");
         this.chronoBlast = ini.getString("ChronoBlast");

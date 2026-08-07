@@ -5,13 +5,14 @@ export class Bot {
     public actionsApi: any;
     public productionApi: any;
     public logger: any;
+    public botContext?: any;
     public debugMode: boolean = false;
     constructor(name: string, country: string) {
         this.name = name;
         this.country = country;
     }
     get context() {
-        return {
+        return this.botContext ?? {
             game: this.gameApi,
             player: {
                 name: this.name,
@@ -32,6 +33,9 @@ export class Bot {
     setLogger(logger: any): void {
         this.logger = logger;
         this.logger.setDebugLevel(this.debugMode);
+    }
+    setContext(context: any): void {
+        this.botContext = context;
     }
     setDebugMode(debug: boolean): Bot {
         this.debugMode = debug;

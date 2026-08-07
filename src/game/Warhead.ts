@@ -14,6 +14,7 @@ import * as MathUtils from "@/util/math";
 import { FacingUtil } from "@/game/gameobject/unit/FacingUtil";
 import { ObjectType } from "@/engine/type/ObjectType";
 import { WarheadDetonateEvent } from "@/game/event/WarheadDetonateEvent";
+import { SpecialWarheadType } from "@/game/SpecialWarheadType";
 import { WeaponType } from "@/game/WeaponType";
 import { WeaponRules } from "@/game/rules/WeaponRules";
 import { IniSection } from "@/data/IniSection";
@@ -392,10 +393,12 @@ export class Warhead {
     detonate(gameWorld: GameWorld, baseDamage: number, centerTile: Position, elevation: number, centerCoords: Vector3, zone: ZoneType, collisionType: CollisionType | undefined, target: {
         obj?: GameObject;
         getBridge?(): GameObject;
-    }, weaponInfo: WeaponInfo | undefined, friendly: boolean, areaEffectSmudge: string | undefined, customSpread?: number, isWeatherStorm = false): void {
+    }, weaponInfo: WeaponInfo | undefined, specialWarheadType: SpecialWarheadType = SpecialWarheadType.None, areaEffectSmudge: string | undefined, customSpread?: number, isWeatherStorm = false): void {
         const weapon = weaponInfo?.weapon ?? this.createDummyWeaponInfo() as any;
         const sourceObj = weaponInfo?.obj;
         const sourcePlayer = weaponInfo?.player;
+        const shrapnel = specialWarheadType === SpecialWarheadType.Shrapnel;
+        const lightningStrike = specialWarheadType === SpecialWarheadType.LightningStrike;
         const cellSpread = customSpread ? customSpread / Coords.LEPTONS_PER_TILE : this.rules.cellSpread;
         const percentAtMax = this.rules.percentAtMax;
         const processedObjects = new Set<GameObject>();
@@ -429,9 +432,12 @@ export class Warhead {
                 else {
                     distance = rangeHelper.distance3(obj as any, centerCoords) / Coords.LEPTONS_PER_TILE;
                 }
+                if (cellSpread && (obj as any).isAircraft?.() && (obj as any).zone === ZoneType.Air) {
+                    distance /= 2;
+                }
                 if (distance < 0.001)
                     distance = 0;
-                if (friendly && obj.isInfantry() && sourcePlayer) {
+                if (shrapnel && obj.isInfantry() && sourcePlayer) {
                     if (obj.owner === sourcePlayer || gameWorld.alliances.areAllied(obj.owner, sourcePlayer)) {
                         continue;
                     }
@@ -441,7 +447,7 @@ export class Warhead {
                         if (currentTile !== centerTile || !this.rules.wall)
                             continue;
                     }
-                    else if (!friendly && (currentTile !== centerTile || (!obj.isBuilding() && obj !== (target.obj || target.getBridge?.())))) {
+                    else if (!shrapnel && (currentTile !== centerTile || (!obj.isBuilding() && obj !== (target.obj || target.getBridge?.())))) {
                         continue;
                     }
                 }
@@ -457,7 +463,7 @@ export class Warhead {
         for (const obj of processedObjects) {
             if (obj.isDestroyed || obj.isCrashing)
                 continue;
-            let damage = this.computeDamage(baseDamage, obj, gameWorld, isWeatherStorm);
+            let damage = this.computeDamage(baseDamage, obj, gameWorld, lightningStrike || isWeatherStorm);
             if (baseDamage > 0 && !this.rules.affectsAllies && obj.isTechno() && sourcePlayer) {
                 if (gameWorld.alliances.areAllied(obj.owner, sourcePlayer) || obj.owner === sourcePlayer) {
                     damage = 0;
@@ -523,7 +529,7 @@ export class Warhead {
         }
         const animation = isWeatherStorm ? undefined :
             hasInvulnerableHit ? gameWorld.rules.audioVisual.weaponNullifyAnim :
-                this.pickExplodeAnim(baseDamage, directHitTarget, zone, gameWorld, isWeatherStorm);
+                this.pickExplodeAnim(baseDamage, directHitTarget, zone, gameWorld, lightningStrike);
         if (!hasInvulnerableHit && zone === ZoneType.Ground) {
             const terrainEffect = new AnimTerrainEffect();
             if (animation)
@@ -533,7 +539,7 @@ export class Warhead {
             if (animation)
                 terrainEffect.spawnSmudges(animation, centerTile, gameWorld);
         }
-        gameWorld.events.dispatch(new WarheadDetonateEvent(this, centerCoords, animation, isWeatherStorm));
+        gameWorld.events.dispatch(new WarheadDetonateEvent(this, centerCoords, animation, lightningStrike));
     }
     private pickExplodeAnim(damage: number, directHitTarget: GameObject | undefined, zone: ZoneType, gameWorld: GameWorld, isWeatherStorm: boolean): string | undefined {
         if (!damage)

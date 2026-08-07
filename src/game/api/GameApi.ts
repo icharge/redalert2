@@ -53,7 +53,7 @@ export class GameApi {
             throw new Error(`Player "${playerName2}" doesn't exist`);
         return this.game.alliances.areAllied(player1, player2);
     }
-    canPlaceBuilding(playerName: string, arg2: any, arg3: any): boolean {
+    canPlaceBuilding(playerName: string, arg2: any, arg3: any, options: any = {}): boolean {
         const player = this.game.getPlayerByName(playerName);
         if (!player)
             throw new Error(`Player "${playerName}" doesn't exist`);
@@ -62,9 +62,12 @@ export class GameApi {
         // canPlaceBuilding(playerName, buildingType, position)
         const buildingType = typeof arg2 === 'string' ? arg2 : arg3;
         const position = typeof arg2 === 'string' ? arg3 : arg2;
+        if (options.ignoreAdjacent === undefined) {
+            options.ignoreAdjacent = this.rulesApi.getBuilding(buildingType)?.constructionYard;
+        }
         return this.game
             .getConstructionWorker(player)
-            .canPlaceAt(buildingType, position, { normalizedTile: true });
+            .canPlaceAt(buildingType, position, { normalizedTile: true, ...options });
     }
     getBuildingPlacementData(buildingType: string): BuildingPlacementData {
         const buildingData = this.game.art.getObject(buildingType, ObjectType.Building);

@@ -597,6 +597,8 @@ export class SceneSandboxTester {
             destroyableBridges: true,
             multiEngineer: false,
             noDogEngiKills: false,
+            instantCapture: true,
+            delayedOils: false,
             mapName: mapName ?? gameMapFile.name ?? 'scene-sandbox.map',
             mapTitle: gameMapFile.getOrCreateSection?.('Basic')?.getString?.('Name') ?? 'Scene Sandbox',
             mapDigest: '',

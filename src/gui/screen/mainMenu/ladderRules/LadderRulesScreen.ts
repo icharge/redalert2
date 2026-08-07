@@ -3,7 +3,7 @@ import { HtmlView } from '../../../jsx/HtmlView';
 import { MainMenuScreen } from '../MainMenuScreen';
 import { Iframe } from '../component/Iframe';
 export class LadderRulesScreen extends MainMenuScreen {
-    public title: string;
+    declare public title: string;
     private strings: any;
     private jsxRenderer: any;
     private rulesUrl: string;

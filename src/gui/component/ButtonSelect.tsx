@@ -7,7 +7,7 @@ interface ButtonSelectProps {
     className?: string;
     onSelect: (value: any) => void;
     labelStyle?: (value: any) => CSSProperties;
-    children: ReactNode;
+    children?: ReactNode;
 }
 const ButtonSelect: React.FC<ButtonSelectProps> = ({ initialValue, disabled, tooltip, className, onSelect, labelStyle, children, }) => {
     const [selected, setSelected] = useState(() => initialValue);

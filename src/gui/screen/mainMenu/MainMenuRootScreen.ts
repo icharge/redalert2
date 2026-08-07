@@ -46,7 +46,8 @@ export class MainMenuRootScreen extends RootScreen {
     private config: Config;
     private mainMenu?: MainMenu;
     private mainMenuCtrl?: MainMenuController;
-    constructor(subScreens: Map<MainMenuScreenType, any>, uiScene: UiScene, strings: Strings, images: LazyResourceCollection<ShpFile>, jsxRenderer: JsxRenderer, messageBoxApi: MessageBoxApi, appVersion: string, config: Config, videoSrc?: string | File, sound?: any, music?: any, generalOptions?: any, localPrefs?: any, fullScreen?: any, mixer?: any, keyBinds?: any, rootController?: any) {
+    private onlineServices?: any;
+    constructor(subScreens: Map<MainMenuScreenType, any>, uiScene: UiScene, strings: Strings, images: LazyResourceCollection<ShpFile>, jsxRenderer: JsxRenderer, messageBoxApi: MessageBoxApi, appVersion: string, config: Config, videoSrc?: string | File, sound?: any, music?: any, generalOptions?: any, localPrefs?: any, fullScreen?: any, mixer?: any, keyBinds?: any, rootController?: any, appLocale?: string, cfTurnstile?: any) {
         super();
         this.subScreens = subScreens;
         this.uiScene = uiScene;
@@ -65,7 +66,11 @@ export class MainMenuRootScreen extends RootScreen {
         this.mixer = mixer;
         this.keyBinds = keyBinds;
         this.rootController = rootController;
+        this.appLocale = appLocale ?? "en-US";
+        this.cfTurnstile = cfTurnstile;
     }
+    private appLocale: string;
+    private cfTurnstile?: any;
     createView(): void {
         console.log('[MainMenuRootScreen] Creating view');
         console.log('[MainMenuRootScreen] Using menuViewport:', this.uiScene.menuViewport);
@@ -126,6 +131,72 @@ export class MainMenuRootScreen extends RootScreen {
             }
         }, 0);
     }
+    private async getOnlineServices(): Promise<any> {
+        if (this.onlineServices) {
+            return this.onlineServices;
+        }
+        const { Engine } = await import('../../../engine/Engine.js');
+        const { EngineType } = await import('../../../engine/EngineType.js');
+        const { WolConfig, ClientType } = await import('../../../network/WolConfig.js');
+        const { WolConnection } = await import('../../../network/WolConnection.js');
+        const { WolService } = await import('../../../network/WolService.js');
+        const { GservConnection } = await import('../../../network/GservConnection.js');
+        const { WLadderService } = await import('../../../network/ladder/WLadderService.js');
+        const { WGameResService } = await import('../../../network/WGameResService.js');
+        const { MapTransferService } = await import('../../../network/MapTransferService.js');
+        const { HttpRequest } = await import('../../../network/HttpRequest.js');
+        const { CfChallengeHttpRequest } = await import('../../../network/CfChallengeHttpRequest.js');
+        const { CfPreclearanceApi } = await import('../../CfPreclearanceApi.js');
+        const { AuthService } = await import('../../../network/AuthService.js');
+        const { RealmService } = await import('../../../network/RealmService.js');
+        const { SessionService } = await import('../../../network/SessionService.js');
+        const { AuthPopupApi } = await import('./login/AuthPopupApi.js');
+        const { AppLogger } = await import('../../../util/logger.js');
+        const { ErrorHandler } = await import('../../../ErrorHandler.js');
+        const { ServerRegions } = await import('../../../network/ServerRegions.js');
+        const wolConfig = WolConfig.factory(Engine.getActiveEngine() === EngineType.YurisRevenge ? ClientType.Cdyuri : ClientType.Cdral2);
+        const wolCon = WolConnection.factory(AppLogger.get("wol"));
+        const preClearanceApi = this.cfTurnstile?.isLoaded() && this.config.turnstile?.preClearanceEnabled
+            ? new CfPreclearanceApi(this.cfTurnstile, this.messageBoxApi, this.strings)
+            : undefined;
+        const httpRequest = preClearanceApi
+            ? new CfChallengeHttpRequest(() => preClearanceApi.preClearance())
+            : new HttpRequest();
+        const wolService = new WolService(wolConfig, wolCon, this.appVersion, this.appLocale, httpRequest);
+        wolService.init();
+        const wladderService = new WLadderService(wolConfig);
+        const wgameresService = new WGameResService(wolService, wolConfig, httpRequest);
+        const mapTransferService = new MapTransferService(wolService, httpRequest);
+        const serverRegions = new ServerRegions();
+        let authService: any;
+        let realmService: any;
+        if (this.config.gateway) {
+            authService = new AuthService(this.config.gateway, httpRequest);
+            realmService = new RealmService(this.config.gateway, wolConfig.getClientSku(), this.appVersion, this.appLocale, authService, httpRequest);
+        }
+        const sessionService = new SessionService(wolService);
+        const gservCon = GservConnection.factory(AppLogger.get("gserv"));
+        const authPopupApi = new AuthPopupApi(this.appLocale);
+        const errorHandler = new ErrorHandler(this.messageBoxApi, this.strings);
+        this.onlineServices = {
+            wolConfig,
+            wolCon,
+            wolService,
+            wladderService,
+            wgameresService,
+            mapTransferService,
+            serverRegions,
+            authService,
+            realmService,
+            sessionService,
+            gservCon,
+            authPopupApi,
+            errorHandler,
+            httpRequest,
+        };
+        return this.onlineServices;
+    }
+
     private async createScreen(screenType: MainMenuScreenType, screenClass: any, _controller: any): Promise<any> {
         let screen: any;
         if (screenType === MainMenuScreenType.InfoAndCredits) {
@@ -185,7 +256,167 @@ export class MainMenuRootScreen extends RootScreen {
             screen = new screenClass(this.strings, this.jsxRenderer, mapFileLoader, errorHandler, this.messageBoxApi, this.localPrefs, mapList, gameModes, mapDir, fsAccessLib, sentry);
         }
         else if (screenType === MainMenuScreenType.Score) {
-            screen = new screenClass(this.strings, this.jsxRenderer, (this as any).wolService);
+            const services = await this.getOnlineServices();
+            screen = new screenClass(this.strings, this.jsxRenderer, services.wolService);
+        }
+        else if (screenType === MainMenuScreenType.Login ||
+            screenType === MainMenuScreenType.NewAccount ||
+            screenType === MainMenuScreenType.RealmSelection ||
+            screenType === MainMenuScreenType.NicknameSelection ||
+            screenType === MainMenuScreenType.QuickGame ||
+            screenType === MainMenuScreenType.Lobby ||
+            screenType === MainMenuScreenType.CustomGame ||
+            screenType === MainMenuScreenType.Ladder) {
+            const services = await this.getOnlineServices();
+            const { Engine } = await import('../../../engine/Engine.js');
+            const { Rules } = await import('../../../game/rules/Rules.js');
+            const { MapFileLoader } = await import('../game/MapFileLoader.js');
+            const { ResourceLoader } = await import('../../../engine/ResourceLoader.js');
+            const { Sound } = await import('../../../engine/sound/Sound.js');
+            const { ErrorHandler } = await import('../../../ErrorHandler.js');
+            const rules = new Rules(Engine.getRules());
+            const mapResourceLoader = new ResourceLoader(this.config.mapsBaseUrl ?? '');
+            const mapFileLoader = new MapFileLoader(mapResourceLoader, Engine.vfs);
+            const mapList = Engine.getMapList();
+            const gameModes = Engine.getMpModes();
+            const sound = this.sound;
+            const errorHandler = services.errorHandler ?? new ErrorHandler(this.messageBoxApi, this.strings);
+            const activeModMeta = (this as any).activeModMeta;
+            switch (screenType) {
+                case MainMenuScreenType.Login:
+                    screen = new screenClass(
+                        services.wolService,
+                        services.wladderService,
+                        services.wgameresService,
+                        services.mapTransferService,
+                        this.strings,
+                        this.jsxRenderer,
+                        this.messageBoxApi,
+                        this.config.serversUrl,
+                        this.config.breakingNewsUrl,
+                        errorHandler,
+                        this.localPrefs,
+                        this.rootController,
+                        this.config.devMode,
+                        this.cfTurnstile,
+                        this.config.legacyRegistrationEnabled,
+                        this.config.authProviders,
+                        services.authPopupApi,
+                        services.authService,
+                        services.realmService,
+                        services.sessionService,
+                    );
+                    break;
+                case MainMenuScreenType.NewAccount:
+                    screen = new screenClass(
+                        services.wolService,
+                        this.strings,
+                        this.jsxRenderer,
+                        this.messageBoxApi,
+                        errorHandler,
+                        this.localPrefs,
+                        this.cfTurnstile,
+                        this.config.legacyRegistrationEnabled,
+                        this.config.authProviders,
+                        services.authPopupApi,
+                        services.authService,
+                        services.sessionService,
+                    );
+                    break;
+                case MainMenuScreenType.RealmSelection:
+                    screen = new screenClass(
+                        this.strings,
+                        this.jsxRenderer,
+                        errorHandler,
+                        this.localPrefs,
+                        services.authService,
+                        services.realmService,
+                        services.sessionService,
+                        this.messageBoxApi,
+                        this.config.breakingNewsUrl,
+                    );
+                    break;
+                case MainMenuScreenType.NicknameSelection:
+                    screen = new screenClass(
+                        this.strings,
+                        this.jsxRenderer,
+                        this.messageBoxApi,
+                        errorHandler,
+                        this.rootController,
+                        services.wladderService,
+                        services.wgameresService,
+                        services.mapTransferService,
+                        services.wolService,
+                        services.realmService,
+                        services.sessionService,
+                        this.localPrefs,
+                        this.cfTurnstile,
+                    );
+                    break;
+                case MainMenuScreenType.QuickGame:
+                    screen = new screenClass(
+                        this.config.unrankedQueueEnabled,
+                        this.appVersion,
+                        Engine.getActiveMod?.() ?? '',
+                        this.appLocale,
+                        rules,
+                        services.wolService,
+                        services.wolCon,
+                        services.wladderService,
+                        services.serverRegions,
+                        this.rootController,
+                        this.messageBoxApi,
+                        this.jsxRenderer,
+                        this.strings,
+                        this.localPrefs,
+                        sound,
+                        errorHandler,
+                    );
+                    break;
+                case MainMenuScreenType.Lobby:
+                    screen = new screenClass(
+                        this.config.botsEnabled,
+                        this.appVersion,
+                        activeModMeta,
+                        this.rootController,
+                        errorHandler,
+                        this.messageBoxApi,
+                        this.strings,
+                        this.uiScene,
+                        services.wolCon,
+                        services.wolService,
+                        services.wladderService,
+                        services.mapTransferService,
+                        services.gservCon,
+                        rules,
+                        new (await import('../../../network/gameopt/Parser.js')).Parser(),
+                        new (await import('../../../network/gameopt/Serializer.js')).Serializer(),
+                        this.jsxRenderer,
+                        mapFileLoader,
+                        mapList,
+                        gameModes,
+                        sound,
+                        this.localPrefs,
+                    );
+                    break;
+                case MainMenuScreenType.CustomGame:
+                    screen = new screenClass(
+                        Engine.getActiveMod?.() ?? '',
+                        this.strings,
+                        services.wolCon,
+                        services.wolService,
+                        services.wladderService,
+                        this.jsxRenderer,
+                        sound,
+                        services.serverRegions,
+                        mapList,
+                        errorHandler,
+                    );
+                    break;
+                case MainMenuScreenType.Ladder:
+                    screen = new screenClass(this.strings, services.wladderService, this.jsxRenderer);
+                    break;
+            }
         }
         else if (screenType === MainMenuScreenType.ReplaySelection) {
             const { ErrorHandler } = await import('../../../ErrorHandler.js');

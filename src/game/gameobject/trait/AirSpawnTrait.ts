@@ -1,3 +1,4 @@
+import { SpecialWarheadType } from "@/game/SpecialWarheadType";
 import { Coords } from "@/game/Coords";
 import { ObjectType } from "@/engine/type/ObjectType";
 import { Warhead } from "@/game/Warhead";
@@ -145,7 +146,7 @@ export class AirSpawnTrait implements NotifyDestroy, NotifyOwnerChange, NotifySp
                             const offset = Coords.vecGroundToWorld(FacingUtil.toMapCoords(missile.direction).multiplyScalar(1));
                             const detonationPos = launch.targetWorldPos.clone().add(offset);
                             const targetZone = world.map.getTileZone(launch.targetTile);
-                            launch.warhead.detonate(world, launch.damage, launch.targetTile, launch.targetBridge?.tileElevation ?? 0, detonationPos, targetZone, launch.targetBridge ? CollisionType.OnBridge : CollisionType.None, launch.target, { player: missile.owner, obj: gameObject, weapon: undefined } as any, false, undefined, undefined);
+                            launch.warhead.detonate(world, launch.damage, launch.targetTile, launch.targetBridge?.tileElevation ?? 0, detonationPos, targetZone, launch.targetBridge ? CollisionType.OnBridge : CollisionType.None, launch.target, { player: missile.owner, obj: gameObject, weapon: undefined } as any, SpecialWarheadType.None, undefined, undefined);
                         }
                     })).setCancellable(false));
                     const missileIndex = this.spawns.indexOf(missile);

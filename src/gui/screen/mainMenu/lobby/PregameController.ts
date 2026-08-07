@@ -128,6 +128,8 @@ function cloneGameOpts(gameOpts: GameOpts): GameOpts {
         destroyableBridges: gameOpts.destroyableBridges,
         multiEngineer: gameOpts.multiEngineer,
         noDogEngiKills: gameOpts.noDogEngiKills,
+        instantCapture: gameOpts.instantCapture,
+        delayedOils: gameOpts.delayedOils,
         mapName: gameOpts.mapName,
         mapTitle: gameOpts.mapTitle,
         mapDigest: gameOpts.mapDigest,
@@ -363,6 +365,8 @@ export class PregameController {
             multiEngineerCount: Math.ceil((1 - ((this.rules as any).general?.engineerCaptureLevel || 0.5)) /
                 ((this.rules as any).general?.engineerDamage || 0.25)) + 1,
             noDogEngiKills: gameOpts.noDogEngiKills,
+            instantCapture: gameOpts.instantCapture,
+            delayedOils: gameOpts.delayedOils,
             gameSpeed: gameOpts.gameSpeed,
             credits: gameOpts.credits,
             unitCount: gameOpts.unitCount,
@@ -420,11 +424,24 @@ export class PregameController {
                 onStateChange();
             },
             onToggleMultiEngineer: (value: boolean) => {
-                this.applyGameOption((opts) => (opts.multiEngineer = value));
+                this.applyGameOption((opts) => {
+                    opts.multiEngineer = value;
+                    if (value) {
+                        opts.instantCapture = true;
+                    }
+                });
                 onStateChange();
             },
             onToggleNoDogEngiKills: (value: boolean) => {
                 this.applyGameOption((opts) => (opts.noDogEngiKills = value));
+                onStateChange();
+            },
+            onToggleInstantCapture: (value: boolean) => {
+                this.applyGameOption((opts) => (opts.instantCapture = value));
+                onStateChange();
+            },
+            onToggleDelayedOils: (value: boolean) => {
+                this.applyGameOption((opts) => (opts.delayedOils = value));
                 onStateChange();
             },
             onChangeGameSpeed: (value: number) => {
@@ -556,6 +573,8 @@ export class PregameController {
             destroyableBridges: preferredOpts.destroyableBridges,
             multiEngineer: preferredOpts.multiEngineer,
             noDogEngiKills: preferredOpts.noDogEngiKills,
+            instantCapture: preferredOpts.instantCapture,
+            delayedOils: preferredOpts.delayedOils,
             humanPlayers: [
                 {
                     name: this.playerName,

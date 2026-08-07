@@ -1,34 +1,31 @@
 import { CancellationToken } from "@puzzl/core/lib/async/cancellation";
-import { WL_CHANNEL_ID_MIN } from "@/network/ladder/wladderConfig";
+
 import { CompositeDisposable } from "@/util/disposable/CompositeDisposable";
 import { ChatRecipientType } from "@/network/chat/ChatMessage";
 import { SoundKey } from "@/engine/sound/SoundKey";
 import { ChannelType } from "@/engine/sound/ChannelType";
 import { Task } from "@puzzl/core/lib/async/Task";
 import { ChatHistory } from "@/gui/chat/ChatHistory";
-import { formatTime } from "@/util/time";
-import { ChatInput } from "@/gui/component/ChatInput";
+
 export class ChatUi {
     private messages: any[];
     private updateView: () => void;
     private wolConfig: any;
     private wolCon: any;
-    private wolService: any;
     private wladderService: any;
     private strings: any;
     private sound: any;
     private disposables: CompositeDisposable;
-    private users: any[] = [];
+    users: any[] = [];
     private chatHistory: ChatHistory;
     private playerProfiles: Map<string, any>;
     private channelName?: string;
     private ranksUpdateTask?: Task<void>;
-    constructor(messages: any[], updateView: () => void, wolConfig: any, wolCon: any, wolService: any, wladderService: any, strings: any, sound: any) {
+    constructor(messages: any[], updateView: () => void, wolConfig: any, wolCon: any, _wolService: any, wladderService: any, strings: any, sound: any) {
         this.messages = messages;
         this.updateView = updateView;
         this.wolConfig = wolConfig;
         this.wolCon = wolCon;
-        this.wolService = wolService;
         this.wladderService = wladderService;
         this.strings = strings;
         this.sound = sound;
@@ -82,14 +79,14 @@ export class ChatUi {
             if (message.to.type === ChatRecipientType.Whisper &&
                 message.to.name !== this.wolCon.getServerName() &&
                 message.from !== this.wolCon.getCurrentUser()) {
-                this.chatHistory.lastWhisperFrom.value = message.from;
+                (this.chatHistory as any).lastWhisperFrom.value = message.from;
             }
         };
     }
     private onChannelJoinLeave: (event: any) => void;
     private onChannelUsers: (event: any) => void;
     private onChannelMessage: (message: any) => void;
-    private addSystemMessage(text: string): void {
+    addSystemMessage(text: string): void {
         this.messages.push({ text });
         this.updateView();
     }
@@ -150,7 +147,7 @@ export class ChatUi {
                     if (this.wolCon.isOpen() && this.channelName) {
                         this.wolCon.sendChatMessage(message.value, message.recipient);
                         if (message.recipient.type === ChatRecipientType.Whisper) {
-                            this.chatHistory.lastWhisperTo.value = message.recipient.name;
+                            (this.chatHistory as any).lastWhisperTo.value = message.recipient.name;
                         }
                     }
                 }

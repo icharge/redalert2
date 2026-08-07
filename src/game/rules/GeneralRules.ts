@@ -67,8 +67,10 @@ export class GeneralRules {
     public maxWaypointPathLength!: number;
     public engineer!: string;
     public engineerCaptureLevel!: number;
+    public engineerCaptureDelay!: number;
     public engineerDamage!: number;
     public engineerAlwaysCaptureTech!: boolean;
+    public engineerTechSecureTime!: number;
     public technician!: string;
     public harvesterTooFarDistance!: number;
     public harvesterUnit!: string[];
@@ -120,8 +122,10 @@ export class GeneralRules {
         this.dropPodWeapon = ini.getString('DropPodWeapon');
         this.engineer = ini.getString('Engineer');
         this.engineerCaptureLevel = ini.getFixed('EngineerCaptureLevel', 0.25);
+        this.engineerCaptureDelay = ini.getNumber('EngineerCaptureDelay', 12);
         this.engineerDamage = ini.getFixed('EngineerDamage', 0.437);
         this.engineerAlwaysCaptureTech = ini.getBool('EngineerAlwaysCaptureTech', true);
+        this.engineerTechSecureTime = ini.getNumber('EngineerTechSecureTime', 4);
         this.flightLevel = ini.getNumber('FlightLevel');
         this.guardAreaTargetingDelay = ini.getNumber('GuardAreaTargetingDelay');
         this.harvesterTooFarDistance = ini.getNumber('HarvesterTooFarDistance');

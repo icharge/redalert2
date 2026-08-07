@@ -49,8 +49,9 @@ export class ModMeta {
         }
         const website = section.getString("Website");
         if (website) {
-            if (website.match(/^https?:\/\, this.website = website))
-                ;
+            if (website.match(/^https?:\/\//)) {
+                this.website = website;
+            }
         }
         else {
             console.warn(`Invalid mod meta website "${website}"`);

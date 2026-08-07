@@ -25,7 +25,7 @@ export class MessageBoxApi {
         this.jsxRenderer = jsxRenderer;
         this.disposables = new CompositeDisposable();
     }
-    show(message: string | React.ReactNode, buttons: string | ButtonConfig[], callback?: (() => void) | {
+    show(message: string | React.ReactNode, buttons?: string | ButtonConfig[], callback?: (() => void) | {
         className?: string;
     }) {
         this.destroy();

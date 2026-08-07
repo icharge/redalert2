@@ -1,3 +1,4 @@
+import { SpecialWarheadType } from "@/game/SpecialWarheadType";
 import { Coords } from '@/game/Coords';
 import { Warhead } from '@/game/Warhead';
 import { DeathType } from '@/game/gameobject/common/DeathType';
@@ -60,6 +61,6 @@ export class TntChargeTrait {
         const onBridge = !!target.isUnit() && target.onBridge;
         warhead.detonate(world as any, damage, tile, elevation, target.isBuilding()
             ? Coords.tile3dToWorld(tile.rx + 0.5, tile.ry + 0.5, tile.z + elevation)
-            : target.position.worldPosition, zone, onBridge ? CollisionType.OnBridge : CollisionType.None, world.createTarget(target, tile), { ...this.attackerInfo, weapon: undefined }, false, false as any, undefined);
+            : target.position.worldPosition, zone, onBridge ? CollisionType.OnBridge : CollisionType.None, world.createTarget(target, tile), { ...this.attackerInfo, weapon: undefined }, SpecialWarheadType.TntCharge, undefined, undefined);
     }
 }

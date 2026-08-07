@@ -1,5 +1,7 @@
 import { IniFile } from './data/IniFile';
 import { IniSection } from './data/IniSection';
+import { AuthProvidersConfig } from './conf/AuthProvidersConfig';
+import { GatewayConfig } from './conf/GatewayConfig';
 interface ViewportConfig {
     width: number;
     height: number;
@@ -10,14 +12,26 @@ interface SentryConfig {
     defaultIntegrations: boolean;
     lazyLoad: boolean;
 }
+interface TurnstileConfig {
+    siteKey: string;
+    scriptUrl: string;
+    enabledForLogin: boolean;
+    preClearanceEnabled: boolean;
+    theme: string;
+    size: string;
+}
 export class Config {
     private generalData!: IniSection;
     public viewport!: ViewportConfig;
     public sentry?: SentryConfig;
+    public turnstile?: TurnstileConfig;
+    public gateway?: GatewayConfig;
+    public authProviders: AuthProvidersConfig = new AuthProvidersConfig();
     public corsProxies: [
         string,
         string
     ][] = [];
+    static DEFAULT_TURNSTILE_SCRIPT_URL = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
     constructor() {
         this.corsProxies = [];
     }
@@ -39,6 +53,28 @@ export class Config {
                 defaultIntegrations: sentrySection.getBool("defaultIntegrations"),
                 lazyLoad: sentrySection.getBool("lazyLoad", true),
             };
+        }
+        const turnstileSection = iniFile.getSection("Turnstile");
+        if (turnstileSection) {
+            this.turnstile = {
+                siteKey: turnstileSection.getString("siteKey"),
+                scriptUrl: turnstileSection.getString("scriptUrl", Config.DEFAULT_TURNSTILE_SCRIPT_URL),
+                enabledForLogin: turnstileSection.getBool("enabledForLogin"),
+                preClearanceEnabled: turnstileSection.getBool("preClearanceEnabled"),
+                theme: turnstileSection.getString("theme", "dark"),
+                size: turnstileSection.getString("size", "normal"),
+            };
+            if (!this.turnstile.siteKey) {
+                throw new Error("Missing [Turnstile] siteKey");
+            }
+        }
+        const gatewaySection = iniFile.getSection("Gateway");
+        if (gatewaySection) {
+            this.gateway = new GatewayConfig();
+            this.gateway.load(gatewaySection);
+        }
+        if (this.gateway) {
+            this.authProviders.load(iniFile.getSection("AuthProvider"), this.gateway);
         }
         const corsProxySection = iniFile.getSection("CorsProxy");
         if (corsProxySection) {
@@ -108,6 +144,9 @@ export class Config {
     }
     get quickMatchEnabled(): boolean {
         return this.generalData.getBool("quickMatchEnabled");
+    }
+    get legacyRegistrationEnabled(): boolean {
+        return this.generalData.getBool("legacyRegistrationEnabled");
     }
     get unrankedQueueEnabled(): boolean {
         return this.generalData.getBool("unrankedQueueEnabled", true);

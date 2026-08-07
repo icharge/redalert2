@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Dialog } from '@/gui/component/Dialog';
-import { WolConnection } from '@/network/WolConnection';
+import { Serializer } from '@/network/gameopt/Serializer';
 interface CreateGameBoxProps {
     strings: {
         get: (key: string) => string;
@@ -36,7 +36,7 @@ export const CreateGameBox: React.FC<CreateGameBoxProps> = ({ strings, viewport,
         }} autoComplete="off">
         <div className="field">
           <label>{strings.get("GUI:RoomDesc")}</label>
-          <input name="roomname" type="text" value={roomName} maxLength={WolConnection.MAX_ROOM_DESC_LEN} onChange={(e) => setRoomName(e.target.value)}/>
+          <input name="roomname" type="text" value={roomName} maxLength={Serializer.MAX_ROOM_DESC_LEN} onChange={(e) => setRoomName(e.target.value)}/>
         </div>
         <div className="field">
           <label>{strings.get("GUI:Password")}</label>

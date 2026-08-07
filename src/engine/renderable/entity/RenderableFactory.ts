@@ -18,6 +18,8 @@ import { ChronoSparkleFxPlugin } from "@/engine/renderable/entity/plugin/ChronoS
 import { TntFxPlugin } from "@/engine/renderable/entity/plugin/TntFxPlugin";
 import { MindControlLinkPlugin } from "@/engine/renderable/entity/plugin/MindControlLinkPlugin";
 import { InfantryDisguisePlugin } from "@/engine/renderable/entity/plugin/InfantryDisguisePlugin";
+import { ForcedDisguisePlugin } from "@/engine/renderable/entity/plugin/ForcedDisguisePlugin";
+import { MovementZone } from "@/game/type/MovementZone";
 import { PsychicDetectPlugin } from "@/engine/renderable/entity/building/PsychicDetectPlugin";
 import { TrailerSmokePlugin } from "@/engine/renderable/entity/plugin/TrailerSmokePlugin";
 import { DamageSmokePlugin } from "@/engine/renderable/entity/plugin/DamageSmokePlugin";
@@ -39,6 +41,8 @@ interface GameEntity {
         moveSound?: string;
         damageParticleSystems: any[];
         locomotor: LocomotorType;
+        isHuman?: boolean;
+        movementZone?: MovementZone;
     };
     type: string;
     mindControllerTrait?: any;
@@ -77,6 +81,7 @@ interface Rules {
     };
 }
 interface Art {
+    hasObject(name: string, type: ObjectType): boolean;
     getObject(name: string, type: ObjectType): any;
 }
 interface MapRenderable {
@@ -153,8 +158,9 @@ export class RenderableFactory {
     private buildingImageDataCache: BuildingImageDataCache;
     private useSpriteBatching: boolean;
     private useMeshInstancing: boolean;
+    private forcedYuriDisguise: boolean;
     private bridgeImageCache: Map<any, any>;
-    constructor(localPlayer: LocalPlayer, unitSelection: UnitSelection, alliances: Alliances, rules: Rules, art: Art, mapRenderable: MapRenderable | null, imageFinder: ImageFinder, palettes: Palettes, voxels: Voxels, voxelAnims: VoxelAnims, theater: Theater, camera: Camera, lighting: Lighting, lightingDirector: LightingDirector, debugWireframes: DebugWireframes, debugText: DebugText, gameSpeed: GameSpeed, worldSound: WorldSound | null, strings: Strings, flyerHelperOpt: FlyerHelperOpt, hiddenObjectsOpt: HiddenObjectsOpt, vxlBuilderFactory: VxlBuilderFactory, buildingImageDataCache: BuildingImageDataCache, useSpriteBatching: boolean = false, useMeshInstancing: boolean = false) {
+    constructor(localPlayer: LocalPlayer, unitSelection: UnitSelection, alliances: Alliances, rules: Rules, art: Art, mapRenderable: MapRenderable | null, imageFinder: ImageFinder, palettes: Palettes, voxels: Voxels, voxelAnims: VoxelAnims, theater: Theater, camera: Camera, lighting: Lighting, lightingDirector: LightingDirector, debugWireframes: DebugWireframes, debugText: DebugText, gameSpeed: GameSpeed, worldSound: WorldSound | null, strings: Strings, flyerHelperOpt: FlyerHelperOpt, hiddenObjectsOpt: HiddenObjectsOpt, vxlBuilderFactory: VxlBuilderFactory, buildingImageDataCache: BuildingImageDataCache, useSpriteBatching: boolean = false, useMeshInstancing: boolean = false, forcedYuriDisguise: boolean = false) {
         this.localPlayer = localPlayer;
         this.unitSelection = unitSelection;
         this.alliances = alliances;
@@ -180,6 +186,7 @@ export class RenderableFactory {
         this.buildingImageDataCache = buildingImageDataCache;
         this.useSpriteBatching = useSpriteBatching;
         this.useMeshInstancing = useMeshInstancing;
+        this.forcedYuriDisguise = forcedYuriDisguise;
         this.bridgeImageCache = new Map();
     }
     createTransientAnim(name: string, callback?: any): TransientAnim {
@@ -239,7 +246,16 @@ export class RenderableFactory {
             }
             else if (entity.isInfantry()) {
                 renderable = new Infantry(entity, this.rules, this.art, this.imageFinder, this.theater, palette, this.camera, this.lighting, this.debugWireframes, this.gameSpeed, selectionModel, this.useSpriteBatching, this.useMeshInstancing, pipOverlay, this.worldSound);
-                if (entity.disguiseTrait) {
+                const benderOfSpoons = (this.rules.audioVisual as any).benderOfSpoons;
+                if (this.forcedYuriDisguise &&
+                    benderOfSpoons &&
+                    entity.rules.isHuman &&
+                    entity.rules.movementZone !== MovementZone.Fly &&
+                    this.art.hasObject(benderOfSpoons, ObjectType.Infantry)) {
+                    const disguiseArt = this.art.getObject(benderOfSpoons, ObjectType.Infantry);
+                    plugins.push(new ForcedDisguisePlugin(entity, disguiseArt, this.localPlayer, renderable));
+                }
+                else if (entity.disguiseTrait) {
                     plugins.push(new InfantryDisguisePlugin(entity, entity.disguiseTrait, this.localPlayer, this.alliances, renderable, this.art, this.gameSpeed));
                 }
             }

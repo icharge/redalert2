@@ -12,6 +12,8 @@ export class PreferredHostOpts {
     destroyableBridges: boolean = true;
     multiEngineer: boolean = false;
     noDogEngiKills: boolean = false;
+    instantCapture: boolean = true;
+    delayedOils: boolean = false;
     slotsClosed: Set<number> = new Set();
     serialize(): string {
         return [
@@ -28,10 +30,12 @@ export class PreferredHostOpts {
             Number(this.destroyableBridges),
             Number(this.multiEngineer),
             Number(this.noDogEngiKills),
+            Number(this.instantCapture),
+            Number(this.delayedOils),
         ].join(';');
     }
     unserialize(data: string): this {
-        const [gameSpeed, credits, unitCount, shortGame, superWeapons, buildOffAlly, mcvRepacks, cratesAppear, slotsClosed, hostTeams = '0', destroyableBridges = '1', multiEngineer, noDogEngiKills] = data.split(';');
+        const [gameSpeed, credits, unitCount, shortGame, superWeapons, buildOffAlly, mcvRepacks, cratesAppear, slotsClosed, hostTeams = '0', destroyableBridges = '1', multiEngineer, noDogEngiKills, instantCapture = '1', delayedOils] = data.split(';');
         this.gameSpeed = Number(gameSpeed);
         this.credits = Number(credits);
         this.unitCount = Number(unitCount);
@@ -44,6 +48,8 @@ export class PreferredHostOpts {
         this.destroyableBridges = Boolean(Number(destroyableBridges));
         this.multiEngineer = Boolean(Number(multiEngineer));
         this.noDogEngiKills = Boolean(Number(noDogEngiKills));
+        this.instantCapture = Boolean(Number(instantCapture));
+        this.delayedOils = Boolean(Number(delayedOils));
         this.slotsClosed = new Set(slotsClosed && slotsClosed.length > 0
             ? slotsClosed.split(',').map(Number)
             : []);
@@ -76,6 +82,8 @@ export class PreferredHostOpts {
         this.destroyableBridges = gameOpts.destroyableBridges;
         this.multiEngineer = gameOpts.multiEngineer;
         this.noDogEngiKills = gameOpts.noDogEngiKills;
+        this.instantCapture = gameOpts.instantCapture;
+        this.delayedOils = gameOpts.delayedOils;
         return this;
     }
 }

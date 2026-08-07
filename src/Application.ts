@@ -797,7 +797,12 @@ export class Application {
         this.routing.addRoute("/", async () => {
             console.log('[Application] Initializing main page');
             this.applyRootLayout(this.viewport.value);
-            this.gui = new Gui(this.getVersion(), this.strings, this.config, this.viewport, this.rootEl!, this.cdnResourceLoader, this.gameResConfig, this.runtimeVars, this.generalOptions, this.fullScreen);
+            const { CfTurnstile } = await import('./util/CfTurnstile.js');
+            const cfTurnstile = new CfTurnstile(this.config.turnstile);
+            if (cfTurnstile.isEnabled()) {
+                cfTurnstile.load().catch((error) => console.error('Failed to load Cloudflare Turnstile', error));
+            }
+            this.gui = new Gui(this.getVersion(), this.strings, this.config, this.viewport, this.rootEl!, this.cdnResourceLoader, this.gameResConfig, this.runtimeVars, this.generalOptions, this.fullScreen, this.currentLocale, cfTurnstile);
             await this.gui.init();
             currentHandler = this;
         });

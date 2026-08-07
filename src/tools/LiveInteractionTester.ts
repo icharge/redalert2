@@ -830,6 +830,8 @@ export class LiveInteractionTester {
             destroyableBridges: true,
             multiEngineer: false,
             noDogEngiKills: false,
+            instantCapture: true,
+            delayedOils: false,
             mapName: gameMapFile.name ?? '2_reconcile.map',
             mapTitle: gameMapFile.getOrCreateSection?.('Basic')?.getString?.('Name') ?? 'Live Interaction',
             mapDigest: '',

@@ -1,148 +1,244 @@
-import React, { useState, useEffect } from 'react';
-import classNames from 'classnames';
-import { RankIndicator } from '../../lobby/component/RankIndicator';
-import { Select } from '../../../../component/Select';
-import { Option } from '../../../../component/Option';
-import { SEARCH_LIMIT } from '../../../../../network/ladder/wladderConfig';
-import { List } from '../../../../component/List';
-import { WLadderService } from '../../../../../network/ladder/WLadderService';
-interface PlayerProfile {
+import React, { useRef, useState, useEffect } from "react";
+import classNames from "classnames";
+import { RankIndicator } from "@/gui/screen/mainMenu/lobby/component/RankIndicator";
+import { Select } from "@/gui/component/Select";
+import { Option } from "@/gui/component/Option";
+import { List, ListItem } from "@/gui/component/List";
+import { WLadderService } from "@/network/ladder/WLadderService";
+import { LadderType } from "@/network/ladder/wladderConfig";
+
+const LADDER_TYPE_LABELS = new Map<LadderType, string>([
+    [LadderType.Solo1v1, "gui:laddertype1v1"],
+    [LadderType.Random2v2, "gui:laddertype2v2random"],
+]);
+
+interface PlayerLadderEntry {
     name: string;
     rank: number;
-    points: number;
+    points?: number;
+    mmr?: number;
     wins: number;
     losses: number;
-    disconnects: number;
-    lastGameDate?: string;
+    draws?: number;
+    rankType: any;
 }
+
 interface LadderProps {
+    players?: PlayerLadderEntry[];
+    highlightPlayer?: string;
+    hasPrevPage: boolean;
+    hasNextPage: boolean;
+    seasons?: string[];
+    selectedSeason?: string;
+    seasonDetails?: any;
+    ladders?: any[];
+    selectedLadder?: any;
+    serverRegion?: any;
+    disabled: boolean;
     strings: any;
-    wladderService: WLadderService;
-    onError?: (error: any) => void;
+    onFirstPageClick: () => void;
+    onPrevPageClick: () => void;
+    onNextPageClick: () => void;
+    onLastPageClick: () => void;
+    onPlayerSearch: (playerName: string) => void;
+    onSeasonSelect: (season: string) => void;
+    onLadderSelect: (ladder: any) => void;
+    onLadderTypeSelect: (ladderType: LadderType) => void;
 }
-function formatSeasonName(season: number, strings: any): string {
-    if (season === WLadderService.CURRENT_SEASON) {
-        return strings.get("GUI:LadderCurrent");
-    }
-    if (season === WLadderService.PREV_SEASON) {
-        return strings.get("GUI:LadderPrev");
-    }
-    return strings.get("GUI:LadderSeason", season);
+
+function formatSeasonName(season: string, strings: any): string {
+    return season === WLadderService.CURRENT_SEASON
+        ? strings.get("GUI:LadderCurrent")
+        : season === WLadderService.PREV_SEASON
+            ? strings.get("GUI:LadderPrev")
+            : strings.get("GUI:LadderSeason", season);
 }
+
 function formatDate(dateString: string): string {
     return new Date(dateString).toLocaleDateString(undefined, { dateStyle: "medium" });
 }
+
 function formatTime(dateString: string): string {
     return new Date(dateString).toLocaleTimeString(undefined, { timeStyle: "short" });
 }
-export const Ladder: React.FC<LadderProps> = ({ strings, wladderService, onError }) => {
-    const [selectedSeason, setSelectedSeason] = useState<number>(WLadderService.CURRENT_SEASON);
-    const [searchQuery, setSearchQuery] = useState<string>('');
-    const [players, setPlayers] = useState<PlayerProfile[]>([]);
-    const [loading, setLoading] = useState<boolean>(false);
-    const [availableSeasons, setAvailableSeasons] = useState<number[]>([]);
-    useEffect(() => {
-        loadAvailableSeasons();
-    }, []);
-    useEffect(() => {
-        if (selectedSeason !== undefined) {
-            loadLadderData();
-        }
-    }, [selectedSeason]);
-    const loadAvailableSeasons = async () => {
-        try {
-            const seasons = await wladderService.getAvailableSeasons();
-            setAvailableSeasons(seasons);
-        }
-        catch (error) {
-            console.error('Failed to load seasons:', error);
-            onError?.(error);
-        }
-    };
-    const loadLadderData = async () => {
-        setLoading(true);
-        try {
-            let profiles: PlayerProfile[];
-            if (searchQuery.trim()) {
-                const searchTerms = searchQuery.trim().split(/\s+/).slice(0, SEARCH_LIMIT);
-                profiles = await wladderService.listSearch(searchTerms, selectedSeason);
-            }
-            else {
-                profiles = await wladderService.getTopPlayers(selectedSeason, 100);
-            }
-            setPlayers(profiles);
-        }
-        catch (error) {
-            console.error('Failed to load ladder data:', error);
-            onError?.(error);
-            setPlayers([]);
-        }
-        finally {
-            setLoading(false);
-        }
-    };
-    const handleSearch = () => {
-        loadLadderData();
-    };
-    const handleSearchKeyPress = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter') {
-            handleSearch();
-        }
-    };
-    return (<div className="ladder-wrapper">
-      <div className="ladder-controls">
-        <div className="season-select">
-          <label>{strings.get("GUI:Season")}:</label>
-          <Select value={selectedSeason} onChange={(value) => setSelectedSeason(Number(value))}>
-            {availableSeasons.map(season => (<Option key={season} value={season}>
-                {formatSeasonName(season, strings)}
-              </Option>))}
-          </Select>
-        </div>
-        
-        <div className="search-controls">
-          <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onKeyPress={handleSearchKeyPress} placeholder={strings.get("GUI:SearchPlayers")} maxLength={200}/>
-          <button onClick={handleSearch} disabled={loading}>
-            {strings.get("GUI:Search")}
-          </button>
-        </div>
-      </div>
 
-      <div className="ladder-content">
-        {loading ? (<div className="loading">{strings.get("GUI:Loading")}</div>) : (<List className="ladder-list">
-            <div className="ladder-header">
-              <span className="rank-col">{strings.get("GUI:Rank")}</span>
-              <span className="name-col">{strings.get("GUI:Name")}</span>
-              <span className="points-col">{strings.get("GUI:Points")}</span>
-              <span className="wins-col">{strings.get("GUI:Wins")}</span>
-              <span className="losses-col">{strings.get("GUI:Losses")}</span>
-              <span className="disconnects-col">{strings.get("GUI:Disconnects")}</span>
-              <span className="last-game-col">{strings.get("GUI:LastGame")}</span>
+const LadderTable: React.FC<{
+    players: PlayerLadderEntry[];
+    highlightPlayer?: string;
+    ladderType?: LadderType;
+    region?: any;
+    season?: string;
+    showPoints: boolean;
+    showMmr: boolean;
+    strings: any;
+    hasPrevPage: boolean;
+    hasNextPage: boolean;
+    disabled: boolean;
+    onFirstPageClick: () => void;
+    onPrevPageClick: () => void;
+    onNextPageClick: () => void;
+    onLastPageClick: () => void;
+}> = ({ players, highlightPlayer, ladderType, region, season, showPoints, showMmr, strings, hasPrevPage, hasNextPage, disabled, onFirstPageClick, onPrevPageClick, onNextPageClick, onLastPageClick }) => (
+    <div className="ladder-table">
+        <table>
+            <thead>
+                <tr>
+                    <th className="player-rank">#</th>
+                    <th className="player-rank-icon">{strings.get("GUI:Rank")}</th>
+                    <th className="player-name">{strings.get("GUI:Name")}</th>
+                    {showPoints && <th className="player-points">{strings.get("GUI:Points")}</th>}
+                    {showMmr && <th className="player-mmr">{strings.get("GUI:MMR")}</th>}
+                    <th className="player-wins">{strings.get("GUI:NumberWins")}</th>
+                    <th className="player-losses">{strings.get("GUI:NumberLosses")}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {players.map(player => (
+                    <tr key={player.name} className={classNames({
+                        selected: highlightPlayer?.toLowerCase() === player.name.toLowerCase(),
+                        disabled: player.points === undefined && !player.wins && !player.losses && !player.draws,
+                    })}>
+                        <td className="player-rank">{player.rank}</td>
+                        <td className="player-rank-icon">
+                            <RankIndicator playerProfile={player} strings={strings}/>
+                        </td>
+                        <td className="player-name">
+                            {(() => {
+                                const leaderboardUrl = region && ladderType && season === WLadderService.CURRENT_SEASON
+                                    ? region.leaderboardUrl
+                                        ? `${region.leaderboardUrl}/player/${region.id}/${ladderType}/` + player.name
+                                        : undefined
+                                    : undefined;
+                                return leaderboardUrl
+                                    ? <a href={leaderboardUrl} target="_blank" rel="noopener">{player.name}</a>
+                                    : player.name;
+                            })()}
+                        </td>
+                        {showPoints && <td className="player-points">{player.points}</td>}
+                        {showMmr && <td className="player-mmr">{player.mmr}</td>}
+                        <td className="player-wins">{player.wins}</td>
+                        <td className="player-losses">{player.losses ?? 0}</td>
+                    </tr>
+                ))}
+            </tbody>
+        </table>
+        {(hasPrevPage || hasNextPage) && (
+            <div className="pagination">
+                <button className="first-page" disabled={!hasPrevPage || disabled} onClick={onFirstPageClick}>&lt;&lt;</button>
+                <button className="prev-page" disabled={!hasPrevPage || disabled} onClick={onPrevPageClick}>&lt;</button>
+                <button className="next-page" disabled={!hasNextPage || disabled} onClick={onNextPageClick}>&gt;</button>
+                <button className="last-page" disabled={!hasNextPage || disabled} onClick={onLastPageClick}>&gt;&gt;</button>
             </div>
-            
-            {players.map((player, index) => (<div key={player.name} className="ladder-row">
-                <span className="rank-col">
-                  <RankIndicator playerProfile={player} strings={strings}/>
-                  {player.rank}
-                </span>
-                <span className="name-col">{player.name}</span>
-                <span className="points-col">{player.points}</span>
-                <span className="wins-col">{player.wins}</span>
-                <span className="losses-col">{player.losses}</span>
-                <span className="disconnects-col">{player.disconnects}</span>
-                <span className="last-game-col">
-                  {player.lastGameDate ? (<span title={formatTime(player.lastGameDate)}>
-                      {formatDate(player.lastGameDate)}
-                    </span>) : (strings.get("GUI:Never"))}
-                </span>
-              </div>))}
-            
-            {players.length === 0 && !loading && (<div className="no-results">
-                {searchQuery.trim()
-                    ? strings.get("GUI:NoPlayersFound")
-                    : strings.get("GUI:NoLadderData")}
-              </div>)}
-          </List>)}
-      </div>
-    </div>);
+        )}
+    </div>
+);
+
+export const Ladder: React.FC<LadderProps> = ({ players, highlightPlayer, hasPrevPage, hasNextPage, seasons, selectedSeason, seasonDetails, ladders, selectedLadder, serverRegion, disabled, strings, onFirstPageClick, onPrevPageClick, onNextPageClick, onLastPageClick, onPlayerSearch, onSeasonSelect, onLadderSelect, onLadderTypeSelect }) => {
+    if (!players) {
+        return <div className="ladder">{strings.get("GUI:LoadingEx")}</div>;
+    }
+    const searchBox = useRef<HTMLInputElement>(null);
+    const [showSeasonInfo, setShowSeasonInfo] = useState(!selectedLadder);
+    useEffect(() => {
+        setShowSeasonInfo(!selectedLadder);
+    }, [selectedLadder]);
+    const getLadderKey = (ladder: any) => ladder.type + "_" + ladder.id;
+    const hasMmr = players.some(player => player.mmr !== undefined);
+    const hasPoints = players.some(player => player.points !== undefined);
+    const selectedLadderType = selectedLadder?.type;
+    const ladderTypes = [...new Set(seasonDetails?.ladders.map((ladder: any) => ladder.type) ?? (selectedLadderType ? [selectedLadderType] : undefined))] as LadderType[];
+    const rankedPlayerCount = seasonDetails?.totalRankedPlayers.find((entry: any) => entry.ladderType === selectedLadderType)?.value;
+    return (
+        <div className="ladder">
+            <div className={classNames("toolbar", { "no-season-select": !seasons || seasons.length < 2 })}>
+                {seasons !== undefined && seasons.length > 0 && (
+                    <Select disabled={disabled} initialValue={selectedSeason ?? seasons[0]} onSelect={onSeasonSelect} className="season-select">
+                        {seasons.map(season => (
+                            <Option key={season} label={formatSeasonName(season, strings)} value={season}/>
+                        ))}
+                    </Select>
+                )}
+                {!showSeasonInfo && (
+                    <>
+                        {ladders !== undefined && ladders.length > 0 && (
+                            <Select disabled={disabled} initialValue={getLadderKey(selectedLadder ?? ladders[0])} onSelect={(value: string) => {
+                                const { type, id } = (() => {
+                                    const [type, id] = value.split("_");
+                                    return { type, id: Number(id) };
+                                })();
+                                const ladder = ladders?.find((entry: any) => entry.id === id && entry.type === type);
+                                if (ladder) {
+                                    onLadderSelect(ladder);
+                                }
+                            }} className="ladder-select">
+                                {ladders.map(ladder => (
+                                    <Option key={ladder.type + "_" + ladder.id} label={ladder.name + (ladder.divisionName ? ", " + strings.get("GUI:LadderDivision", ladder.divisionName) : "")} value={getLadderKey(ladder)}/>
+                                ))}
+                                {rankedPlayerCount ? (
+                                    <Option label={strings.get("GUI:LadderRankedPlayers", rankedPlayerCount)} disabled value=""/>
+                                ) : undefined}
+                            </Select>
+                        )}
+                        <form className="player-search" onSubmit={(event) => {
+                            event.preventDefault();
+                            if (searchBox.current?.value) {
+                                onPlayerSearch(searchBox.current.value);
+                                searchBox.current.value = "";
+                            }
+                        }}>
+                            <input className="player" type="text" disabled={disabled} ref={searchBox} placeholder={strings.get("GUI:Player")}/>
+                            <button type="submit" disabled={disabled}>{strings.get("GUI:Search")}</button>
+                        </form>
+                    </>
+                )}
+            </div>
+            <div className="ladder-content">
+                <List className="ladder-types">
+                    <ListItem selected={showSeasonInfo} disabled={disabled} onClick={() => setShowSeasonInfo(true)}>{strings.get("gui:ladderseasoninfo")}</ListItem>
+                    {ladderTypes.map(ladderType => (
+                        <ListItem key={ladderType} selected={!showSeasonInfo && selectedLadderType === ladderType} disabled={disabled} onClick={() => {
+                            setShowSeasonInfo(false);
+                            onLadderTypeSelect(ladderType);
+                        }}>{strings.get(LADDER_TYPE_LABELS.get(ladderType) ?? ladderType)}</ListItem>
+                    ))}
+                </List>
+                {showSeasonInfo && seasonDetails ? (
+                    <div className="season-info">
+                        <header>
+                            <h2>{formatSeasonName(seasonDetails.name, strings)}</h2>
+                            {seasonDetails.startTime !== undefined && seasonDetails.endTime !== undefined && (
+                                <p>{formatDate(seasonDetails.startTime) + " - " + formatDate(seasonDetails.endTime)}</p>
+                            )}
+                        </header>
+                        {seasonDetails.topTierStartTime !== undefined && (
+                            <div className="item">
+                                <span className="label">{strings.get("gui:laddertoptierstart")}</span>
+                                <span className="label">{formatDate(seasonDetails.topTierStartTime)}</span>
+                            </div>
+                        )}
+                        {seasonDetails.nextTopTierDemoteTime !== undefined && (
+                            <div className="item">
+                                <span className="label">{strings.get("gui:laddertoptierdemotions")}</span>
+                                <span className="label">{formatTime(seasonDetails.nextTopTierDemoteTime)}</span>
+                            </div>
+                        )}
+                        {seasonDetails.nextTopTierPromoteTime !== undefined && (
+                            <div className="item">
+                                <span className="label">{strings.get("gui:laddertoptierpromotions")}</span>
+                                <span className="label">{formatTime(seasonDetails.nextTopTierPromoteTime)}</span>
+                            </div>
+                        )}
+                        {seasonDetails.lockTime !== undefined && (
+                            <div className="item">
+                                <span className="label">{strings.get("gui:ladderseasonlock")}</span>
+                                <span className="value">{formatDate(seasonDetails.lockTime)}</span>
+                            </div>
+                        )}
+                    </div>
+                ) : (
+                    <LadderTable players={players} highlightPlayer={highlightPlayer} ladderType={selectedLadder?.type ?? ladders?.[0].type} region={serverRegion} season={selectedSeason} showPoints={hasPoints} showMmr={hasMmr} strings={strings} hasPrevPage={hasPrevPage} hasNextPage={hasNextPage} disabled={disabled} onFirstPageClick={onFirstPageClick} onPrevPageClick={onPrevPageClick} onNextPageClick={onNextPageClick} onLastPageClick={onLastPageClick}/>
+                )}
+            </div>
+        </div>
+    );
 };

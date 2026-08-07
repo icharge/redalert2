@@ -3,7 +3,7 @@ import { Chat } from '../../../../component/Chat';
 import { List, ListHeader, ListItem } from '../../../../component/List';
 import { Image } from '../../../../component/Image';
 import { RankIndicator } from '../../lobby/component/RankIndicator';
-import { ChannelUser } from '../../../../component/ChannelUser';
+import ChannelUser from '../../../../component/ChannelUser';
 import { ChatRecipientType } from '../../../../../network/chat/ChatMessage';
 import { Strings } from '../../../../../data/Strings';
 interface Game {
@@ -29,7 +29,7 @@ interface User {
 }
 interface PlayerProfile {
     name: string;
-    rank?: number;
+    rankType: any;
 }
 interface MapInfo {
     official: boolean;
@@ -66,6 +66,7 @@ interface GameBrowserProps {
     onRefreshClick: () => void;
     onSelectGame: (game: Game | undefined) => void;
     onDoubleClickGame: (game: Game) => void;
+    onCancelMessage?: () => void;
 }
 interface GameListProps {
     games: Game[];
@@ -147,7 +148,7 @@ const GameList: React.FC<GameListProps> = ({ games, selectedGame, onClickGame, o
             ...(game.modName ? [strings.get("GUI:GameMod", game.modName)] : []),
             strings.get("TXT_MAP", uiMapName),
             ping ? strings.get("WOL:GamePing", ping) : strings.get("TXT_UNKNOWN_PING"),
-            ...(hostProfile?.rank !== undefined ? [`${strings.get("TXT_HOST_RANK")} ${hostProfile.rank}`] : [])
+            ...(hostProfile && hostProfile.rankType !== undefined ? [`${strings.get("TXT_HOST_RANK")} ${strings.get("GUI:Rank" + String(hostProfile.rankType))}`] : [])
         ];
         return (<GameItem key={game.name} game={game} uiMapName={uiMapName} customMap={!mapInfo?.official} ping={ping} hostProfile={hostProfile} tooltip={tooltipParts.join(", ")} selected={game.name === selectedGame?.name} strings={strings} onClick={onClickGame} onDoubleClick={onDoubleClickGame}/>);
     })}
@@ -180,7 +181,7 @@ export const GameBrowser: React.FC<GameBrowserProps> = (props) => {
         </div>
       </div>
       <div className="gamebrowser-bottom">
-        <Chat strings={props.strings} messages={props.messages} channels={props.channels ?? []} chatHistory={props.chatHistory} localUsername={props.localUsername} onSendMessage={props.onSendMessage} tooltips={{
+        <Chat strings={props.strings} messages={props.messages} channels={props.channels ?? []} chatHistory={props.chatHistory} localUsername={props.localUsername} onSendMessage={props.onSendMessage} onCancelMessage={() => props.onCancelMessage?.()} tooltips={{
             input: props.strings.get("STT:LobbyEditInput"),
             output: props.strings.get("STT:LobbyEditOutput"),
             button: props.strings.get("STT:EmoteButton"),
