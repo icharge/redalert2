@@ -111,6 +111,9 @@ export class Config {
         const url = this.generalData.getString("gameResArchiveUrl");
         return url === "" ? undefined : url;
     }
+    get checkMixesIntegrity(): boolean {
+        return this.generalData.getBool("checkMixesIntegrity", true);
+    }
     get mapsBaseUrl(): string | undefined {
         const url = this.generalData.getString("mapsBaseUrl");
         return url === "" ? undefined : url;

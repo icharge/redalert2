@@ -455,12 +455,17 @@ export class GameRes {
             if (!rfs) {
                 throw new NoStorageError("No available storage adapters for local/archive resources.");
             }
-            console.info("Checking integrity of mix files...");
-            const rootDir = rfs.getRootDirectory();
-            if (!rootDir)
-                throw new Error("RFS root not available for mix integrity check");
-            await this.checkMixesIntegrity(rootDir);
-            console.info("Mixes are valid.");
+            if (this.appConfig.checkMixesIntegrity !== false) {
+                console.info("Checking integrity of mix files...");
+                const rootDir = rfs.getRootDirectory();
+                if (!rootDir)
+                    throw new Error("RFS root not available for mix integrity check");
+                await this.checkMixesIntegrity(rootDir);
+                console.info("Mixes are valid.");
+            }
+            else {
+                console.info("Skipping integrity check of mix files.");
+            }
         }
         const logger = AppLogger.get("vfs");
         logger.info("Initializing virtual filesystem...");
