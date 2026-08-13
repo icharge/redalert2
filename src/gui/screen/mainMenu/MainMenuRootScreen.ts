@@ -414,7 +414,14 @@ export class MainMenuRootScreen extends RootScreen {
                     );
                     break;
                 case MainMenuScreenType.Ladder:
-                    screen = new screenClass(this.strings, services.wladderService, this.jsxRenderer);
+                    screen = new screenClass(
+                        services.wladderService,
+                        this.jsxRenderer,
+                        errorHandler,
+                        this.messageBoxApi,
+                        this.strings,
+                        this.appLocale,
+                    );
                     break;
             }
         }
@@ -427,7 +434,7 @@ export class MainMenuRootScreen extends RootScreen {
             const replayManager = (this as any).replayManager;
             const engineVersion = this.appVersion;
             const engineModHash = Engine.getActiveMod?.() ?? '';
-            screen = new screenClass(engineVersion, engineModHash, undefined, undefined, this.rootController, this.strings, this.jsxRenderer, errorHandler, this.messageBoxApi, replayManager, undefined, rules);
+            screen = new screenClass(engineVersion, engineModHash, undefined, undefined, this.rootController, this.strings, this.jsxRenderer, errorHandler, this.messageBoxApi, replayManager, this.uiScene, rules);
         }
         else if (screenType === MainMenuScreenType.LanSetup) {
             const { ErrorHandler } = await import('../../../ErrorHandler.js');

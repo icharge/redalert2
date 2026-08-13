@@ -19,7 +19,7 @@ export class CfTurnstile {
     private turnstile: any;
     private loadPromise?: Promise<void>;
 
-    constructor(private config?: CfTurnstileConfig, private document: Document = document) {
+    constructor(private config?: CfTurnstileConfig, private document: Document = globalThis.document) {
     }
 
     isEnabled(): boolean {
