@@ -188,10 +188,16 @@ export class Gui {
             }
         }
     }
-    private async getMainMenuVideoUrl(): Promise<string | File | undefined> {
+    private async getMainMenuVideoUrl(gameResConfig?: GameResConfig): Promise<string | File | undefined> {
         console.log('[Gui] Getting main menu video URL');
         const videoFileName = Engine.rfsSettings.menuVideoFileName;
         console.log('[Gui] Video file name:', videoFileName);
+        if (gameResConfig?.isCdn()) {
+            const cdnBaseUrl = gameResConfig.getCdnBaseUrl();
+            if (cdnBaseUrl) {
+                return cdnBaseUrl + videoFileName.replace(".webm", ".mp4");
+            }
+        }
         try {
             if (Engine.rfs) {
                 console.log('[Gui] Checking RFS for video file...');
@@ -298,7 +304,7 @@ export class Gui {
         if (!this.rootController || !this.uiScene || !this.jsxRenderer || !this.renderer || !this.messageBoxApi) {
             throw new Error('GUI components not properly initialized');
         }
-        const videoSrc = await this.getMainMenuVideoUrl();
+        const videoSrc = await this.getMainMenuVideoUrl(this.gameResConfig);
         console.log('[Gui] Video source:', videoSrc);
         const subScreens = new Map<MainMenuScreenType, any>();
         subScreens.set(MainMenuScreenType.Home, HomeScreen);

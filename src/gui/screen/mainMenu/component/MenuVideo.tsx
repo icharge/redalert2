@@ -57,11 +57,14 @@ export class MenuVideo extends React.Component<MenuVideoProps, MenuVideoState> {
             video.querySelector("source").addEventListener("error", errorHandler, { once: true });
             video.addEventListener("loadeddata", () => {
                 video.querySelector("source").removeEventListener("error", errorHandler);
+                video.play()?.catch((error) => console.error(error));
             });
         }
         video.addEventListener("loadeddata", () => {
             logo.style.opacity = "";
+            video.play()?.catch((error) => console.error(error));
         });
+        video.play()?.catch((error) => console.error(error));
     }
     private async applyMediaSourceFallback(video: HTMLVideoElement, buffer: ArrayBuffer): Promise<void> {
         if (!this.disposed) {

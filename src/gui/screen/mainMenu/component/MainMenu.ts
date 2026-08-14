@@ -205,6 +205,13 @@ export class MainMenu extends UiObject {
             throw new Error("Cannot call toggleVideo prior to render");
         }
         this.menuVideo.getUiObject().setVisible(visible);
+        if (visible) {
+            const video = this.menuVideo.getElement()?.getElement()?.querySelector('video');
+            if (video) {
+                video.currentTime = 0;
+                video.play()?.catch((error) => console.error(error));
+            }
+        }
         console.log('[MainMenu] Video visibility set to:', visible);
     }
     showVersion(version: string): void {
