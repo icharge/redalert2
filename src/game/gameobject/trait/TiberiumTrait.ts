@@ -4,11 +4,14 @@ import { TiberiumType } from '@/engine/type/TiberiumType';
 import { LandType } from '@/game/type/LandType';
 import { GameObject } from '@/game/gameobject/GameObject';
 import { World } from '@/game/World';
+import { TiberiumRules } from '@/game/rules/TiberiumRules';
 export class TiberiumTrait {
     static maxBails: number = 11;
     private gameObject: GameObject;
-    constructor(gameObject: GameObject) {
+    private rules: TiberiumRules;
+    constructor(gameObject: GameObject, rules: TiberiumRules) {
         this.gameObject = gameObject;
+        this.rules = rules;
     }
     static canBePlacedOn(tile: any, world: World): boolean {
         return ([LandType.Clear, LandType.Road, LandType.Rough].includes(tile.landType) &&

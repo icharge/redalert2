@@ -218,9 +218,11 @@ export class ObjectFactory {
                 }
             }
         }
-        if (gameObject.isOverlay() &&
-            OreOverlayTypes.getOverlayTibType(rulesIni.getOverlayId(gameObject.name)) !== OverlayTibType.NotSpecial) {
-            gameObject.traits.add(new TiberiumTrait(gameObject));
+        if (gameObject.isOverlay()) {
+            const overlayTibType = OreOverlayTypes.getOverlayTibType(rulesIni.getOverlayId(gameObject.name));
+            if (overlayTibType !== OverlayTibType.NotSpecial) {
+                gameObject.traits.add(new TiberiumTrait(gameObject, rulesIni.getTiberium(overlayTibType)));
+            }
         }
         if (gameObject.isTerrain() && gameObject.rules.spawnsTiberium) {
             gameObject.traits.add(new TiberiumTreeTrait(gameObject.rules));
