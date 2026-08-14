@@ -439,6 +439,7 @@ export class Application {
     }
     public async main(): Promise<void> {
         console.log('Application.main() called');
+        Engine.setActiveEngine(EngineType.RedAlert2);
         this.rootEl = document.getElementById("ra2web-root");
         if (!this.rootEl) {
             console.error("CRITICAL: Missing root element #ra2web-root in HTML.");
@@ -582,7 +583,6 @@ export class Application {
                 console.log("Engine.iniFiles.has('art.ini'):", Engine.iniFiles.has("art.ini"));
                 console.log("[Diag] Engine.iniFiles.has('rulescd.ini'):", Engine.iniFiles.has("rulescd.ini"));
                 console.log("[Diag] Engine.iniFiles.has('artcd.ini'):", Engine.iniFiles.has("artcd.ini"));
-                Engine.setActiveEngine(EngineType.RedAlert2);
                 Engine.loadRules();
                 try {
                     const rulesIniUsed = Engine.getFileNameVariant('rules.ini');
