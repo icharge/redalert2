@@ -7,7 +7,7 @@ import { GeneralOptions } from '@/gui/screen/options/GeneralOptions';
 import { WorldView } from '@/gui/screen/game/WorldView';
 import { Minimap } from '@/gui/screen/game/component/Minimap';
 import { WorldInteractionFactory } from '@/gui/screen/game/worldInteraction/WorldInteractionFactory';
-import { Engine } from '@/engine/Engine';
+import { Engine, EngineType } from '@/engine/Engine';
 import { IsoCoords } from '@/engine/IsoCoords';
 import { Renderer } from '@/engine/gfx/Renderer';
 import { TheaterType } from '@/engine/TheaterType';
@@ -203,6 +203,7 @@ export class SceneSandboxTester {
     };
 
     static async main(_mixFileLoader: any, gameMapFile: any, parentElement: HTMLElement, strings: StringsLike, context: TestToolRuntimeContext = {}, options: SceneSandboxOptions = {}): Promise<void> {
+        Engine.setActiveEngine(EngineType.RedAlert2);
         const theaterType = gameMapFile.theaterType ?? TheaterType.Temperate;
         await TestToolSupport.ensureTheater(theaterType, context.cdnResourceLoader, [
             ResourceType.UiAlly,

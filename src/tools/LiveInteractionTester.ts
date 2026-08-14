@@ -12,7 +12,7 @@ import { WorldView } from '@/gui/screen/game/WorldView';
 import { Minimap } from '@/gui/screen/game/component/Minimap';
 import { ReplayLoadingScreenApi } from '@/gui/screen/game/loadingScreen/ReplayLoadingScreenApi';
 import { WorldInteractionFactory } from '@/gui/screen/game/worldInteraction/WorldInteractionFactory';
-import { Engine } from '@/engine/Engine';
+import { Engine, EngineType } from '@/engine/Engine';
 import { IsoCoords } from '@/engine/IsoCoords';
 import { Renderer } from '@/engine/gfx/Renderer';
 import { WorldScene } from '@/engine/renderable/WorldScene';
@@ -241,6 +241,7 @@ export class LiveInteractionTester {
     };
 
     static async main(_mixFileLoader: any, gameMapFile: any, parentElement: HTMLElement, strings: StringsLike, context: TestToolRuntimeContext = {}, deps: LiveInteractionRuntimeDeps = {}): Promise<void> {
+        Engine.setActiveEngine(EngineType.RedAlert2);
         await this.destroy();
         const root = TestToolSupport.prepareHost(context, DEFAULT_VIEWPORT_WIDTH, DEFAULT_VIEWPORT_HEIGHT);
         const loadingStartedAt = performance.now();
