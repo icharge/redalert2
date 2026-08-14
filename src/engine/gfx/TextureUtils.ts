@@ -43,7 +43,6 @@ class TextureUtilsClass {
         texture.magFilter = THREE.NearestFilter;
         texture.needsUpdate = true;
         texture.flipY = false;
-        texture.colorSpace = (THREE as any).SRGBColorSpace ?? THREE.LinearSRGBColorSpace;
         return texture;
     }
 }

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import Stats from 'stats.js';
 import { EventDispatcher } from '../../util/event';
 import { RendererError } from './RendererError';
+(THREE.ColorManagement as any).enabled = false;
 export class Renderer {
     private width: number;
     private height: number;
@@ -81,7 +82,7 @@ export class Renderer {
         renderer.shadowMap.enabled = true;
         renderer.localClippingEnabled = true;
         renderer.toneMapping = THREE.NoToneMapping;
-        renderer.outputColorSpace = (THREE as any).SRGBColorSpace ?? THREE.LinearSRGBColorSpace;
+        renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
         return renderer;
     }
     setSize(width: number, height: number): void {

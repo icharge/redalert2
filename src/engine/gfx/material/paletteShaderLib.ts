@@ -100,24 +100,24 @@ varying float vInstanceOpacity;
   vec3 extraIrradiance = extraLight.rgb;
   #endif
 
-  #if ( NUM_DIR_LIGHTS > 0 )
+  reflectedLight.directDiffuse *= PI;
+  reflectedLight.directSpecular *= PI;
+  reflectedLight.indirectDiffuse *= PI;
+
+  #if ( NUM_DIR_LIGHTS > 0 ) && defined( RE_Direct )
     #pragma unroll_loop_start
     for ( int i = 0; i < NUM_DIR_LIGHTS; i ++ ) {
-      vec3 lightDirection = normalize( directionalLights[ i ].direction );
-      float dotNL = saturate( dot( geometryNormal, lightDirection ) );
-      vec3 customIrradiance = dotNL * directionalLights[ i ].color * extraIrradiance;
-      
-      reflectedLight.directDiffuse += customIrradiance * BRDF_Lambert( material.diffuseColor );
-      #ifdef USE_PHONG
-        reflectedLight.directSpecular += customIrradiance * BRDF_BlinnPhong( lightDirection, geometryViewDir, geometryNormal, material.specularColor, material.specularShininess ) * material.specularStrength;
-      #endif
+      directLight.direction = directionalLights[ i ].direction;
+      directLight.color = extraIrradiance * PI;
+      directLight.visible = true;
+      RE_Direct( directLight, geometryPosition, geometryNormal, geometryViewDir, geometryClearcoatNormal, material, reflectedLight );
     }
     #pragma unroll_loop_end
   #endif
 
-  vec3 ambientIrradiance = getAmbientLightIrradiance( ambientLightColor );
-  ambientIrradiance *= extraIrradiance;
-  reflectedLight.indirectDiffuse += ambientIrradiance * BRDF_Lambert( material.diffuseColor );
+  #if defined( RE_IndirectDiffuse )
+  RE_IndirectDiffuse( extraIrradiance, geometryPosition, geometryNormal, geometryViewDir, geometryClearcoatNormal, material, reflectedLight );
+  #endif
 `,
     vertexColorMultParsVertex: `
 #ifdef USE_VERTEX_COLOR_MULT
