@@ -67,6 +67,9 @@ export class AttackTrait implements NotifyTick, NotifyDamage, NotifyTeleport {
     cancelOpportunityFire(): void {
         this.opportunityFireTask?.cancel();
     }
+    getOpportunityFireTask(): any {
+        return this.opportunityFireTask;
+    }
     selectDefaultWeapon(e: any): any {
         let i;
         if ((e.isInfantry() || e.isVehicle()) && e.rules.deployFire) {
@@ -422,8 +425,9 @@ export class AttackTrait implements NotifyTick, NotifyDamage, NotifyTeleport {
     canPassiveAcquire(e: any, t: any): boolean {
         return (!e.owner.isNeutral &&
             !e.rules.civilian &&
-            !e.rules.insignificant &&
+            (!e.rules.insignificant || (e.isBuilding() && e.garrisonTrait?.isOccupied())) &&
             (e.rules.threatPosed > 1 ||
+                (e.isBuilding() && e.garrisonTrait?.isOccupied()) ||
                 (e.rules.specialThreatValue > 0 && !e.isBuilding()) ||
                 e.rules.harvester ||
                 e.name === t.rules.general.paradrop.paradropPlane));

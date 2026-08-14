@@ -8,6 +8,9 @@ interface LoadInfo {
     name: string;
     status: any;
     loadPercent: number;
+    ping: number;
+    lagAllowanceMillis: number;
+    timeoutAt?: number;
 }
 interface LoadInfoParser {
     parse(data: any): LoadInfo[];
@@ -56,26 +59,31 @@ interface ExtendedPlayerInfo {
     name: string;
     status: any;
     loadPercent: number;
+    ping: number;
+    lagAllowanceMillis: number;
+    timeoutAt?: number;
+    showLoadTimeoutStatus: boolean;
     country: Country;
     color: string;
     team: number;
 }
 export class MpLoadingScreenApi implements LoadingScreenApi {
     private lastLoadPercent = 0;
+    private loadTimeoutFirstSeenByPlayer = new Map<string, number>();
+    private playerLoadInfo?: LoadInfo[];
     private disposables = new CompositeDisposable();
     private players?: Player[];
     private localPlayerName?: string;
     private mapName?: string;
     private loadingScreen?: any;
     private handleLoadInfoUpdate = (loadInfoData: any) => {
-        const loadInfos = this.loadInfoParser.parse(loadInfoData);
+        const playerLoadInfo = this.createClientPlayerLoadInfo(this.loadInfoParser.parse(loadInfoData));
+        this.playerLoadInfo = playerLoadInfo;
         if (this.loadingScreen) {
-            this.loadingScreen.applyOptions((options: any) => {
-                options.playerInfos = this.createExtendedLoadingInfos(loadInfos);
-            });
+            this.updateLoadingScreen(playerLoadInfo);
         }
         else {
-            this.createLoadingScreen(loadInfos);
+            this.createLoadingScreen(playerLoadInfo);
         }
     };
     constructor(private gservCon: GservCon | undefined, private loadInfoParser: LoadInfoParser, private rules: Rules, private strings: Strings, private uiScene: UiScene, private jsxRenderer: JsxRenderer, private gameResConfig: GameResConfig) { }
@@ -101,6 +109,17 @@ export class MpLoadingScreenApi implements LoadingScreenApi {
                 }
             }, 10000);
             this.disposables.add(() => clearInterval(intervalId));
+            const refreshIntervalId = setInterval(() => {
+                if (this.gservCon?.isOpen()) {
+                    if (this.loadingScreen && this.playerLoadInfo) {
+                        this.updateLoadingScreen(this.playerLoadInfo);
+                    }
+                }
+                else {
+                    this.disposables.dispose();
+                }
+            }, 1000);
+            this.disposables.add(() => clearInterval(refreshIntervalId));
         }
     }
     onLoadProgress(percent: number): void {
@@ -120,20 +139,52 @@ export class MpLoadingScreenApi implements LoadingScreenApi {
             name: player.name,
             status: PlayerConnectionStatus.Connected,
             loadPercent: player.name === this.localPlayerName ? loadPercent : 0,
+            ping: 0,
+            lagAllowanceMillis: 0,
         }));
+    }
+    private createClientPlayerLoadInfo(loadInfos: LoadInfo[]): LoadInfo[] {
+        const now = Date.now();
+        return loadInfos.map((loadInfo) => {
+            const prevInfo = this.playerLoadInfo?.find((info) => info.name === loadInfo.name);
+            if (prevInfo?.status === loadInfo.status && prevInfo.timeoutAt === loadInfo.timeoutAt) {
+                // unchanged, keep the first-seen timestamp
+            }
+            else {
+                this.loadTimeoutFirstSeenByPlayer.delete(loadInfo.name);
+            }
+            if (!this.loadTimeoutFirstSeenByPlayer.has(loadInfo.name)) {
+                this.loadTimeoutFirstSeenByPlayer.set(loadInfo.name, now);
+            }
+            return {
+                ...loadInfo,
+                loadTimeoutFirstSeenAt: this.loadTimeoutFirstSeenByPlayer.get(loadInfo.name),
+            };
+        });
+    }
+    private updateLoadingScreen(loadInfos: LoadInfo[]): void {
+        this.loadingScreen?.applyOptions((options: any) => {
+            options.playerInfos = this.createExtendedLoadingInfos(loadInfos);
+        });
     }
     private createExtendedLoadingInfos(loadInfos: LoadInfo[]): ExtendedPlayerInfo[] {
         const colors = [...this.rules.getMultiplayerColors().values()];
         const countries = this.rules.getMultiplayerCountries();
         const hasTeams = this.players?.every(player => player.countryId === OBS_COUNTRY_ID ||
             player.teamId !== NO_TEAM_ID);
+        const now = Date.now();
         const extendedInfos = loadInfos
             .map(loadInfo => {
             const player = this.players!.find(p => p.name === loadInfo.name)!;
+            const loadTimeoutFirstSeenAt = (loadInfo as any).loadTimeoutFirstSeenAt as number | undefined;
             return {
                 name: loadInfo.name,
                 status: loadInfo.status,
                 loadPercent: loadInfo.loadPercent,
+                ping: loadInfo.ping,
+                lagAllowanceMillis: loadInfo.lagAllowanceMillis,
+                timeoutAt: loadInfo.timeoutAt,
+                showLoadTimeoutStatus: loadTimeoutFirstSeenAt !== undefined && now - loadTimeoutFirstSeenAt >= 10000,
                 country: countries[player.countryId],
                 color: player.countryId === OBS_COUNTRY_ID
                     ? "#fff"

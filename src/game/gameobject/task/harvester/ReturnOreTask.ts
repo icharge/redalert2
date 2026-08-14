@@ -146,15 +146,16 @@ export class ReturnOreTask extends Task {
         }
         if (harvesterTrait.status !== HarvesterStatus.Unloading)
             return false;
-        const oreValue = harvesterTrait.ore * this.game.rules.getTiberium(TiberiumType.Ore).value +
-            harvesterTrait.gems * this.game.rules.getTiberium(TiberiumType.Gems).value;
-        this.target.owner.credits += oreValue;
+        const oreValue = harvesterTrait.getBails().reduce((total, [type, count]) =>
+            total + count * this.game.rules.getTiberium(type).value, 0);
+        let creditsGained = oreValue;
         const purifierCount = [...this.target.owner.buildings].filter((building: any) => building.rules.orePurifier &&
             (!building.poweredTrait || !this.target.owner.powerTrait?.isLowPower())).length;
         const purifierBonus = this.game.rules.general.purifierBonus;
-        this.target.owner.credits += purifierCount * Math.floor(oreValue * purifierBonus);
-        harvesterTrait.ore = 0;
-        harvesterTrait.gems = 0;
+        creditsGained += purifierCount * Math.floor(oreValue * purifierBonus);
+        this.target.owner.credits += creditsGained;
+        this.target.owner.creditsGained += creditsGained;
+        harvesterTrait.empty();
         if (unit.unitOrderTrait.getTasks().length === 1) {
             unit.unitOrderTrait.addTask(new GatherOreTask(this.game));
         }

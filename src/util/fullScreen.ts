@@ -26,9 +26,16 @@ export function setupFullScreenChangeListener(document: Document, handler: FullS
         }
     };
     document.addEventListener("fullscreenchange", fullscreenChangeHandler);
+    const prefixedChangeEvents = ["webkitfullscreenchange", "mozfullscreenchange", "MSFullscreenChange"];
+    for (const eventName of prefixedChangeEvents) {
+        document.addEventListener(eventName, fullscreenChangeHandler);
+    }
     document.addEventListener("keyup", keyUpHandler);
     return () => {
         document.removeEventListener("fullscreenchange", fullscreenChangeHandler);
+        for (const eventName of prefixedChangeEvents) {
+            document.removeEventListener(eventName, fullscreenChangeHandler);
+        }
         document.removeEventListener("keyup", keyUpHandler);
     };
 }

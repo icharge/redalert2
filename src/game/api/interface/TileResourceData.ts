@@ -1,3 +1,6 @@
 export interface TileResourceData {
-    id: string;
+    tile: any;
+    ore: number;
+    gems: number;
+    spawnsOre: boolean;
 }

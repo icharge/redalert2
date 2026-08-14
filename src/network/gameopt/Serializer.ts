@@ -93,6 +93,7 @@ export class Serializer {
         loadPercent: number;
         ping: number;
         lagAllowanceMillis: number;
+        timeoutAt?: number;
     }>): string {
         return loadInfo
             .map(info => [
@@ -100,7 +101,8 @@ export class Serializer {
             info.status,
             info.loadPercent,
             info.ping,
-            info.lagAllowanceMillis
+            info.lagAllowanceMillis,
+            info.timeoutAt ?? 0
         ].join(','))
             .join(',');
     }

@@ -47,7 +47,8 @@ export class TntChargeTrait {
         if (this.timer.isActive() &&
             !context?.weapon?.warhead.rules.ivanBomb &&
             gameObject.deathType !== DeathType.None &&
-            gameObject.deathType !== DeathType.Temporal) {
+            gameObject.deathType !== DeathType.Temporal &&
+            gameObject.deathType !== DeathType.Sink) {
             this.timer.reset();
             this.detonateIvanWarhead(world, gameObject);
         }

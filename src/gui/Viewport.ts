@@ -12,4 +12,8 @@ export interface ViewportRect {
 export interface Viewport {
     value: ViewportRect;
     rootElement?: HTMLElement;
+    onChange?: {
+        subscribe(listener: (value: ViewportRect) => void): void;
+        unsubscribe(listener: (value: ViewportRect) => void): void;
+    };
 }

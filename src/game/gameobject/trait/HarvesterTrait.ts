@@ -8,6 +8,7 @@ import { NotifyTeleport } from './interface/NotifyTeleport';
 import { NotifyOrder } from './interface/NotifyOrder';
 import { OrderType } from '@/game/order/OrderType';
 import { LandType } from '@/game/type/LandType';
+import { TiberiumType } from '@/engine/type/TiberiumType';
 export enum HarvesterStatus {
     Idle = 0,
     LookingForOreSite = 1,
@@ -21,23 +22,47 @@ export enum HarvesterStatus {
 }
 export class HarvesterTrait {
     private storage: number;
-    private ore: number;
-    private gems: number;
+    private _ore: number;
+    private _gems: number;
+    private bails = new Map<TiberiumType, number>();
     private status: HarvesterStatus;
     private lastGatherExplicit: boolean;
     private autoGatherOnNextIdle: boolean;
     private ticksSinceLastRefineryCheck: number;
     private ticksSinceLastOreCheck: number;
     private lastOreSite?: any;
+    get ore(): number {
+        return this._ore;
+    }
+    get gems(): number {
+        return this._gems;
+    }
     constructor(storage: number) {
         this.storage = storage;
-        this.ore = 0;
-        this.gems = 0;
+        this._ore = 0;
+        this._gems = 0;
         this.status = HarvesterStatus.Idle;
         this.lastGatherExplicit = false;
         this.autoGatherOnNextIdle = false;
         this.ticksSinceLastRefineryCheck = 0;
         this.ticksSinceLastOreCheck = 0;
+    }
+    addBails(type: TiberiumType, count: number): void {
+        this.bails.set(type, (this.bails.get(type) ?? 0) + count);
+        if (type === TiberiumType.Gems) {
+            this._gems += count;
+        }
+        else {
+            this._ore += count;
+        }
+    }
+    getBails(): Array<[TiberiumType, number]> {
+        return [...this.bails.entries()];
+    }
+    empty(): void {
+        this.bails.clear();
+        this._ore = 0;
+        this._gems = 0;
     }
     [NotifySpawn.onSpawn](unit: any, world: any): void {
         if (unit.owner.isCombatant()) {

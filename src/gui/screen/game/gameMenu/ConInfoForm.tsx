@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { CountryIcon } from '@/gui/component/CountryIcon';
 import { OBS_COUNTRY_NAME } from '@/game/gameopts/constants';
 import { RECIPIENT_ALL, RECIPIENT_TEAM } from '@/network/gservConfig';
+import { PlayerConnectionStatus } from '@/network/gamestate/PlayerConnectionStatus';
 import { Chat } from '@/gui/component/Chat';
 interface Color {
     asHexString(): string;
@@ -17,7 +18,7 @@ interface Player {
 }
 interface ConInfo {
     name: string;
-    status: string;
+    status: any;
     ping?: number;
     lagAllowanceMillis?: number;
 }
@@ -44,11 +45,6 @@ interface ConInfoFormProps {
 const TURN_TIMEOUT_MILLIS = 60000;
 const LAG_STATE_THRESH_MILLIS = 5000;
 const CON_INFO_THRESH_MILLIS = 3000;
-const PlayerConnectionStatus = {
-    Connected: 'Connected',
-    Disconnected: 'Disconnected',
-    Lagging: 'Lagging'
-};
 export const ConInfoForm: React.FC<ConInfoFormProps> = ({ strings, conInfos, players, localPlayer, messages, chatHistory, onSendMessage, }) => {
     const [timeRemaining, setTimeRemaining] = useState(() => Math.floor((TURN_TIMEOUT_MILLIS -
         LAG_STATE_THRESH_MILLIS -

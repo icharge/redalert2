@@ -74,5 +74,7 @@ export enum SoundKey {
     StormSound = 72,
     LightningSounds = 73,
     ShellButtonSlideSound = 74,
-    QuickMatchTimer = 75
+    QuickMatchTimer = 75,
+    PartyInvite = 76,
+    PartyFormed = 77
 }

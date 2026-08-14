@@ -4,6 +4,7 @@ import { ScatterTask } from '../task/ScatterTask';
 import { LeaveTransportEvent } from '@/game/event/LeaveTransportEvent';
 import { NotifyTick } from './interface/NotifyTick';
 import { ZoneType } from '../unit/ZoneType';
+import { DeathType } from '../common/DeathType';
 import { GameObject } from '../GameObject';
 import { World } from '@/game/World';
 export class TransportTrait {
@@ -54,6 +55,7 @@ export class TransportTrait {
                 unit.zone = gameObject.zone;
                 unit.onBridge = gameObject.onBridge;
                 unit.position.tile = gameObject.tile;
+                unit.deathType = gameObject.deathType;
                 world.destroyObject(unit, context, true);
             }
         }
@@ -81,6 +83,12 @@ export class TransportTrait {
                     unit.zone = transport.zone;
                     unit.onBridge = transport.onBridge;
                     unit.position.tile = transport.tile;
+                    if (unit.zone === ZoneType.Water) {
+                        unit.deathType = DeathType.Sink;
+                    }
+                    if (unit.armedTrait?.deathWeapon) {
+                        unit.armedTrait.deathWeapon = undefined;
+                    }
                     world.destroyObject(unit, { player: unit.owner });
                 }
             }

@@ -1,4 +1,5 @@
 import { NotifyWarpChange } from "@/game/gameobject/trait/interface/NotifyWarpChange";
+import { NotifyWarpChange as GameLevelNotifyWarpChange } from "@/game/trait/interface/NotifyWarpChange";
 import { NotifyTick } from "@/game/gameobject/trait/interface/NotifyTick";
 export class WarpedOutTrait implements NotifyTick {
     private gameObject: any;
@@ -26,9 +27,9 @@ export class WarpedOutTrait implements NotifyTick {
     }
     private notifyChange(isWarpedOut: boolean, context: any): void {
         context.traits
-            .filter(NotifyWarpChange)
+            .filter(GameLevelNotifyWarpChange)
             .forEach(trait => {
-            trait[NotifyWarpChange.onChange](this.gameObject, context, isWarpedOut);
+            trait[GameLevelNotifyWarpChange.onChange](this.gameObject, context, isWarpedOut);
         });
         this.gameObject.traits
             .filter(NotifyWarpChange)

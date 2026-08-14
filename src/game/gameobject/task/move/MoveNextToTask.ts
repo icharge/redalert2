@@ -32,7 +32,7 @@ export class MoveNextToTask extends MoveTask {
             this.canStopAtTile(unit, unit.tile, unit.onBridge);
     }
 
-    protected canStopAtTile(_unit: any, tile: any, onBridge: any): boolean {
+    protected canStopAtTile(unit: any, tile: any, onBridge: any): boolean {
         return !this.game.map.tileOccupation.isTileOccupiedBy(tile, this.target) &&
             super.canStopAtTile(unit, tile, onBridge);
     }

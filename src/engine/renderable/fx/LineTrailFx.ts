@@ -1,12 +1,12 @@
 import { ObjectArt } from '@/game/art/ObjectArt';
 import { Coords } from '@/game/Coords';
 import * as THREE from 'three';
-import { MeshLine, MeshLineMaterial } from 'three.meshline';
-import { getMeshLineResolution } from '@/engine/renderable/fx/MeshLineResolution';
+import { TrailRenderer } from './vendor/TrailRenderer.js';
 interface GameSpeed {
     value?: number;
 }
 interface Container {
+    get3DObject(): THREE.Object3D;
     remove(item: LineTrailFx): void;
 }
 export class LineTrailFx {
@@ -17,17 +17,11 @@ export class LineTrailFx {
     private camera: THREE.Camera;
     private trailInitialized: boolean = false;
     private container?: Container;
-    private wrapper?: THREE.Object3D;
-    private trailMesh?: THREE.Mesh;
-    private trailMaterial?: MeshLineMaterial;
+    private placeholderObj?: THREE.Object3D;
+    private trail?: TrailRenderer;
+    private lastTargetMatrix?: THREE.Matrix4;
     private timeLeft?: number;
-    private finishDurationSeconds?: number;
     private prevUpdateMillis?: number;
-    private lastTargetPosition?: THREE.Vector3;
-    private frozenTargetPosition?: THREE.Vector3;
-    private trailPoints: THREE.Vector3[] = [];
-    private maxPoints: number = 2;
-    private cameraHash?: string;
     constructor(lazyTarget: () => THREE.Object3D | undefined, trailColor: THREE.Color, trailDecrement: number, gameSpeed: GameSpeed, camera: THREE.Camera) {
         this.lazyTarget = lazyTarget;
         this.trailColor = trailColor;
@@ -39,12 +33,12 @@ export class LineTrailFx {
         this.container = container;
     }
     get3DObject(): THREE.Object3D | undefined {
-        return this.wrapper;
+        return this.placeholderObj;
     }
     create3DObject(): void {
-        if (!this.wrapper) {
-            this.wrapper = new THREE.Object3D();
-            this.wrapper.name = "fx_linetrail";
+        if (!this.placeholderObj) {
+            this.placeholderObj = new THREE.Object3D();
+            this.placeholderObj.name = "fx_linetrail_placeholder";
         }
     }
     update(timeMillis: number): void {
@@ -57,131 +51,73 @@ export class LineTrailFx {
         }
         if (!this.trailInitialized) {
             this.trailInitialized = true;
-            const trailMesh = this.createTrail(this.trailColor, this.trailDecrement);
-            if (trailMesh) {
-                this.trailMesh = trailMesh;
-                this.wrapper?.add(trailMesh);
+            const trail = this.createTrail(this.trailColor, this.trailDecrement);
+            if (trail) {
+                this.trail = trail;
             }
             else {
                 this.timeLeft = 0;
             }
         }
-        if (this.trailMesh && this.trailMaterial) {
-            const currentCameraHash = this.computeCameraHash();
-            if (currentCameraHash !== this.cameraHash) {
-                this.cameraHash = currentCameraHash;
-                this.trailMaterial.resolution = this.computeResolution();
-            }
-            const currentTargetPosition = this.resolveTargetPosition();
-            if (currentTargetPosition) {
-                this.lastTargetPosition = currentTargetPosition.clone();
-                this.updateTrailGeometry(currentTargetPosition);
-            }
-            const opacity = this.timeLeft === undefined || this.finishDurationSeconds === undefined
-                ? 1
-                : Math.max(0, this.timeLeft / this.finishDurationSeconds);
-            this.trailMaterial.opacity = opacity;
+        if (this.trail) {
+            this.trail.advance();
+            this.lastTargetMatrix = this.trail.targetObject.matrixWorld;
         }
         if (this.isFinished()) {
             this.container?.remove(this);
             this.dispose();
         }
     }
-    private createTrail(color: THREE.Color, decrement: number): THREE.Mesh | undefined {
-        const targetPosition = this.resolveTargetPosition();
-        if (!targetPosition)
+    private createTrail(color: THREE.Color, decrement: number): TrailRenderer | undefined {
+        const target = this.lazyTarget();
+        if (!target) {
             return undefined;
-        this.maxPoints = Math.max(2, Math.floor(((3 / this.getGameSpeedValue()) * 50) /
-            (decrement / ObjectArt.DEFAULT_LINE_TRAIL_DEC)));
-        this.trailPoints = [targetPosition.clone(), targetPosition.clone()];
-        this.lastTargetPosition = targetPosition.clone();
-        this.cameraHash = this.computeCameraHash();
-        const meshLine = new MeshLine();
-        meshLine.setPoints(this.flattenPoints(this.trailPoints));
-        const material = new MeshLineMaterial({
-            color: color.clone(),
-            lineWidth: 0.8,
-            resolution: this.computeResolution(),
-            transparent: true,
-            sizeAttenuation: 0,
-            depthTest: false,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
-        });
-        material.opacity = 1;
-        this.trailMaterial = material;
-        const mesh = new THREE.Mesh(meshLine.geometry, material);
-        mesh.frustumCulled = false;
-        mesh.renderOrder = 1000000;
-        return mesh;
+        }
+        const scene = this.container?.get3DObject();
+        if (!scene) {
+            return undefined;
+        }
+        const renderer = new TrailRenderer(scene);
+        const material = TrailRenderer.createBaseMaterial();
+        material.uniforms.headColor.value.set(color.r, color.g, color.b, 1);
+        material.uniforms.tailColor.value.set(color.r, color.g, color.b, 0);
+        const maxLength = Math.floor(((3 / this.getGameSpeedValue()) * 50) /
+            (decrement / ObjectArt.DEFAULT_LINE_TRAIL_DEC));
+        const width = 0.8 * Coords.ISO_WORLD_SCALE;
+        const plane = new THREE.PlaneGeometry(width, width);
+        const quat = new THREE.Quaternion().setFromEuler(this.camera.rotation);
+        plane.applyMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(quat));
+        const positionAttr = plane.getAttribute('position');
+        const headVertices: THREE.Vector3[] = [];
+        for (let i = 0; i < positionAttr.count; i++) {
+            headVertices.push(new THREE.Vector3(
+                positionAttr.getX(i),
+                positionAttr.getY(i),
+                positionAttr.getZ(i),
+            ));
+        }
+        renderer.initialize(material, maxLength, false, 0, headVertices, target);
+        renderer.activate();
+        return renderer;
     }
     isFinished(): boolean {
         return this.timeLeft === 0;
     }
     requestFinishAndDispose(): void {
-        this.finishDurationSeconds = 0.8 / this.getGameSpeedValue();
-        this.timeLeft = this.finishDurationSeconds;
+        this.timeLeft = 0.8 / this.getGameSpeedValue();
     }
     stopTracking(): void {
-        if (!this.frozenTargetPosition) {
-            this.frozenTargetPosition =
-                this.lastTargetPosition?.clone() ?? this.resolveTargetPosition()?.clone();
+        if (this.trail && this.lastTargetMatrix) {
+            const obj = new THREE.Object3D();
+            obj.updateMatrixWorld = () => { };
+            obj.matrixWorld = this.lastTargetMatrix;
+            this.trail.targetObject = obj;
         }
     }
     dispose(): void {
-        if (this.trailMesh) {
-            this.trailMesh.geometry.dispose();
-            this.trailMaterial?.dispose();
-            this.wrapper?.remove(this.trailMesh);
-            this.trailMesh = undefined;
-        }
-    }
-    private resolveTargetPosition(): THREE.Vector3 | undefined {
-        if (this.frozenTargetPosition) {
-            return this.frozenTargetPosition.clone();
-        }
-        const target = this.lazyTarget();
-        if (!target) {
-            return undefined;
-        }
-        const position = new THREE.Vector3();
-        target.getWorldPosition(position);
-        return position;
-    }
-    private updateTrailGeometry(currentTargetPosition: THREE.Vector3): void {
-        if (!this.trailMesh) {
-            return;
-        }
-        const lastPoint = this.trailPoints[this.trailPoints.length - 1];
-        if (!lastPoint) {
-            this.trailPoints.push(currentTargetPosition.clone());
-        }
-        else if (lastPoint.distanceToSquared(currentTargetPosition) > 1) {
-            this.trailPoints.push(currentTargetPosition.clone());
-        }
-        else {
-            lastPoint.copy(currentTargetPosition);
-        }
-        while (this.trailPoints.length > this.maxPoints) {
-            this.trailPoints.shift();
-        }
-        if (this.trailPoints.length === 1) {
-            this.trailPoints.push(this.trailPoints[0].clone());
-        }
-        const meshLine = new MeshLine();
-        meshLine.setPoints(this.flattenPoints(this.trailPoints));
-        this.trailMesh.geometry.dispose();
-        this.trailMesh.geometry = meshLine.geometry;
-    }
-    private flattenPoints(points: THREE.Vector3[]): number[] {
-        return points.flatMap((point) => [point.x, point.y, point.z]);
-    }
-    private computeCameraHash(): string {
-        const camera = this.camera as THREE.OrthographicCamera;
-        return `${camera.top}_${camera.right}_${camera.rotation.x}_${camera.rotation.y}`;
-    }
-    private computeResolution(): THREE.Vector2 {
-        return getMeshLineResolution(this.camera);
+        this.trail?.deactivate();
+        this.trail?.material.dispose();
+        this.trail?.geometry.dispose();
     }
     private getGameSpeedValue(): number {
         if (typeof this.gameSpeed?.value !== 'number') {

@@ -1206,6 +1206,7 @@ export class GameScreen extends RootScreen {
                 route: new MainMenuRoute(MainMenuScreenType.Score, {
                     game,
                     localPlayer,
+                    isQuit: true,
                     singlePlayer: this.isSinglePlayer,
                     tournament: this.isTournament,
                     returnTo: this.returnTo ?? new MainMenuRoute(MainMenuScreenType.Home, undefined)
@@ -1309,6 +1310,7 @@ export class GameScreen extends RootScreen {
                 ? new MainMenuRoute(MainMenuScreenType.Score, {
                     game,
                     localPlayer,
+                    isQuit: false,
                     singlePlayer: this.isSinglePlayer,
                     tournament: this.isTournament,
                     returnTo: this.returnTo ?? new MainMenuRoute(MainMenuScreenType.Home, undefined)

@@ -1,3 +1,6 @@
 export interface SuperWeaponData {
-    id: string;
+    playerName: string;
+    type: string;
+    status: string;
+    timerSeconds: number;
 }

@@ -144,8 +144,9 @@ export class MapShroud {
         const coords = this.rxyzToSxy(tile.rx, tile.ry, tile.z + offset);
         return this.getShroudTypeByShroudCoords(coords) === ShroudType.Unexplored;
     }
-    getShroudType(tile: Tile): ShroudType {
-        return this.tiles[this.getTileIndex(tile)] & MapShroud.SHROUD_TYPE_MASK;
+    getShroudType(tile: Tile, offset: number = 0): ShroudType {
+        const coords = this.rxyzToSxy(tile.rx, tile.ry, tile.z + offset);
+        return this.getShroudTypeByShroudCoords(coords);
     }
     isFlagged(tile: Tile, flag: number): boolean {
         return (this.tiles[this.getTileIndex(tile)] & flag) !== 0;

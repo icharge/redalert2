@@ -209,7 +209,7 @@ export class WorldScene extends RenderableContainer {
         this.directionalLight.intensity = ambientIntensity;
     }
     update(deltaTime: number, time?: number): void {
-        super.update(deltaTime);
+        super.update(deltaTime, time);
         this._onBeforeCameraUpdate.dispatch(this, deltaTime);
         const zoom = this.cameraZoom.getZoom();
         const pan = this.cameraPan.getPan();

@@ -43,6 +43,7 @@ export class GeneralRules {
     public flightLevel!: number;
     public alliedDisguise!: string;
     public sovietDisguise!: string;
+    public thirdDisguise!: string;
     public defaultMirageDisguises!: string[];
     public cloakDelay!: number;
     public infantryBlinkDisguiseTime!: number;
@@ -156,6 +157,7 @@ export class GeneralRules {
         this.spyMoneyStealPercent = ini.getNumber('SpyMoneyStealPercent');
         this.spyPowerBlackout = ini.getNumber('SpyPowerBlackout');
         this.technician = ini.getString('Technician');
+        this.thirdDisguise = ini.getString('ThirdDisguise');
         this.threat = new ThreatRules().readIni(ini);
         this.treeStrength = ini.getNumber('TreeStrength');
         this.unitsUnsellable = ini.getBool('UnitsUnsellable');

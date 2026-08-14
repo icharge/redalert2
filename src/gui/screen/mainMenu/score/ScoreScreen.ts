@@ -18,6 +18,7 @@ interface Player {
 interface ScoreScreenParams {
     game: Game;
     localPlayer: Player;
+    isQuit?: boolean;
     singlePlayer: boolean;
     tournament: boolean;
     returnTo: {
@@ -61,7 +62,7 @@ export class ScoreScreen extends MainMenuScreen {
             this.loadGameReport(params.game);
         }
     }
-    private initView({ game, localPlayer, singlePlayer, tournament, returnTo, }: ScoreScreenParams): void {
+    private initView({ game, localPlayer, isQuit, singlePlayer, tournament, returnTo, }: ScoreScreenParams): void {
         this.controller.setSidebarButtons([
             {
                 label: this.strings.get("GUI:Continue"),
@@ -86,6 +87,7 @@ export class ScoreScreen extends MainMenuScreen {
             props: {
                 game: game,
                 singlePlayer: singlePlayer,
+                isQuit: isQuit,
                 localPlayer: localPlayer,
                 tournament: tournament,
                 strings: this.strings,

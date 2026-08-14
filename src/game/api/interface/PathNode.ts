@@ -1,3 +1,4 @@
 export interface PathNode {
-    id: string;
+    tile: any;
+    onBridge: boolean;
 }

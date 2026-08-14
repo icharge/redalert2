@@ -98,9 +98,7 @@ export class Animation {
                 return true;
             }
             if (this.endLoopFlag) {
-                this.frameNo = targetFrame;
                 this.endLoopFlag = false;
-                this.playToEndFlag = false;
                 return true;
             }
             framesToAdvance -= 1 + (this.props.reverse ? currentFrame - targetFrame : targetFrame - currentFrame);

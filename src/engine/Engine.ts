@@ -201,6 +201,7 @@ export class Engine {
     public static shroudFileName = "shroud.shp";
     public static mixinRulesFileNames = new Map<MixinRulesType, string>().set(MixinRulesType.NoDogEngiKills, "nodogengikills.ini");
     private static activeMod?: string;
+    private static activeEngine?: EngineType;
     private static modHash?: number;
     private static gameResSource?: GameResSource;
     public static rfs?: RealFileSystem;
@@ -356,10 +357,36 @@ export class Engine {
         if (!artCustom)
             throw new Error(`Art "${this.customArtFileName}" not found`);
         this.art = artBase.clone().mergeWith(artCustom);
-        this.rules = rulesBase.clone().mergeWith(rulesCustom);
+        this.rules = this.patchAudioVisualRules(rulesBase.clone().mergeWith(rulesCustom));
         console.log('current custom rules', rulesCustom);
         this.ai = aiBase;
         this.modHash = this.computeModHash();
+    }
+    private static patchAudioVisualRules(rules: IniFile): IniFile {
+        if (this.activeEngine === EngineType.YurisRevenge) {
+            const generalSection = rules.getSection("General");
+            const audioVisualSection = rules.getSection("AudioVisual");
+            if (generalSection && audioVisualSection) {
+                for (const key of [
+                    "DamageFireTypes", "OreTwinkle", "BarrelExplode", "BarrelDebris",
+                    "BarrelParticle", "NukeTakeOff", "Wake", "DropPod", "DeadBodies",
+                    "MetallicDebris", "BridgeExplosions", "IonBlast", "IonBeam",
+                    "WeatherConClouds", "WeatherConBolts", "WeatherConBoltExplosion",
+                    "DominatorWarhead", "DominatorDamage", "DominatorCaptureRange",
+                    "DominatorFirstAnim", "DominatorSecondAnim", "DominatorFireAtPercentage",
+                    "ChronoPlacement", "ChronoBeam", "ChronoBlast", "ChronoBlastDest",
+                    "WarpIn", "WarpOut", "WarpAway", "IronCurtainInvokeAnim",
+                    "ForceShieldInvokeAnim", "WeaponNullifyAnim", "ChronoSparkle1",
+                    "InfantryExplode", "FlamingInfantry", "InfantryHeadPop",
+                    "InfantryNuked", "InfantryVirus", "InfantryBrute", "InfantryMutate",
+                    "Behind", "MoveFlash", "Parachute", "BombParachute",
+                    "DropZoneAnim", "EMPulseSparkles",
+                ]) {
+                    audioVisualSection.set(key, generalSection.getString(key));
+                }
+            }
+        }
+        return rules;
     }
     static computeModHash(): number {
         if (!this.vfs)
@@ -440,6 +467,11 @@ export class Engine {
         }
         return iniFile;
     }
+    static getSoundIni(): IniFile {
+        const soundCdIni = this.getIni("soundcd.ini");
+        const soundIni = this.getIni(this.getFileNameVariant("sound.ini"));
+        return soundIni.clone().mergeWith(soundCdIni);
+    }
     static async loadMapList(): Promise<MapList> {
         if (!this.vfs)
             throw new Error("File system not initialized");
@@ -515,7 +547,13 @@ export class Engine {
         return this.taunts;
     }
     static getActiveEngine(): EngineType {
-        return EngineType.RedAlert2;
+        if (!this.activeEngine) {
+            throw new Error("Engine type not initialized");
+        }
+        return this.activeEngine;
+    }
+    static setActiveEngine(engineType: EngineType): void {
+        this.activeEngine = engineType;
     }
     static getLastTheaterType(): TheaterType | undefined {
         return this.activeTheater?.type;

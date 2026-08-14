@@ -11,7 +11,7 @@ export class SecureProgressTrait {
     private securingPlayer: any;
 
     constructor(secureSeconds = 0) {
-        this.secureTicks = Math.max(0, Math.round(secureSeconds * GameSpeed.BASE_TICKS_PER_SECOND));
+        this.secureTicks = Math.max(0, Math.round(60 * secureSeconds * GameSpeed.BASE_TICKS_PER_SECOND));
     }
 
     isActive(): boolean {

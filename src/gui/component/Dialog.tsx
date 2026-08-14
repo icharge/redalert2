@@ -45,8 +45,8 @@ export class Dialog extends React.Component<DialogProps> {
         const viewport = this.props.viewport;
         return {
             position: 'absolute',
-            top: viewport.y,
-            left: viewport.x,
+            top: viewport.x,
+            left: viewport.y,
             width: viewport.width,
             height: viewport.height,
             zIndex: this.props.zIndex

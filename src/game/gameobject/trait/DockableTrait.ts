@@ -19,6 +19,7 @@ export class DockableTrait {
     [NotifyTeleport.onBeforeTeleport](target: any, context: any, tile: any, keepDock: boolean): void {
         if (!keepDock) {
             this.undock(target);
+            this.reservedDock?.dockTrait.unreserveDockForUnit(target);
         }
     }
     undock(target: any): void {

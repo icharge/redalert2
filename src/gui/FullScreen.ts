@@ -1,5 +1,6 @@
 import { CompositeDisposable } from '../util/disposable/CompositeDisposable';
 import { setupFullScreenChangeListener } from '../util/fullScreen';
+import { polyfillFullscreen } from '../util/fullscreenPolyfill';
 import { EventDispatcher } from '../util/event';
 export interface HotKey {
     altKey: boolean;
@@ -35,6 +36,7 @@ export class FullScreen {
             event.metaKey === this.hotKey.metaKey);
     }
     public init(): void {
+        polyfillFullscreen(this.document as any);
         const keyDownHandler = (event: KeyboardEvent) => {
             if (FullScreen.isFullScreenHotKey(event)) {
                 event.preventDefault();

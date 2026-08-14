@@ -4,6 +4,7 @@ import { HtmlView } from '@/gui/jsx/HtmlView';
 import { CompositeDisposable } from '@/util/disposable/CompositeDisposable';
 import { ConInfoForm } from '@/gui/screen/game/gameMenu/ConInfoForm';
 import { GameMenuScreen } from '@/gui/screen/game/GameMenuScreen';
+import { LoadInfoParser } from '@/network/gameopt/LoadInfoParser';
 interface Strings {
     get(key: string, ...args: any[]): string;
 }
@@ -72,11 +73,6 @@ interface JsxRenderer {
 interface FormRef {
     refresh(): void;
     applyOptions(updater: (options: any) => void): void;
-}
-class LoadInfoParser {
-    parse(data: any): any {
-        return data;
-    }
 }
 export class ConnectionInfoScreen extends GameMenuScreen {
     private strings: Strings;

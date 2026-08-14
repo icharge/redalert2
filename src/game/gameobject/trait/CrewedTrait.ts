@@ -31,7 +31,11 @@ export class CrewedTrait {
             crewType = crewRules.sovietCrew;
         }
         else {
-            return;
+            if (side !== SideType.ThirdSide) {
+                return;
+            }
+            survivorDivisor = crewRules.thirdSurvivorDivisor;
+            crewType = crewRules.thirdCrew;
         }
         let survivorCount = context.sellTrait.computeRefundValue(target) / survivorDivisor;
         survivorCount = survivorCount > 0 && survivorCount < 1 ? 1 : Math.floor(survivorCount);

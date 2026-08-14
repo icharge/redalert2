@@ -43,11 +43,11 @@ export class CreateCrateExecutor extends TriggerExecutor {
                 ? powerupType(game)
                 : game.rules.powerups.powerups.find((p: any) => p.type === powerupType);
             if (powerup) {
-                game.crateGeneratorTrait.spawnCrateAt(tile, powerup, game);
+                game.crateGeneratorTrait.spawnCrateAt(tile, powerup, game, 3, game.gameOpts.cratesAppear);
             }
         }
         else {
-            game.crateGeneratorTrait.spawnRandomCrateAt(tile, game);
+            game.crateGeneratorTrait.spawnRandomCrateAt(tile, game, 3, game.gameOpts.cratesAppear);
         }
     }
 }

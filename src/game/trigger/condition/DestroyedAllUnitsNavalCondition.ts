@@ -4,10 +4,10 @@ import { TriggerCondition } from "@/game/trigger/TriggerCondition";
 export class DestroyedAllUnitsNavalCondition extends TriggerCondition {
     private allDestroyed: boolean;
     private houseId: number;
-    constructor(params: any[], context: any) {
+    constructor(params: any, context: any) {
         super(params, context);
         this.allDestroyed = false;
-        this.houseId = Number(params[1]);
+        this.houseId = Number(params.params[1]);
     }
     check(event: any, events: any[]): boolean {
         if (this.allDestroyed) {

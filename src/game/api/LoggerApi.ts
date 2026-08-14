@@ -12,7 +12,7 @@ export class LoggerApi {
         this.gameTime = gameTime;
     }
     setDebugLevel(debug: boolean): void {
-        this.logger.setLevel(debug ? AppLogger.DEBUG : AppLogger.INFO);
+        this.logger.setLevel(debug ? AppLogger.DEBUG : AppLogger.WARN);
     }
     debug(...args: any[]): void {
         this.logger.debug(this.getTimePrefix(), ...args);

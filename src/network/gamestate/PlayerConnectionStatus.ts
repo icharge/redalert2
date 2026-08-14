@@ -1,5 +1,6 @@
 export enum PlayerConnectionStatus {
-    Connected = 'Connected',
-    Disconnected = 'Disconnected',
-    Lagging = 'Lagging'
+    NotConnected = 0,
+    Connected = 1,
+    Disconnected = 2,
+    Lagging = 3
 }

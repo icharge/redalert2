@@ -1,4 +1,9 @@
 import { SideType } from "../../game/SideType";
+const SIDE_PREFIXES = new Map<SideType, string>([
+    [SideType.GDI, "Allied"],
+    [SideType.Nod, "Russian"],
+    [SideType.ThirdSide, "Yuri"],
+]);
 export enum EvaPriority {
     Low = 0,
     Normal = 1,
@@ -23,7 +28,10 @@ export class EvaSpecs {
             throw new Error("Missing eva.ini [DialogList] section");
         }
         const dialogNames = new Set(dialogListSection.entries.values());
-        const sidePrefix = this.sideType === SideType.GDI ? "Allied" : "Russian";
+        const sidePrefix = SIDE_PREFIXES.get(this.sideType);
+        if (!sidePrefix) {
+            throw new Error(`Unhandled side type "${SideType[this.sideType]}"`);
+        }
         for (let dialogName of dialogNames) {
             if (dialogName) {
                 let dialogSection = ini.getSection(dialogName);

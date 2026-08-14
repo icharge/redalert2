@@ -11,6 +11,7 @@ import { CardinalTileFinder } from "./map/tileFinder/CardinalTileFinder";
 import { SpeedType } from "./type/SpeedType";
 import { Target, TargetBridgeMode } from "./Target";
 import { BridgeOverlayTypes } from "./map/BridgeOverlayTypes";
+import { rectContainsPoint } from "../util/geometry";
 import { fnv32a, isBetween } from "../util/math";
 import { GameEventBus } from "./GameEventBus";
 import { ObjectDestroyEvent } from "./event/ObjectDestroyEvent";
@@ -225,6 +226,8 @@ export class Game {
     createInitialMapOverlays(overlays: any[], noHarvesters: boolean) {
         const bridgeSegments = new Map<any, number>();
         const bridgeObjects = new Map<any, any>();
+        const highBridgeHeadTiles = this.map.bridges.findMapHighBridgeHeadTiles();
+        const highBridgeSpecs = this.map.bridges.findBridgeSpecsForHeadTiles([...highBridgeHeadTiles]);
         for (const overlay of overlays) {
             const overlayName = this.rules.getOverlayName(overlay.id);
             if (!this.validateMapObjectRulesAndArt(overlayName, ObjectType.Overlay)) {
@@ -237,6 +240,25 @@ export class Game {
             let tileY = overlay.ry;
             if (overlayObj.isBridge() && overlayObj.isHighBridge()) {
                 overlayObj.position.tileElevation = 4;
+                const spec = highBridgeSpecs.find((s: any) =>
+                    rectContainsPoint(
+                        { x: s.start.rx, y: s.start.ry, ...this.map.bridges.getBridgeSize(s) },
+                        { x: tileX, y: tileY }));
+                if (spec) {
+                    const { type, isXBridge, isHigh } = spec;
+                    if (!isHigh) {
+                        console.warn(`Expected high bridge but found low bridge overlay at location (${tileX},${tileY})`);
+                        overlayObj.dispose();
+                        continue;
+                    }
+                    if (isXBridge !== overlayObj.isXBridge()) {
+                        const recalcId = BridgeOverlayTypes.calculateHighBridgeOverlayId(type, isXBridge);
+                        if (overlayObj.overlayId !== recalcId) {
+                            overlayObj.overlayId = recalcId;
+                            overlayObj.name = this.rules.getOverlayName(recalcId);
+                        }
+                    }
+                }
                 tileX += overlayObj.isXBridge() ? 0 : -1;
                 tileY += overlayObj.isXBridge() ? -1 : 0;
             }
@@ -301,8 +323,10 @@ export class Game {
             }
         }
         const lowBridgeHeadTiles = [...bridgeObjects.keys()].filter((tile: any) => this.map.bridges.getPieceAtTile(tile)?.headType !== BridgeHeadType.None);
-        const highBridgeHeadTiles = this.map.bridges.findMapHighBridgeHeadTiles();
-        const bridgeSpecs = this.map.bridges.findBridgeSpecsForHeadTiles([...lowBridgeHeadTiles, ...highBridgeHeadTiles]);
+        const bridgeSpecs = [
+            ...this.map.bridges.findBridgeSpecsForHeadTiles([...lowBridgeHeadTiles]),
+            ...highBridgeSpecs,
+        ];
         for (const spec of bridgeSpecs) {
             for (const piece of this.map.bridges.findBridgePieces(spec)) {
                 piece.obj.bridgeTrait.bridgeSpec = spec;
@@ -662,7 +686,7 @@ export class Game {
         }
         if (obj.isTechno()) {
             const originalOwner = obj.mindControllableTrait?.getOriginalOwner() ?? obj.owner;
-            if (killer && (obj.isBuilding() || originalOwner.isCombatant())) {
+            if (killer && (!obj.isBuilding() || originalOwner.isCombatant())) {
                 killer.player.addUnitsKilled(obj.type, 1);
                 if (killer.player !== originalOwner && !this.alliances.areAllied(killer.player, originalOwner)) {
                     killer.player.score += obj.rules.points;
@@ -795,7 +819,7 @@ export class Game {
     checkGameEndConditions() {
         this.updateDefeatedPlayers(this.playerList.getCombatants());
         const shouldEnd = (this.localPlayer?.defeated && !this.localPlayer.isObserver) ||
-            (!this.alliances.getHostilePlayers().length &&
+            (!this.alliances.getHostilePlayers().some((pair: any) => !pair.first.isAi || !pair.second.isAi) &&
                 this.gameOpts.humanPlayers.length + this.gameOpts.aiPlayers.filter((p: any) => !!p).length > 1);
         if (shouldEnd) {
             this.end();

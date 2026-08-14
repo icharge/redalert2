@@ -189,12 +189,16 @@ export const GameBrowser: React.FC<GameBrowserProps> = (props) => {
         <List className="players-list" tooltip={props.strings.get("STT:LobbyListUsers")}>
           {props.users.map((user) => {
             const playerProfile = props.playerProfiles.get(user.name);
-            return (<ChannelUser key={user.name} user={user} playerProfile={playerProfile} strings={props.strings} onClick={() => {
+            const menuItems = [{
+                label: props.strings.get("GUI:PlayerMenuMessage"),
+                onClick: () => {
                     props.chatHistory.lastComposeTarget.value = {
                         type: ChatRecipientType.Whisper,
                         name: user.name,
                     };
-                }}/>);
+                },
+            }];
+            return (<ChannelUser key={user.name} user={user} playerProfile={playerProfile} strings={props.strings} localUsername={props.localUsername} menuItems={menuItems}/>);
         })}
         </List>
       </div>

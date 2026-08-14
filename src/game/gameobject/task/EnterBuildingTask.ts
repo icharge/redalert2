@@ -39,8 +39,8 @@ export class EnterBuildingTask extends Task {
             return true;
         }
         if (this.state === EnterBuildingTaskState.MovingIn && this.children.length) {
-            if (gameObject.tile === this.lastOutsideTile ||
-                this.game.map.tileOccupation.isTileOccupiedBy(gameObject.tile, this.target)) {
+            if (gameObject.tile !== this.lastOutsideTile &&
+                !this.game.map.tileOccupation.isTileOccupiedBy(gameObject.tile, this.target)) {
                 this.lastOutsideTile = gameObject.tile;
             }
             return false;
@@ -90,11 +90,10 @@ export class EnterBuildingTask extends Task {
         }
         if (this.state !== EnterBuildingTaskState.WaitingForDelay) {
             this.game.events.dispatch(new EnterObjectEvent(this.target, gameObject));
-            if (this.onEnter(gameObject) === false) {
-                this.children.push(new MoveOutsideTask(this.game, this.target, this.lastOutsideTile));
-                this.state = EnterBuildingTaskState.MovingOut;
-            }
-            return false;
+            return false !== this.onEnter(gameObject) ||
+                (this.children.push(new MoveOutsideTask(this.game, this.target, this.lastOutsideTile)),
+                    this.state = EnterBuildingTaskState.MovingOut,
+                    false);
         }
         else {
             const castProgressTrait = gameObject.castProgressTrait;

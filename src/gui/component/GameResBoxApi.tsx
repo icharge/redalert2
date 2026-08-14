@@ -23,12 +23,10 @@ export class GameResBoxApi {
         this.fsAccessLib = fsAccessLib;
     }
     async promptForGameRes(defaultArchiveUrl?: string, closable?: boolean): Promise<GameResSourceSelection> {
-        console.log('[GameResBoxApi] promptForGameRes called with:', { defaultArchiveUrl, closable });
         await this.fsAccessLib.polyfillDataTransferItem();
         return new Promise<GameResSourceSelection>((resolve) => {
             let dialogElement: HtmlReactElement<DialogProps> | undefined;
             const handleResolve = (selection: GameResSourceSelection) => {
-                console.log('[GameResBoxApi] Resolving with selection:', selection);
                 cleanup();
                 resolve(selection);
             };
@@ -40,7 +38,6 @@ export class GameResBoxApi {
                     closable: closable,
                     strings: this.strings,
                     onDrop: async (dataTransfer: DataTransfer) => {
-                        console.log('[GameResBoxApi] onDrop called');
                         if (dataTransfer.items && dataTransfer.items.length > 0) {
                             try {
                                 const handle = await (dataTransfer.items[0] as any).getAsFileSystemHandle();
@@ -54,7 +51,6 @@ export class GameResBoxApi {
                         }
                     },
                     onBrowseFolder: async () => {
-                        console.log('[GameResBoxApi] onBrowseFolder called');
                         try {
                             const handle = await this.fsAccessLib.showDirectoryPicker({ _preferPolyfill: true });
                             handleResolve(handle);
@@ -64,7 +60,6 @@ export class GameResBoxApi {
                         }
                     },
                     onBrowseArchive: async () => {
-                        console.log('[GameResBoxApi] onBrowseArchive called');
                         try {
                             const handle = await FileSystemUtil.showArchivePicker(this.fsAccessLib as any);
                             handleResolve(handle as FileSystemFileHandle);
@@ -74,21 +69,32 @@ export class GameResBoxApi {
                         }
                     },
                     onDownloadArchive: async (url: URL) => {
-                        console.log('[GameResBoxApi] onDownloadArchive called with:', url);
                         handleResolve(url);
                     },
                     onClose: () => {
-                        console.log('[GameResBoxApi] onClose called');
                         handleResolve(undefined);
                     },
                 } as GameResFormProps),
                 viewport: this.viewport.value,
                 zIndex: 101,
             };
-            console.log('[GameResBoxApi] Creating dialog element with props:', dialogProps);
             dialogElement = HtmlReactElement.factory(Dialog, dialogProps);
+            const handleViewportChange = (viewport: {
+                x: number;
+                y: number;
+                width: number;
+                height: number;
+            }) => {
+                if (dialogElement) {
+                    dialogElement.setSize(viewport.width, viewport.height);
+                    dialogElement.applyOptions((props) => {
+                        props.viewport = viewport;
+                    });
+                }
+            };
+            this.viewport.onChange?.subscribe(handleViewportChange);
             const cleanup = () => {
-                console.log('[GameResBoxApi] Cleanup called');
+                this.viewport.onChange?.unsubscribe(handleViewportChange);
                 if (dialogElement) {
                     const element = dialogElement.getElement();
                     if (element && this.rootEl.contains(element)) {
@@ -99,13 +105,11 @@ export class GameResBoxApi {
                 }
             };
             if (dialogElement) {
-                console.log('[GameResBoxApi] Rendering dialog element');
                 const viewportValue = this.viewport.value;
                 dialogElement.setSize(viewportValue.width, viewportValue.height);
                 dialogElement.render();
                 const elementToAppend = dialogElement.getElement();
                 if (elementToAppend) {
-                    console.log('[GameResBoxApi] Appending dialog element to root:', elementToAppend);
                     this.rootEl.appendChild(elementToAppend);
                 }
                 else {

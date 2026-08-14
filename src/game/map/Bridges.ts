@@ -493,6 +493,13 @@ export class Bridges {
         }
         return headTiles;
     }
+    getBridgeSize(spec: BridgeSpec): { width: number; height: number } {
+        const isHorizontal = spec.start.rx !== spec.end.rx;
+        return {
+            width: isHorizontal ? spec.end.rx - spec.start.rx + 1 : 3,
+            height: isHorizontal ? 3 : spec.end.ry - spec.start.ry + 1,
+        };
+    }
     findBridgeSpecsForHeadTiles(headTiles: Set<Tile>): BridgeSpec[] {
         const specMap = new Map<string, BridgeSpec>();
         for (const tile of headTiles) {
@@ -503,8 +510,7 @@ export class Bridges {
         }
         return [...specMap.values()];
     }
-    findAllBridgeTiles(spec: BridgeSpec): Tile[] {
-        const tiles: Tile[] = [];
+    findAllBridgeTiles(spec: BridgeSpec): Tile[] {        const tiles: Tile[] = [];
         const direction = spec.start.rx !== spec.end.rx ? TileDirection.BottomLeft : TileDirection.BottomRight;
         for (const pieceTile of this.findNonBuildablePieceTiles(spec)) {
             const secondTile = this.tiles.getNeighbourTile(pieceTile, direction);

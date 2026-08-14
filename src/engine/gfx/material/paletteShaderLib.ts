@@ -12,11 +12,18 @@ export const paletteShaderLib = {
     attribute vec3 instanceExtraLight;
     varying vec3 vInstanceExtraLight;
 #endif
+#ifdef INSTANCE_OPACITY
+    attribute float instanceOpacity;
+    varying float vInstanceOpacity;
+#endif
 `,
     instanceVertex: `
   #ifdef INSTANCE_TRANSFORM
     vInstancePaletteOffset = instancePaletteOffset;
     vInstanceExtraLight = instanceExtraLight;
+  #endif
+  #ifdef INSTANCE_OPACITY
+    vInstanceOpacity = instanceOpacity;
   #endif
 `,
     paletteColorParsVertex: `
@@ -41,6 +48,10 @@ uniform vec3 extraLight;
 #ifdef INSTANCE_TRANSFORM
 varying float vInstancePaletteOffset;
 varying vec3 vInstanceExtraLight;
+#endif
+
+#ifdef INSTANCE_OPACITY
+varying float vInstanceOpacity;
 #endif
 `,
     paletteColorFrag: `

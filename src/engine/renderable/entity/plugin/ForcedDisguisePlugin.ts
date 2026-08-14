@@ -1,5 +1,5 @@
 export class ForcedDisguisePlugin {
-    private canSeeThroughDisguise: boolean;
+    private canSeeThroughDisguise!: boolean;
 
     constructor(
         private gameObject: any,
@@ -7,7 +7,6 @@ export class ForcedDisguisePlugin {
         private localPlayer: any,
         private renderable: any,
     ) {
-        this.canSeeThroughDisguise = this.localPlayer.value === this.gameObject.owner;
     }
 
     onCreate(): void {

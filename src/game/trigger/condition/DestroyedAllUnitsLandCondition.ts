@@ -7,7 +7,7 @@ export class DestroyedAllUnitsLandCondition extends TriggerCondition {
     constructor(params: any, context: any) {
         super(params, context);
         this.allDestroyed = false;
-        this.houseId = Number(params[1]);
+        this.houseId = Number(params.params[1]);
     }
     check(events: any, eventList: any[]): boolean {
         if (this.allDestroyed) {

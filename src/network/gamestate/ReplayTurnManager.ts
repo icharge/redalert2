@@ -1,6 +1,5 @@
-import { ActionRecord, ReplayEventRecord, ReplayEventType, HashCheckpoint } from './Replay';
-import { ChatMessageReplayEvent } from './replay/ChatMessageReplayEvent';
-import { TauntReplayEvent } from './replay/TauntReplayEvent';
+import { TurnActionsReplayEvent } from '@/network/gamestate/replay/TurnActionsReplayEvent';
+import { GameStatus } from '@/game/Game';
 import { GameSpeed } from '@/game/GameSpeed';
 import { EventDispatcher } from '@/util/event';
 
@@ -9,14 +8,18 @@ export class ReplayTurnManager {
     private errorState = false;
     private gameSpeedChanged = false;
     private finished = false;
+    private replayIterator: IterableIterator<any>;
+    private nextReplayEvent: any;
 
-    private actionsByTick: Map<number, ActionRecord[]>;
-    private eventsByTick: Map<number, ReplayEventRecord[]>;
-    private hashByTick: Map<number, number>;
+    private readonly _onReplayEvent = new EventDispatcher<this, any>();
+    private readonly _onActionsSent = new EventDispatcher<this, void>();
+    private readonly _onFinished = new EventDispatcher<this, void>();
 
-    public readonly onReplayEvent = new EventDispatcher<this, any>();
-    public readonly onActionsSent = new EventDispatcher<this, void>();
-    public readonly onFinished = new EventDispatcher<this, void>();
+    public get onReplayEvent() {
+        return this._onReplayEvent.asEvent();
+    }
+    public readonly onActionsSent = this._onActionsSent.asEvent();
+    public readonly onFinished = this._onFinished.asEvent();
 
     private readonly onGameSpeedChanged = () => {
         this.gameSpeedChanged = true;
@@ -27,18 +30,13 @@ export class ReplayTurnManager {
         private readonly replay: any,
         private readonly actionFactory: any,
         private readonly actionLogger?: { debug(message: string): void },
-    ) {
-        this.actionsByTick = this.buildTickMap<ActionRecord>(replay.actionRecords ?? [], r => r.tick);
-        this.eventsByTick = this.buildTickMap<ReplayEventRecord>(replay.eventRecords ?? [], r => r.tick);
-        this.hashByTick = new Map<number, number>();
-        for (const cp of (replay.hashCheckpoints ?? []) as HashCheckpoint[]) {
-            this.hashByTick.set(cp.tick, cp.hash);
-        }
-    }
+    ) {}
 
     init(): void {
         this.game.desiredSpeed.onChange.subscribe(this.onGameSpeedChanged);
         this.computeGameTurn(this.game.speed.value);
+        this.replayIterator = this.replay.getEvents().values();
+        this.nextReplayEvent = this.replayIterator.next().value;
     }
 
     private computeGameTurn(speed: number): void {
@@ -62,99 +60,58 @@ export class ReplayTurnManager {
     }
 
     doGameTurn(_timestamp: number): boolean {
-        if (this.errorState || this.finished) {
+        if (this.errorState) {
             return false;
         }
-
-        const tick = this.game.currentTick;
-
-        // Inject actions for this tick
-        const records = this.actionsByTick.get(tick);
-        if (records) {
-            for (const record of records) {
-                try {
-                    const action = this.actionFactory.create(record.actionType);
-                    action.unserialize(record.data);
-                    action.player = this.game.getPlayer(record.playerId);
-                    action.process();
-
-                    const printable = action.print?.();
-                    if (printable) {
-                        this.actionLogger?.debug(`[replay](${action.player?.name})@${tick}: ${printable}`);
-                    }
-                } catch (error) {
-                    console.warn(`[ReplayTurnManager] Failed to replay action at tick ${tick}:`, error);
+        if (this.game.status !== GameStatus.Ended) {
+            while (this.nextReplayEvent && this.nextReplayEvent.tickNo === this.game.currentTick) {
+                if (this.nextReplayEvent instanceof TurnActionsReplayEvent) {
+                    this.processActions(this.nextReplayEvent.payload);
+                    this._onActionsSent.dispatch(this);
                 }
+                this._onReplayEvent.dispatch(this, this.nextReplayEvent);
+                this.nextReplayEvent = this.replayIterator.next().value;
             }
-            this.onActionsSent.dispatch(this);
-        }
-
-        // Advance game state
-        this.game.update();
-
-        // Dispatch replay events for this tick
-        const events = this.eventsByTick.get(tick);
-        if (events) {
-            for (const event of events) {
-                if (event.type === ReplayEventType.Chat) {
-                    const chatEvent = new ChatMessageReplayEvent(tick);
-                    chatEvent.payload = {
-                        playerId: event.playerId,
-                        message: event.payload,
-                    };
-                    this.onReplayEvent.dispatch(this, chatEvent);
-                } else if (event.type === ReplayEventType.Taunt) {
-                    const tauntEvent = new TauntReplayEvent(tick);
-                    tauntEvent.payload = {
-                        playerId: event.playerId,
-                        tauntNo: parseInt(event.payload, 10),
-                    };
-                    this.onReplayEvent.dispatch(this, tauntEvent);
+            if (this.nextReplayEvent && this.nextReplayEvent.tickNo < this.game.currentTick) {
+                throw new Error('Replay event desync');
+            }
+            if (this.replay.endTick + 1 <= this.game.currentTick) {
+                this.finished = true;
+                this.game.status = GameStatus.Ended;
+                this._onFinished.dispatch(this, undefined);
+                return false;
+            }
+            else {
+                this.game.update();
+                if (this.gameSpeedChanged) {
+                    this.game.speed.value = this.game.desiredSpeed.value;
+                    this.computeGameTurn(this.game.speed.value);
+                    this.gameSpeedChanged = false;
                 }
             }
         }
-
-        // Verify hash checkpoint
-        const expectedHash = this.hashByTick.get(tick);
-        if (expectedHash !== undefined) {
-            const actualHash = this.game.getHash();
-            if (actualHash !== expectedHash) {
-                console.warn(`[ReplayTurnManager] Desync detected at tick ${tick}: expected=${expectedHash}, actual=${actualHash}`);
-            }
+        else {
+            this.game.speed.value = 0;
         }
-
-        // Handle game speed changes
-        if (this.gameSpeedChanged) {
-            this.game.speed.value = this.game.desiredSpeed.value;
-            this.computeGameTurn(this.game.speed.value);
-            this.gameSpeedChanged = false;
-        }
-
-        // Check if replay has ended
-        if (this.replay.finishedTick && tick >= this.replay.finishedTick) {
-            this.finished = true;
-            this.onFinished.dispatch(this, undefined);
-            return false;
-        }
-
         return true;
+    }
+
+    processActions(actions: Array<[number, any[]]>): void {
+        actions.forEach(([playerId, playerActions]) => {
+            playerActions.forEach((action) => {
+                const createdAction = this.actionFactory.create(action.id);
+                createdAction.player = this.game.getPlayer(playerId);
+                createdAction.unserialize(action.params);
+                createdAction.process();
+                const printable = createdAction.print?.();
+                if (printable) {
+                    this.actionLogger?.debug(`(${createdAction.player.name})@${this.game.currentTick}: ` + printable);
+                }
+            });
+        });
     }
 
     dispose(): void {
         this.game.desiredSpeed.onChange.unsubscribe(this.onGameSpeedChanged);
-    }
-
-    private buildTickMap<T>(records: T[], getKey: (r: T) => number): Map<number, T[]> {
-        const map = new Map<number, T[]>();
-        for (const record of records) {
-            const key = getKey(record);
-            let list = map.get(key);
-            if (!list) {
-                list = [];
-                map.set(key, list);
-            }
-            list.push(record);
-        }
-        return map;
     }
 }

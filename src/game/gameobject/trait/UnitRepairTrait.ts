@@ -48,8 +48,7 @@ export class UnitRepairTrait {
                         repairSuccessful = true;
                     }
                     if (repairSuccessful &&
-                        this.status === RepairStatus.Idle &&
-                        !this.lastRepairTickSuccessful &&
+                        (this.status === RepairStatus.Idle || !this.lastRepairTickSuccessful) &&
                         !gameObject.helipadTrait) {
                         world.events.dispatch(new UnitRepairStartEvent(unit));
                     }

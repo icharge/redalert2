@@ -272,7 +272,7 @@ export class Building {
         (this.baseShpExtraLight = this.lighting
             .compute(this.objectArt.lightingType, this.gameObject.tile)
             .addScalar(-1)),
-            (this.baseVxlExtraLight = new THREE.Vector3().setScalar(Math.PI * 1.5 + this.lighting.computeNoAmbient(this.objectArt.lightingType, this.gameObject.tile)));
+            (this.baseVxlExtraLight = new THREE.Vector3().setScalar(this.lighting.computeNoAmbient(this.objectArt.lightingType, this.gameObject.tile)));
     }
     updateLighting() {
         this.updateBaseLight(),
@@ -346,14 +346,16 @@ export class Building {
     }
     createLamp(e) {
         var t = this.objectRules;
-        let i = (1 + t.lightRedTint) * (1 + Math.abs(t.lightIntensity)) -
-            1, r = (1 + t.lightGreenTint) *
-            (1 + Math.abs(t.lightIntensity)) -
-            1, s = (1 + t.lightBlueTint) * (1 + Math.abs(t.lightIntensity)) -
+        let i = t.lightRedTint, r = t.lightGreenTint, s = t.lightBlueTint;
+        var a = Math.abs(Math.min(i, r, s, 0));
+        0 < a && ((i += a), (r += a), (s += a));
+        let c = (1 + i) * (1 + Math.abs(t.lightIntensity)) -
+            1, g = (1 + r) * (1 + Math.abs(t.lightIntensity)) -
+            1, b = (1 + s) * (1 + Math.abs(t.lightIntensity)) -
             1;
-        var a = Math.max(i, r, s);
-        1 < a && ((i /= a), (r /= a), (s /= a));
-        let n = new THREE.Color(i, r, s).multiplyScalar(0.9);
+        a = Math.max(c, g, b);
+        1 < a && ((c /= a), (g /= a), (b /= a));
+        let n = new THREE.Color(c, g, b).multiplyScalar(0.9);
         a = n.getHexString() as any;
         let o = Building.lampTextures.get(a);
         if (!o) {

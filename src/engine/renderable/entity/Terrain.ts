@@ -78,9 +78,11 @@ export class Terrain {
     public update(delta: number): void {
         if (this.tiberiumTreeTrait) {
             const status = this.tiberiumTreeTrait.status;
-            if (status !== this.lastTiberiumSpawnStatus && status === SpawnStatus.Spawning) {
+            if (status !== this.lastTiberiumSpawnStatus) {
                 this.lastTiberiumSpawnStatus = status;
-                this.animationRunner?.animation.reset();
+                if (status === SpawnStatus.Spawning) {
+                    this.animationRunner?.animation.reset();
+                }
             }
             if (this.animationRunner) {
                 this.animationRunner.tick(delta);

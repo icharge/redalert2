@@ -2,9 +2,9 @@ import { EventType } from "@/game/event/EventType";
 import { TriggerCondition } from "@/game/trigger/TriggerCondition";
 export class SpyEnteringAsHouseCondition extends TriggerCondition {
     private houseId: number;
-    constructor(params: any[], targets: any[]) {
+    constructor(params: any, targets: any[]) {
         super(params, targets);
-        this.houseId = Number(params[1]);
+        this.houseId = Number(params.params[1]);
     }
     check(events: any[], targets: any[]): any[] {
         return events

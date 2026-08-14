@@ -133,7 +133,7 @@ export class AttackOrder extends Order {
             return false;
         if (this.sourceObject.airSpawnTrait &&
             weapon.rules.spawner &&
-            !this.game.map.isWithinBounds(this.target.tile)) {
+            !this.game.map.isWithinBounds(this.getSpawnerTargetTile())) {
             return false;
         }
         if (this.forceAttack)
@@ -145,8 +145,7 @@ export class AttackOrder extends Order {
         if (targetObj.isDestroyed || targetObj.isCrashing)
             return false;
         if (targetObj.isOverlay() &&
-            !targetObj.isBridge?.() &&
-            (weapon.warhead.rules.wall ||
+            !(weapon.warhead.rules.wall ||
                 (weapon.warhead.rules.wood && targetObj.rules.armor === ArmorType.Wood)) &&
             !targetObj.isTechno()) {
             return false;
@@ -155,6 +154,13 @@ export class AttackOrder extends Order {
     }
     isAllowed(): boolean {
         return !this.sourceObject.attackTrait.isDisabled();
+    }
+    private getSpawnerTargetTile(): any {
+        const targetObj = this.target.obj;
+        return targetObj?.isBuilding() && !this.game.map.isWithinBounds(targetObj.centerTile)
+            ? (this.game.map.tileOccupation.calculateTilesForGameObject(targetObj.tile, targetObj)
+                .find((tile: any) => this.game.map.isWithinBounds(tile)) ?? this.target.tile)
+            : this.target.tile;
     }
     process(): any[] {
         if (this.isC4) {
@@ -173,12 +179,22 @@ export class AttackOrder extends Order {
             if (unit.rules.movementZone === MovementZone.Fly) {
                 const existingTask = tasks.find((task) => (task.constructor === MoveTask || task.constructor === AttackTask) &&
                     !task.isCancelling());
+                let taskToCancel: any;
                 if (existingTask &&
                     (unit.moveTrait.currentWaypoint?.tile === this.target.tile ||
                         unit.isAircraft() ||
-                        existingTask.constructor === AttackTask) &&
-                    existingTask.forceCancel(unit)) {
-                    const taskIndex = tasks.indexOf(existingTask);
+                        existingTask.constructor === AttackTask)) {
+                    taskToCancel = existingTask;
+                }
+                else if (existingTask && existingTask.constructor === MoveTask) {
+                    const weapon = this.sourceObject.attackTrait.selectWeaponVersus(this.sourceObject, this.target, this.game, this.forceAttack);
+                    if (weapon?.projectileRules.vertical &&
+                        this.rangeHelper.isInWeaponRange(this.sourceObject, this.target.obj || this.target.tile, weapon, this.game.rules)) {
+                        taskToCancel = existingTask;
+                    }
+                }
+                if (taskToCancel?.forceCancel(unit)) {
+                    const taskIndex = tasks.indexOf(taskToCancel);
                     tasks.splice(taskIndex, 1);
                 }
             }

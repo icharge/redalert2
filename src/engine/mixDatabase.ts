@@ -47,6 +47,10 @@ export const mixDatabase = new Map<string, string[]>()
     "fortific.wav", "grinder.wav", "hm2.wav", "indeep.wav", "industro.wav",
     "jank.wav", "motorize.wav", "power.wav", "ra2-opt.wav", "ra2-sco.wav",
     "tension.wav",
+])
+    .set("thememd.mix", [
+    "brainfre.wav", "bully.wav", "deceiver.wav", "defend.wav", "drok.wav",
+    "optionx.wav", "phatatta.wav", "scorex.wav", "tactics.wav", "trancelv.wav",
 ]);
 const sideBarFiles = [
     "addon.shp", "bkgdlg.shp", "bkgdmd.shp", "bkgdsm.shp", "bttnbkgd.shp",

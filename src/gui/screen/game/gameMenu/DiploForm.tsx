@@ -4,6 +4,7 @@ import { OBS_COUNTRY_NAME, aiUiNames } from '@/game/gameopts/constants';
 import { CountryIcon } from '@/gui/component/CountryIcon';
 import { Chat } from '@/gui/component/Chat';
 import { RECIPIENT_ALL, RECIPIENT_TEAM } from '@/network/gservConfig';
+import { PlayerConnectionStatus } from '@/network/gamestate/PlayerConnectionStatus';
 import { PingIndicator } from '@/gui/component/PingIndicator';
 interface Color {
     asHexString(): string;
@@ -37,7 +38,7 @@ interface PlayerInfo {
 }
 interface ConInfo {
     name: string;
-    status: string;
+    status: any;
     ping?: number;
 }
 interface GameMode {
@@ -85,11 +86,6 @@ interface DiploFormProps {
     onSendMessage: (message: string) => void;
     onCancelMessage: () => void;
 }
-const PlayerConnectionStatus = {
-    Connected: 'Connected',
-    Disconnected: 'Disconnected',
-    Lagging: 'Lagging'
-};
 export const DiploForm: React.FC<DiploFormProps> = ({ strings, playerInfos, localPlayer, taunts, singlePlayer, alliancesAllowed, gameModes, gameOpts, mapName, messages, chatHistory, conInfos, onToggleTaunts, onToggleAlliance, onToggleChat, onSendMessage, onCancelMessage, }) => {
     const gameTypeLabel = strings.get(gameModes.getById(gameOpts.gameMode).label);
     const formatBoolean = (value: boolean): string => value ? strings.get("TXT_ON") : strings.get("TXT_OFF");

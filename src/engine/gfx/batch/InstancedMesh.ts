@@ -2,29 +2,27 @@ import * as THREE from 'three';
 const depthMaterial = new THREE.MeshDepthMaterial();
 depthMaterial.depthPacking = THREE.RGBADepthPacking;
 (depthMaterial as any).clipping = true;
-(depthMaterial as any).defines = { INSTANCE_TRANSFORM: "" };
 const distanceShader = THREE.ShaderLib.distance;
 const distanceUniforms = THREE.UniformsUtils.clone(distanceShader.uniforms);
-const distanceDefines = { USE_SHADOWMAP: "", INSTANCE_TRANSFORM: "" };
 const distanceMaterial = new THREE.ShaderMaterial({
-    defines: distanceDefines,
+    defines: { USE_SHADOWMAP: "" },
     uniforms: distanceUniforms,
     vertexShader: distanceShader.vertexShader,
     fragmentShader: distanceShader.fragmentShader,
     clipping: true,
 });
-export class InstancedMesh extends THREE.Mesh {
+export class InstancedMesh extends THREE.InstancedMesh {
     public maxInstances: number;
     public uniformScale: boolean;
     public useInstanceColor: boolean;
-    private instanceMatrixAttributes: THREE.InstancedBufferAttribute[];
     constructor(geometry: THREE.BufferGeometry, material: THREE.Material, maxInstances: number, uniformScale: boolean, useInstanceColor: boolean = false) {
         const instancedGeometry = new THREE.InstancedBufferGeometry();
         (instancedGeometry as any).copy(geometry);
-        super(instancedGeometry);
+        super(instancedGeometry, material.clone(), maxInstances);
         this.maxInstances = maxInstances;
         this.uniformScale = uniformScale;
         this.useInstanceColor = useInstanceColor;
+        this.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
         this.initAttributes(this.geometry as THREE.InstancedBufferGeometry);
         this.material = this.decorateMaterial(material.clone());
         this.frustumCulled = false;
@@ -32,42 +30,13 @@ export class InstancedMesh extends THREE.Mesh {
         this.customDistanceMaterial = distanceMaterial;
     }
     private initAttributes(geometry: THREE.InstancedBufferGeometry): void {
-        const attributes: Array<{
-            name: string;
-            data: Float32Array | Uint8Array;
-            itemSize: number;
-            normalized: boolean;
-        }> = [];
-        for (let i = 0; i < 4; i++) {
-            attributes.push({
-                name: "instanceMatrix" + i,
-                data: new Float32Array(4 * this.maxInstances),
-                itemSize: 4,
-                normalized: true,
-            });
-        }
         if (this.useInstanceColor) {
-            attributes.push({
-                name: "instanceColor",
-                data: new Uint8Array(3 * this.maxInstances),
-                itemSize: 3,
-                normalized: true,
-            });
+            this.instanceColor = new THREE.InstancedBufferAttribute(new Uint8Array(3 * this.maxInstances), 3, true);
+            this.instanceColor.setUsage(THREE.DynamicDrawUsage);
         }
-        attributes.push({
-            name: "instanceOpacity",
-            data: new Float32Array(this.maxInstances).fill(1),
-            itemSize: 1,
-            normalized: true,
-        });
-        for (const { name, data, itemSize, normalized } of attributes) {
-            const attribute = new THREE.InstancedBufferAttribute(data, itemSize, normalized, 1);
-            attribute.setUsage(THREE.DynamicDrawUsage);
-            geometry.setAttribute(name, attribute);
-        }
-        this.instanceMatrixAttributes = new Array(4)
-            .fill(0)
-            .map((_, i) => geometry.getAttribute("instanceMatrix" + i) as THREE.InstancedBufferAttribute);
+        const opacityAttribute = new THREE.InstancedBufferAttribute(new Float32Array(this.maxInstances).fill(1), 1);
+        opacityAttribute.setUsage(THREE.DynamicDrawUsage);
+        geometry.setAttribute("instanceOpacity", opacityAttribute);
     }
     private decorateMaterial(material: THREE.Material): THREE.Material {
         const mat = material as any;
@@ -75,12 +44,6 @@ export class InstancedMesh extends THREE.Mesh {
             mat.defines = {};
         }
         mat.defines.INSTANCE_TRANSFORM = "";
-        if (this.uniformScale) {
-            mat.defines.INSTANCE_UNIFORM = "";
-        }
-        else {
-            delete mat.defines.INSTANCE_UNIFORM;
-        }
         if (this.useInstanceColor) {
             mat.defines.INSTANCE_COLOR = "";
         }
@@ -94,13 +57,10 @@ export class InstancedMesh extends THREE.Mesh {
         if (count > this.maxInstances) {
             throw new RangeError("Exceeded maximum number of instances");
         }
-        (this.geometry as THREE.InstancedBufferGeometry).instanceCount = count;
+        this.count = count;
     }
     public setMatrixAt(index: number, matrix: THREE.Matrix4): void {
-        for (let row = 0; row < 4; row++) {
-            let offset = 4 * row;
-            this.instanceMatrixAttributes[row].setXYZW(index, matrix.elements[offset++], matrix.elements[offset++], matrix.elements[offset++], matrix.elements[offset]);
-        }
+        super.setMatrixAt(index, matrix);
     }
     public updateFromMeshes(meshes: any[]): void {
         if (meshes.length === 0)
@@ -135,12 +95,11 @@ export class InstancedMesh extends THREE.Mesh {
             }
         }
         this.setRenderCount(meshes.length);
-        for (const attr of this.instanceMatrixAttributes) {
-            attr.needsUpdate = true;
-        }
+        this.instanceMatrix.needsUpdate = true;
     }
-    public dispose(): void {
+    public dispose(): this {
         this.geometry.dispose();
         (this.material as THREE.Material).dispose();
+        return this;
     }
 }

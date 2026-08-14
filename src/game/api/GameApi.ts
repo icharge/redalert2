@@ -6,6 +6,7 @@ import { RulesApi } from "@/game/api/RulesApi";
 import { PlayerData } from "@/game/api/interface/PlayerData";
 import type { GameObjectData } from "@/game/api/interface/GameObjectData";
 import type { UnitData } from "@/game/api/interface/UnitData";
+import type { PlaceCheckOptions } from "@/game/api/interface/PlaceCheckOptions";
 interface WeaponData {
     type: string;
     rules: any;
@@ -53,18 +54,11 @@ export class GameApi {
             throw new Error(`Player "${playerName2}" doesn't exist`);
         return this.game.alliances.areAllied(player1, player2);
     }
-    canPlaceBuilding(playerName: string, arg2: any, arg3: any, options: any = {}): boolean {
+    canPlaceBuilding(playerName: string, buildingType: string, position: any, options: PlaceCheckOptions = {}): boolean {
         const player = this.game.getPlayerByName(playerName);
         if (!player)
             throw new Error(`Player "${playerName}" doesn't exist`);
-        // Backward/forward compatible with both signatures:
-        // canPlaceBuilding(playerName, position, buildingType)
-        // canPlaceBuilding(playerName, buildingType, position)
-        const buildingType = typeof arg2 === 'string' ? arg2 : arg3;
-        const position = typeof arg2 === 'string' ? arg3 : arg2;
-        if (options.ignoreAdjacent === undefined) {
-            options.ignoreAdjacent = this.rulesApi.getBuilding(buildingType)?.constructionYard;
-        }
+        options.ignoreAdjacent ??= this.rulesApi.getBuilding(buildingType).constructionYard;
         return this.game
             .getConstructionWorker(player)
             .canPlaceAt(buildingType, position, { normalizedTile: true, ...options });
@@ -265,7 +259,7 @@ export class GameApi {
             return this.game.generateRandomInt(min, max);
         }
         const random = this.generateRandom();
-        return Math.round(random * (max - min)) + min;
+        return Math.floor(random * (max - min + 1)) + min;
     }
     generateRandom(): number {
         return this.useGameRandom

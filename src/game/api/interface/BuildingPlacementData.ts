@@ -1,3 +1,4 @@
 export interface BuildingPlacementData {
-    id: string;
+    foundation: any;
+    foundationCenter: any;
 }

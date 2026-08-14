@@ -1,0 +1,844 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI and Bot Implementation | RA2WEB</title>
+  <style>
+    :root {
+      --bg: #0b1117;
+      --panel: #121c25;
+      --panel-2: #17232d;
+      --line: #2d4352;
+      --text: #dce8ed;
+      --muted: #93aab5;
+      --cyan: #66d9ef;
+      --green: #a6e3a1;
+      --amber: #f9cc7a;
+      --red: #f38ba8;
+      --purple: #cba6f7;
+      --shadow: 0 18px 45px rgba(0, 0, 0, .24);
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 12% 0%, rgba(102, 217, 239, .11), transparent 31rem),
+        radial-gradient(circle at 88% 18%, rgba(203, 166, 247, .08), transparent 28rem),
+        var(--bg);
+      font: 15px/1.65 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    a { color: var(--cyan); }
+    a:hover { color: #a4f0ff; }
+
+    code, pre, .eyebrow, .tag, .source, .metric-value, .step-index {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    }
+
+    code {
+      color: #d8f7ff;
+      background: #0d171e;
+      border: 1px solid #203541;
+      border-radius: 5px;
+      padding: .1em .35em;
+      font-size: .91em;
+    }
+
+    .shell {
+      width: min(1240px, calc(100% - 36px));
+      margin: 0 auto;
+    }
+
+    .hero {
+      padding: 72px 0 48px;
+      border-bottom: 1px solid rgba(102, 217, 239, .15);
+    }
+
+    .eyebrow {
+      margin: 0 0 13px;
+      color: var(--cyan);
+      font-size: 12px;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+    }
+
+    h1, h2, h3 { line-height: 1.15; letter-spacing: -.025em; }
+    h1 { max-width: 850px; margin: 0; font-size: clamp(2.45rem, 6vw, 5.6rem); font-weight: 760; }
+    h2 { margin: 0 0 18px; font-size: clamp(1.7rem, 3vw, 2.45rem); }
+    h3 { margin: 0 0 9px; font-size: 1.1rem; }
+
+    .hero-lede {
+      max-width: 800px;
+      margin: 22px 0 25px;
+      color: var(--muted);
+      font-size: 1.12rem;
+    }
+
+    .tag-row { display: flex; flex-wrap: wrap; gap: 9px; }
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 4px 10px;
+      border: 1px solid var(--line);
+      border-radius: 99px;
+      color: var(--muted);
+      background: rgba(18, 28, 37, .78);
+      font-size: 11px;
+      letter-spacing: .04em;
+    }
+
+    .tag.active { border-color: rgba(166, 227, 161, .5); color: var(--green); }
+    .tag.warn { border-color: rgba(249, 204, 122, .5); color: var(--amber); }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 220px minmax(0, 1fr);
+      gap: 42px;
+      align-items: start;
+      padding: 42px 0 86px;
+    }
+
+    .toc {
+      position: sticky;
+      top: 22px;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(18, 28, 37, .82);
+      box-shadow: var(--shadow);
+    }
+
+    .toc-title {
+      margin-bottom: 10px;
+      color: var(--amber);
+      font: 11px "SFMono-Regular", Consolas, monospace;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+    }
+
+    .toc a {
+      display: block;
+      padding: 6px 0;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 13px;
+    }
+
+    .toc a:hover { color: var(--cyan); }
+
+    section { margin-bottom: 66px; scroll-margin-top: 24px; }
+    .section-intro { max-width: 780px; color: var(--muted); margin: 0 0 22px; }
+
+    .overview-grid, .card-grid, .metric-grid {
+      display: grid;
+      gap: 14px;
+    }
+
+    .overview-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .metric-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 24px 0 0; }
+
+    .card, .metric, .callout {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: linear-gradient(145deg, rgba(23, 35, 45, .95), rgba(18, 28, 37, .87));
+      box-shadow: 0 10px 25px rgba(0, 0, 0, .12);
+    }
+
+    .card { padding: 20px; }
+    .card p, .card ul { margin: 0; color: var(--muted); }
+    .card strong { color: var(--text); }
+    .card.cyan { border-top: 2px solid var(--cyan); }
+    .card.green { border-top: 2px solid var(--green); }
+    .card.amber { border-top: 2px solid var(--amber); }
+    .card.purple { border-top: 2px solid var(--purple); }
+
+    .metric { padding: 16px 17px; }
+    .metric-value { display: block; color: var(--cyan); font-size: 1.5rem; font-weight: 700; }
+    .metric-label { color: var(--muted); font-size: 12px; }
+
+    .diagram-wrap {
+      overflow-x: auto;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #0d161d;
+      box-shadow: var(--shadow);
+    }
+
+    svg.diagram { display: block; width: 100%; min-width: 780px; height: auto; }
+    .diagram .box { fill: #162631; stroke: #3a5969; stroke-width: 1.5; }
+    .diagram .box.active { fill: #18313a; stroke: var(--cyan); }
+    .diagram .box.strategy { fill: #251d35; stroke: var(--purple); }
+    .diagram .box.action { fill: #202d25; stroke: var(--green); }
+    .diagram .box.warn { fill: #332a1c; stroke: var(--amber); }
+    .diagram .label { fill: var(--text); font: 600 14px Inter, system-ui, sans-serif; }
+    .diagram .sub { fill: var(--muted); font: 11px "SFMono-Regular", Consolas, monospace; }
+    .diagram .arrow { fill: none; stroke: #668493; stroke-width: 1.5; marker-end: url(#arrow); }
+    .diagram .arrow.cyan { stroke: var(--cyan); }
+    .diagram .arrow.green { stroke: var(--green); }
+    .diagram .arrow.amber { stroke: var(--amber); }
+    .diagram .arrow.purple { stroke: var(--purple); }
+    .diagram .legend { fill: var(--muted); font: 11px Inter, system-ui, sans-serif; }
+
+    .flow-list { display: grid; gap: 0; margin: 28px 0 0; }
+    .step {
+      display: grid;
+      grid-template-columns: 44px 1fr;
+      gap: 15px;
+      position: relative;
+      padding: 0 0 25px;
+    }
+    .step:not(:last-child)::after {
+      content: "";
+      position: absolute;
+      left: 21px;
+      top: 38px;
+      bottom: 0;
+      border-left: 1px dashed #45606c;
+    }
+    .step-index {
+      z-index: 1;
+      display: grid;
+      width: 42px;
+      height: 42px;
+      place-items: center;
+      border: 1px solid var(--cyan);
+      border-radius: 50%;
+      color: var(--cyan);
+      background: var(--bg);
+      font-size: 13px;
+    }
+    .step p { margin: 0; color: var(--muted); }
+    .step .source { display: inline-block; margin-top: 8px; color: var(--amber); font-size: 11px; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(18, 28, 37, .78);
+    }
+    th, td { padding: 13px 15px; border-bottom: 1px solid rgba(45, 67, 82, .65); text-align: left; vertical-align: top; }
+    th { color: var(--amber); background: #15232c; font: 11px "SFMono-Regular", Consolas, monospace; letter-spacing: .08em; text-transform: uppercase; }
+    td { color: var(--muted); }
+    tr:last-child td { border-bottom: 0; }
+    td:first-child { color: var(--text); font-weight: 650; }
+    td code { white-space: nowrap; }
+
+    .code-block {
+      overflow-x: auto;
+      margin: 16px 0 0;
+      padding: 17px 19px;
+      border: 1px solid #243b47;
+      border-radius: 10px;
+      color: #cbe7ee;
+      background: #0a1319;
+      font: 12px/1.7 "SFMono-Regular", Consolas, monospace;
+    }
+    .kw { color: var(--purple); }
+    .fn { color: var(--cyan); }
+    .str { color: var(--green); }
+    .comment { color: #6f8994; }
+
+    .callout { margin: 20px 0; padding: 18px 20px; border-left: 3px solid var(--amber); }
+    .callout strong { color: var(--amber); }
+    .callout p { margin: 5px 0 0; color: var(--muted); }
+    .callout.info { border-left-color: var(--cyan); }
+    .callout.info strong { color: var(--cyan); }
+    .callout.danger { border-left-color: var(--red); }
+    .callout.danger strong { color: var(--red); }
+
+    .source-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px 24px; margin: 0; padding: 0; list-style: none; }
+    .source-list li { padding: 10px 0; border-bottom: 1px solid rgba(45, 67, 82, .55); }
+    .source-list span { display: block; margin-top: 3px; color: var(--muted); font-size: 12px; }
+    .source { color: var(--amber); font-size: 12px; }
+
+    .footer {
+      padding: 24px 0 48px;
+      border-top: 1px solid rgba(102, 217, 239, .15);
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; gap: 25px; }
+      .toc { position: static; display: grid; grid-template-columns: repeat(2, 1fr); gap: 0 16px; }
+      .toc-title { grid-column: 1 / -1; }
+      .overview-grid, .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 620px) {
+      .shell { width: min(100% - 24px, 1240px); }
+      .hero { padding-top: 42px; }
+      .layout { padding-top: 28px; }
+      .toc, .card-grid, .overview-grid, .metric-grid, .source-list { grid-template-columns: 1fr; }
+      th, td { padding: 10px; }
+      .step { grid-template-columns: 37px 1fr; gap: 11px; }
+      .step-index { width: 36px; height: 36px; }
+      .step:not(:last-child)::after { left: 18px; top: 33px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="shell">
+      <p class="eyebrow">RA2WEB / technical reference</p>
+      <h1>AI and Bot Implementation</h1>
+      <p class="hero-lede">How computer-controlled players are selected, initialized, updated, and connected to the deterministic game simulation. This page documents the active TypeScript bot runtime, the built-in strategy, and the uploaded third-party bot path.</p>
+      <div class="tag-row">
+        <span class="tag active">ACTIVE RUNTIME</span>
+        <span class="tag">BROWSER + TYPESCRIPT</span>
+        <span class="tag">TICK-DRIVEN</span>
+        <span class="tag warn">SOURCE-TRACE DOCUMENTATION</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="shell layout">
+    <nav class="toc" aria-label="Table of contents">
+      <div class="toc-title">On this page</div>
+      <a href="#summary">01 / Runtime summary</a>
+      <a href="#diagram">02 / Flow diagram</a>
+      <a href="#lifecycle">03 / Lifecycle</a>
+      <a href="#selection">04 / Bot selection</a>
+      <a href="#built-in">05 / Built-in AI</a>
+      <a href="#custom">06 / Custom bots</a>
+      <a href="#api">07 / Bot API</a>
+      <a href="#files">08 / Source map</a>
+      <a href="#notes">09 / Current notes</a>
+      <a href="#upstream">10 / Upstream multiplayer</a>
+    </nav>
+
+    <main>
+      <section id="summary">
+        <p class="eyebrow">01 / Runtime summary</p>
+        <h2>One manager, several bot implementations</h2>
+        <p class="section-intro">The game does not call strategy code directly from the lobby. The lobby stores AI difficulty and optional custom bot identity in game options. At game start, <code>BotManager</code> creates one bot per AI combatant, injects APIs, and owns the per-tick/event dispatch.</p>
+        <div class="overview-grid">
+          <article class="card cyan">
+            <h3>Orchestration</h3>
+            <p><strong><code>BotManager</code></strong> is the runtime boundary. It creates bots, subscribes to game events, drains the action queue, calls lifecycle methods, logs failures, and disposes subscriptions.</p>
+          </article>
+          <article class="card purple">
+            <h3>Decision makers</h3>
+            <p><strong><code>BuiltInBotAdapter</code></strong> wraps the full mission/strategy AI. <strong><code>ThirdPartyBotAdapter</code></strong> wraps a registered uploaded bot. <strong><code>DummyBot</code></strong> is the lightweight fallback for the other legacy difficulty values.</p>
+          </article>
+          <article class="card green">
+            <h3>Command boundary</h3>
+            <p>Bot reads go through <strong><code>GameApi</code></strong>, <strong><code>PlayerApi</code></strong>, and <strong><code>ProductionApi</code></strong>. Commands go through <strong><code>ActionsApi</code></strong> into <strong><code>ActionQueue</code></strong>, then are processed by the simulation.</p>
+          </article>
+        </div>
+        <div class="metric-grid">
+          <div class="metric"><span class="metric-value">1</span><span class="metric-label">bot instance per AI combatant</span></div>
+          <div class="metric"><span class="metric-value">3</span><span class="metric-label">lifecycle callbacks</span></div>
+          <div class="metric"><span class="metric-value">4</span><span class="metric-label">AI read/write API surfaces</span></div>
+          <div class="metric"><span class="metric-value">10 MB</span><span class="metric-label">maximum uploaded zip size</span></div>
+        </div>
+      </section>
+
+      <section id="diagram">
+        <p class="eyebrow">02 / Flow diagram</p>
+        <h2>From lobby choice to simulation command</h2>
+        <p class="section-intro">The solid path is the normal game-start path. The upper branch is optional: a user uploads a bot before creating a game. Both built-in and custom implementations end at the same adapter and action APIs.</p>
+        <div class="diagram-wrap">
+          <svg class="diagram" viewBox="0 0 1040 575" role="img" aria-labelledby="diagram-title diagram-desc">
+            <title id="diagram-title">AI bot runtime flow</title>
+            <desc id="diagram-desc">Registration and upload flow into bot selection, manager initialization, a tick loop, game and player APIs, an action queue, and the game simulation.</desc>
+            <defs>
+              <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#668493"></path></marker>
+            </defs>
+
+            <rect class="box active" x="28" y="26" width="192" height="66" rx="9"></rect>
+            <text class="label" x="48" y="53">main.tsx</text>
+            <text class="sub" x="48" y="74">registerBuiltInBot()</text>
+
+            <rect class="box warn" x="270" y="26" width="220" height="66" rx="9"></rect>
+            <text class="label" x="290" y="53">Optional upload</text>
+            <text class="sub" x="290" y="74">BotUploader + BotSandbox</text>
+
+            <rect class="box" x="540" y="26" width="220" height="66" rx="9"></rect>
+            <text class="label" x="560" y="53">BotRegistry</text>
+            <text class="sub" x="560" y="74">metadata + factory + source</text>
+
+            <rect class="box" x="810" y="26" width="202" height="66" rx="9"></rect>
+            <text class="label" x="830" y="53">Lobby game options</text>
+            <text class="sub" x="830" y="74">difficulty + customBotId</text>
+
+            <path class="arrow cyan" d="M220 59 H540"></path>
+            <path class="arrow amber" d="M490 59 H540"></path>
+            <path class="arrow" d="M760 59 H810"></path>
+
+            <rect class="box active" x="330" y="140" width="260" height="70" rx="9"></rect>
+            <text class="label" x="350" y="169">GameFactory</text>
+            <text class="sub" x="350" y="191">new BotFactory + BotManager</text>
+            <path class="arrow" d="M910 92 V118 H460 V140"></path>
+            <path class="arrow" d="M650 92 V118 H460 V140"></path>
+
+            <rect class="box strategy" x="42" y="266" width="236" height="78" rx="9"></rect>
+            <text class="label" x="62" y="296">BuiltInBotAdapter</text>
+            <text class="sub" x="62" y="317">BuiltInBot + fail-safe</text>
+            <text class="sub" x="62" y="333">Normal difficulty</text>
+
+            <rect class="box strategy" x="402" y="266" width="236" height="78" rx="9"></rect>
+            <text class="label" x="422" y="296">ThirdPartyBotAdapter</text>
+            <text class="sub" x="422" y="317">uploaded factory instance</text>
+            <text class="sub" x="422" y="333">Custom difficulty</text>
+
+            <rect class="box" x="762" y="266" width="236" height="78" rx="9"></rect>
+            <text class="label" x="782" y="296">DummyBot</text>
+            <text class="sub" x="782" y="317">legacy simple behavior</text>
+            <text class="sub" x="782" y="333">Easy / Medium / Brutal</text>
+
+            <path class="arrow purple" d="M460 210 V238 H160 V266"></path>
+            <path class="arrow purple" d="M460 210 V266"></path>
+            <path class="arrow purple" d="M460 210 V238 H880 V266"></path>
+
+            <rect class="box active" x="318" y="396" width="304" height="70" rx="9"></rect>
+            <text class="label" x="338" y="425">BotManager.update(game)</text>
+            <text class="sub" x="338" y="447">drain actions, then onGameTick</text>
+            <path class="arrow cyan" d="M160 344 V374 H470 V396"></path>
+            <path class="arrow cyan" d="M520 344 V396"></path>
+            <path class="arrow cyan" d="M880 344 V374 H470 V396"></path>
+
+            <rect class="box action" x="42" y="500" width="236" height="55" rx="9"></rect>
+            <text class="label" x="62" y="533">GameApi / PlayerApi</text>
+            <path class="arrow green" d="M470 466 V482 H160 V500"></path>
+
+            <rect class="box action" x="402" y="500" width="236" height="55" rx="9"></rect>
+            <text class="label" x="422" y="533">ActionsApi + ActionQueue</text>
+            <path class="arrow green" d="M520 466 V500"></path>
+
+            <rect class="box action" x="762" y="500" width="236" height="55" rx="9"></rect>
+            <text class="label" x="782" y="533">Game simulation</text>
+            <path class="arrow green" d="M622 466 V482 H880 V500"></path>
+
+            <text class="legend" x="30" y="574">Read state &lt;- APIs | Issue command -&gt; queue | Next update processes action</text>
+          </svg>
+        </div>
+      </section>
+
+      <section id="lifecycle">
+        <p class="eyebrow">03 / Lifecycle</p>
+        <h2>What happens at start and on every tick</h2>
+        <p class="section-intro">The manager isolates each bot call with error handling. One bot failing does not abort the whole game update or prevent other AI players from being serviced.</p>
+        <div class="flow-list">
+          <div class="step">
+            <div class="step-index">01</div>
+            <div>
+              <h3>Register implementation metadata</h3>
+              <p><code>main.tsx</code> calls <code>registerBuiltInBot()</code>. This adds the built-in metadata and factory to the singleton <code>BotRegistry</code>. Uploaded bots are registered later by <code>BotSandbox.loadBotFromSource()</code>.</p>
+              <a class="source" href="../src/main.tsx">src/main.tsx</a>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-index">02</div>
+            <div>
+              <h3>Construct the game and manager</h3>
+              <p><code>GameFactory.create()</code> builds an <code>ActionFactory</code>, <code>BotFactory</code>, and <code>BotManager</code>, then passes the manager into the new <code>Game</code> instance.</p>
+              <a class="source" href="../src/game/GameFactory.ts">src/game/GameFactory.ts</a>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-index">03</div>
+            <div>
+              <h3>Initialize all AI combatants</h3>
+              <p><code>Game.start()</code> invokes <code>BotManager.init(this)</code>. The manager creates <code>GameApi</code> and <code>EventsApi</code>, filters <code>game.getCombatants()</code> by <code>isAi</code>, and asks <code>BotFactory</code> for one bot per combatant.</p>
+              <a class="source" href="../src/game/Game.ts">src/game/Game.ts</a> <a class="source" href="../src/game/BotManager.ts">src/game/BotManager.ts</a>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-index">04</div>
+            <div>
+              <h3>Inject per-player capabilities</h3>
+              <p>For each bot, the manager creates <code>ActionsApi</code>, <code>PlayerApi</code>, and <code>ProductionApi</code>, then sets <code>GameApi</code>, action/production APIs, logger, and <code>BotContext</code>. Finally it calls <code>onGameStart(gameApi)</code>.</p>
+              <a class="source" href="../src/game/BotManager.ts">src/game/BotManager.ts</a> <a class="source" href="../src/game/bot/BotContext.ts">src/game/bot/BotContext.ts</a>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-index">05</div>
+            <div>
+              <h3>Process one simulation tick</h3>
+              <p><code>Game.update()</code> first calls <code>BotManager.update()</code>. The manager dequeues and processes actions left by the previous bot tick, then calls <code>onGameTick()</code> for each current AI combatant. New actions are queued for the next manager update.</p>
+              <a class="source" href="../src/game/Game.ts">src/game/Game.ts</a> <a class="source" href="../src/game/action/ActionQueue.ts">src/game/action/ActionQueue.ts</a>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-index">06</div>
+            <div>
+              <h3>Broadcast game events</h3>
+              <p><code>EventsApi</code> transforms selected engine events such as object spawn, destruction, and ownership change. The manager forwards each transformed event to every active bot through <code>onGameEvent(event, gameApi)</code>.</p>
+              <a class="source" href="../src/game/api/EventsApi.ts">src/game/api/EventsApi.ts</a> <a class="source" href="../src/game/BotManager.ts">src/game/BotManager.ts</a>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-index">07</div>
+            <div>
+              <h3>Dispose at game teardown</h3>
+              <p><code>BotManager.dispose()</code> clears the bot map, drops <code>gameApi</code>, and disposes subscriptions held by <code>CompositeDisposable</code>.</p>
+              <a class="source" href="../src/game/BotManager.ts">src/game/BotManager.ts</a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="selection">
+        <p class="eyebrow">04 / Bot selection</p>
+        <h2>Difficulty is a factory decision</h2>
+        <p class="section-intro">The player record contains <code>isAi</code>, <code>aiDifficulty</code>, country, and optional <code>customBotId</code>. <code>BotFactory.create()</code> maps those values to a concrete <code>Bot</code> subclass.</p>
+        <table>
+          <thead><tr><th>Input</th><th>Factory result</th><th>Behavior</th><th>Fallback / failure</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><code>Normal</code></td>
+              <td><code>BuiltInBotAdapter</code></td>
+              <td>Full built-in strategy with awareness, missions, production, and attack/defence decisions.</td>
+              <td>The adapter has a low-frequency fail-safe for MCV deployment, structure production, and placement.</td>
+            </tr>
+            <tr>
+              <td><code>Custom</code> + valid <code>customBotId</code></td>
+              <td><code>ThirdPartyBotAdapter</code></td>
+              <td>Instantiates the selected registry metadata factory for this player.</td>
+              <td>If the ID is absent from the registry, the factory tries the first uploaded bot.</td>
+            </tr>
+            <tr>
+              <td><code>Custom</code> + no usable upload</td>
+              <td><code>BuiltInBotAdapter</code></td>
+              <td>Preserves a playable AI when custom selection has no available custom implementation.</td>
+              <td>Logs a warning: custom AI selected but no uploaded bot found.</td>
+            </tr>
+            <tr>
+              <td><code>Easy</code>, <code>Medium</code>, <code>MediumSea</code>, or <code>Brutal</code></td>
+              <td><code>DummyBot</code></td>
+              <td>Small state machine: deploy MCV, wait, and resign when no selectable combatants remain in its attacking state.</td>
+              <td>These are supported by the factory even though the current lobby UI primarily exposes Easy, Normal, and Custom.</td>
+            </tr>
+            <tr>
+              <td>Non-AI player or unknown difficulty</td>
+              <td>None</td>
+              <td>Human players are never passed to the bot factory.</td>
+              <td>Non-AI or unsupported values throw from <code>BotFactory.create()</code>.</td>
+            </tr>
+          </tbody>
+        </table>
+        <pre class="code-block"><span class="kw">if</span> (player.aiDifficulty === AiDifficulty.Custom) {
+  <span class="kw">const</span> meta = registry.get(player.customBotId);
+  <span class="kw">if</span> (meta) <span class="kw">return new</span> <span class="fn">ThirdPartyBotAdapter</span>(player.name, player.country.name, meta);
+  <span class="kw">if</span> (registry.getUploadedBots().length) <span class="kw">return new</span> <span class="fn">ThirdPartyBotAdapter</span>(...);
+  <span class="kw">return new</span> <span class="fn">BuiltInBotAdapter</span>(player.name, player.country.name);
+}</pre>
+        <a class="source" href="../src/game/bot/BotFactory.ts">Selection source: src/game/bot/BotFactory.ts</a>
+      </section>
+
+      <section id="built-in">
+        <p class="eyebrow">05 / Built-in AI</p>
+        <h2>Awareness feeds missions, strategy, and queues</h2>
+        <p class="section-intro">The built-in implementation is a layered controller. Its outer adapter preserves the common <code>Bot</code> contract; the inner <code>BuiltInBot</code> owns the actual strategy state and schedules work at a bot-specific rate derived from game tick rate and a 300 APM target.</p>
+        <div class="card-grid">
+          <article class="card cyan">
+            <h3>Match awareness</h3>
+            <p><code>MatchAwarenessImpl</code> updates sector visibility, build-space cache, scouting, hostile-unit spatial index, global threat, rally point, and expansion candidates. Threat is recalculated every 30 ticks; rally points every 90; expansion candidates every 240.</p>
+          </article>
+          <article class="card purple">
+            <h3>Default strategy</h3>
+            <p><code>DefaultStrategy</code> may create expansion, scouting, attack, defence, and engineer missions. Attack compositions are selected from valid faction-specific compositions using the game random source.</p>
+          </article>
+          <article class="card amber">
+            <h3>Mission controller</h3>
+            <p><code>MissionController</code> owns active missions, removes dead units, resolves priority requests, assigns free units, updates debug labels, and batches compatible orders through <code>ActionBatcher</code>.</p>
+          </article>
+          <article class="card green">
+            <h3>Queue controller</h3>
+            <p><code>QueueController</code> evaluates structures, armory, infantry, vehicles, aircraft, and ships. It queues requested objects, places ready buildings, pauses low-priority production, resumes useful queues, and repairs damaged objects.</p>
+          </article>
+        </div>
+        <div class="callout info">
+          <strong>Built-in tick order</strong>
+          <p>On its scheduled tick, <code>BuiltInBot</code> attempts initial MCV deployment, updates awareness, checks its resign condition, updates missions and strategy every three AI updates, then lets the queue controller reconcile production. The adapter runs its fail-safe after normal logic, including when normal logic throws.</p>
+        </div>
+        <div class="diagram-wrap">
+          <svg class="diagram" viewBox="0 0 1040 270" role="img" aria-labelledby="strategy-title strategy-desc">
+            <title id="strategy-title">Built-in strategy pipeline</title>
+            <desc id="strategy-desc">Game API input flows into awareness, then strategy and missions, then queue control and actions.</desc>
+            <defs><marker id="arrow2" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#668493"></path></marker></defs>
+            <rect class="box active" x="30" y="88" width="180" height="74" rx="9"></rect>
+            <text class="label" x="50" y="119">GameApi</text>
+            <text class="sub" x="50" y="141">state, map, rules, tick</text>
+            <rect class="box" x="280" y="48" width="220" height="74" rx="9"></rect>
+            <text class="label" x="300" y="79">MatchAwareness</text>
+            <text class="sub" x="300" y="101">visibility + threat + map</text>
+            <rect class="box strategy" x="280" y="158" width="220" height="74" rx="9"></rect>
+            <text class="label" x="300" y="189">Missions + Strategy</text>
+            <text class="sub" x="300" y="211">goals + unit requests</text>
+            <rect class="box strategy" x="570" y="48" width="200" height="74" rx="9"></rect>
+            <text class="label" x="590" y="79">QueueController</text>
+            <text class="sub" x="590" y="101">priorities + placement</text>
+            <rect class="box action" x="570" y="158" width="200" height="74" rx="9"></rect>
+            <text class="label" x="590" y="189">ActionBatcher</text>
+            <text class="sub" x="590" y="211">dedupe + grouped orders</text>
+            <rect class="box action" x="840" y="88" width="170" height="74" rx="9"></rect>
+            <text class="label" x="860" y="119">ActionsApi</text>
+            <text class="sub" x="860" y="141">queue command</text>
+            <path fill="none" stroke="#668493" stroke-width="1.5" marker-end="url(#arrow2)" d="M210 125 H280"></path>
+            <path fill="none" stroke="#668493" stroke-width="1.5" marker-end="url(#arrow2)" d="M390 122 V158"></path>
+            <path fill="none" stroke="#668493" stroke-width="1.5" marker-end="url(#arrow2)" d="M500 85 H570"></path>
+            <path fill="none" stroke="#668493" stroke-width="1.5" marker-end="url(#arrow2)" d="M500 195 H570"></path>
+            <path fill="none" stroke="#668493" stroke-width="1.5" marker-end="url(#arrow2)" d="M770 85 H820 V125 H840"></path>
+            <path fill="none" stroke="#668493" stroke-width="1.5" marker-end="url(#arrow2)" d="M770 195 H820 V125 H840"></path>
+          </svg>
+        </div>
+        <ul class="source-list" style="margin-top: 18px">
+          <li><a href="../src/game/ai/thirdpartbot/builtIn/bot/bot.ts">BuiltInBot.ts</a><span>Top-level lifecycle and scheduling.</span></li>
+          <li><a href="../src/game/ai/thirdpartbot/builtIn/bot/logic/awareness.ts">awareness.ts</a><span>Map, visibility, threat, scouting, expansion.</span></li>
+          <li><a href="../src/game/ai/thirdpartbot/builtIn/bot/strategy/defaultStrategy.ts">defaultStrategy.ts</a><span>Mission factories and compositions.</span></li>
+          <li><a href="../src/game/ai/thirdpartbot/builtIn/bot/logic/mission/missionController.ts">missionController.ts</a><span>Mission and unit assignment.</span></li>
+          <li><a href="../src/game/ai/thirdpartbot/builtIn/bot/logic/building/queueController.ts">queueController.ts</a><span>Production and building placement.</span></li>
+          <li><a href="../src/game/ai/thirdpartbot/builtIn/BuiltInBotAdapter.ts">BuiltInBotAdapter.ts</a><span>Common bot adapter and fail-safe.</span></li>
+        </ul>
+      </section>
+
+      <section id="custom">
+        <p class="eyebrow">06 / Custom bots</p>
+        <h2>Upload, validate, load, register</h2>
+        <p class="section-intro">Custom bots are browser-side scripts packaged in a zip. The uploader extracts the archive without a third-party zip dependency, validates its shape and source, then evaluates the main script in a deliberately restricted function scope.</p>
+        <div class="flow-list">
+          <div class="step">
+            <div class="step-index">A</div>
+            <div>
+              <h3>Accept only a bounded archive</h3>
+              <p><code>BotUploader.processUpload()</code> requires a <code>.zip</code> no larger than 10 MB. The extracted content is capped at 200 files, with a 512 KB maximum per file and a 10 MB total extracted size.</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-index">B</div>
+            <div>
+              <h3>Find the entry point</h3>
+              <p>The archive must contain <code>bot.ts</code> or <code>index.ts</code> at the root or one directory below it. Allowed extensions are <code>.ts</code>, <code>.json</code>, <code>.txt</code>, <code>.md</code>, and <code>.yml</code>; path traversal names are rejected.</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-index">C</div>
+            <div>
+              <h3>Strip lightweight TypeScript syntax</h3>
+              <p><code>BotSandbox.stripTypes()</code> removes interfaces/type blocks, imports, casts, parameter and variable annotations, access modifiers, enums, and non-null assertions. It is a lightweight source transform, not a general TypeScript compiler.</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-index">D</div>
+            <div>
+              <h3>Reject known dangerous patterns</h3>
+              <p>Source scanning blocks patterns for dynamic code, network access, storage, DOM/window access, Node process/module access, filesystem operations, and prototype-constructor escape attempts.</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-index">E</div>
+            <div>
+              <h3>Evaluate and require the export contract</h3>
+              <p>The script is executed through <code>new Function()</code> with a narrow injected global set such as <code>Math</code>, <code>Date</code>, collections, JSON, and prefixed console methods. The result must expose <code>id</code> and <code>createBot</code>. A registry metadata object is then created and stored with the source for persistence.</p>
+            </div>
+          </div>
+        </div>
+        <div class="callout danger">
+          <strong>Security boundary</strong>
+          <p>This is source filtering plus restricted scope, not a hardened security sandbox. The forbidden-pattern list is intentionally visible in <a href="../src/game/ai/thirdpartbot/BotSandbox.ts"><code>BotSandbox.ts</code></a>. Do not treat uploaded bot code as trustworthy or expand the allowed surface without reviewing the threat model.</p>
+        </div>
+        <h3>Third-party export shape</h3>
+        <pre class="code-block"><span class="comment">// bot.ts or index.ts</span>
+module.exports = {
+  id: <span class="str">"my-bot"</span>,
+  displayName: <span class="str">"My Bot"</span>,
+  version: <span class="str">"1.0.0"</span>,
+  author: <span class="str">"Author"</span>,
+  description: <span class="str">"Short description"</span>,
+  createBot: <span class="kw">function</span> (playerName, country) {
+    <span class="kw">return</span> {
+      onGameStart: <span class="kw">function</span> (ctx) { <span class="comment">/* initialize */</span> },
+      onGameTick: <span class="kw">function</span> (ctx) { <span class="comment">/* decide + issue actions */</span> },
+      onGameEvent: <span class="kw">function</span> (event, data) { <span class="comment">/* react */</span> },
+      dispose: <span class="kw">function</span> () { <span class="comment">/* optional cleanup */</span> }
+    };
+  }
+};</pre>
+        <a class="source" href="../src/game/ai/thirdpartbot/example/bot.ts">Working example: src/game/ai/thirdpartbot/example/bot.ts</a>
+      </section>
+
+      <section id="api">
+        <p class="eyebrow">07 / Bot API</p>
+        <h2>Read through APIs, write through actions</h2>
+        <p class="section-intro">The bot is not expected to mutate the world directly. It queries a projection of game state and emits actions that the simulation validates and executes.</p>
+        <table>
+          <thead><tr><th>Surface</th><th>Purpose</th><th>Representative operations</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><code>GameApi</code></td>
+              <td>Read global match state and map/rules data.</td>
+              <td><code>getCurrentTick()</code>, <code>getPlayerData()</code>, <code>getVisibleUnits()</code>, <code>getGameObjectData()</code>, <code>canPlaceBuilding()</code>, <code>getGeneralRules()</code>, <code>mapApi</code>, random helpers.</td>
+            </tr>
+            <tr>
+              <td><code>PlayerApi</code></td>
+              <td>Read state scoped to the bot's player.</td>
+              <td><code>getPlayerData()</code>, <code>isDefeated()</code>, <code>isAlliedWith()</code>, <code>canPlaceBuilding()</code>, <code>getVisibleUnits()</code>.</td>
+            </tr>
+            <tr>
+              <td><code>ProductionApi</code></td>
+              <td>Inspect available objects and production queues.</td>
+              <td><code>getAvailableObjects()</code>, <code>getQueueData()</code>, <code>isAvailableForProduction()</code>.</td>
+            </tr>
+            <tr>
+              <td><code>ActionsApi</code></td>
+              <td>Translate intent into game actions.</td>
+              <td><code>orderUnits()</code>, <code>queueForProduction()</code>, <code>placeBuilding()</code>, <code>pauseProduction()</code>, <code>resumeProduction()</code>, <code>activateSuperWeapon()</code>, <code>sayAll()</code>, <code>quitGame()</code>.</td>
+            </tr>
+            <tr>
+              <td><code>LoggerApi</code></td>
+              <td>Write bot-scoped diagnostics, with debug level controlled by manager debug selection.</td>
+              <td><code>info()</code>, <code>error()</code>, and other logger methods exposed through the injected logger.</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="callout info">
+          <strong>Adapter context shape</strong>
+          <p>The common TypeScript interface names the callback argument <code>gameApi</code>, but <code>ThirdPartyBotAdapter</code> actually passes a context object: <code>{ gameApi, actionsApi, productionApi, logger, playerName, country }</code>. The supplied example bot uses this context shape.</p>
+        </div>
+        <pre class="code-block"><span class="comment">// Typical custom bot tick</span>
+<span class="kw">var</span> ctx = { gameApi: gameApi, actionsApi: actionsApi, productionApi: productionApi, logger: logger, playerName: playerName, country: country };
+<span class="kw">var</span> enemies = ctx.gameApi.<span class="fn">getVisibleUnits</span>(ctx.playerName, <span class="str">"enemy"</span>);
+<span class="kw">if</span> (enemies.length) {
+  <span class="kw">var</span> target = ctx.gameApi.<span class="fn">getGameObjectData</span>(enemies[0]);
+  ctx.actionsApi.<span class="fn">orderUnits</span>(myUnits, OrderType.AttackMove, target.tile.rx, target.tile.ry);
+}</pre>
+        <ul class="source-list" style="margin-top: 18px">
+          <li><a href="../src/game/api/GameApi.ts">GameApi.ts</a><span>Global read-only facade over the game.</span></li>
+          <li><a href="../src/game/api/ActionsApi.ts">ActionsApi.ts</a><span>Command construction and queue insertion.</span></li>
+          <li><a href="../src/game/api/PlayerApi.ts">PlayerApi.ts</a><span>Player-scoped facade.</span></li>
+          <li><a href="../src/game/api/ProductionApi.ts">ProductionApi.ts</a><span>Queue and available-object facade.</span></li>
+          <li><a href="../src/game/bot/Bot.ts">Bot.ts</a><span>Base lifecycle and injected fields.</span></li>
+          <li><a href="../src/game/ai/thirdpartbot/ThirdPartyBotInterface.ts">ThirdPartyBotInterface.ts</a><span>Custom metadata and callback contract.</span></li>
+        </ul>
+      </section>
+
+      <section id="files">
+        <p class="eyebrow">08 / Source map</p>
+        <h2>Where to make a change</h2>
+        <p class="section-intro">Use this map to navigate the implementation. Links point to the corresponding repository source file.</p>
+        <table>
+          <thead><tr><th>If you need to change...</th><th>Start here</th><th>Why</th></tr></thead>
+          <tbody>
+            <tr><td>Which implementation a difficulty uses</td><td><a href="../src/game/bot/BotFactory.ts">BotFactory.ts</a></td><td>Central difficulty/custom ID dispatch and fallback logic.</td></tr>
+            <tr><td>When bots run</td><td><a href="../src/game/BotManager.ts">BotManager.ts</a> and <a href="../src/game/Game.ts">Game.ts</a></td><td>Manager lifecycle, action drain, event subscription, and game tick call site.</td></tr>
+            <tr><td>What a bot can see</td><td><a href="../src/game/api/GameApi.ts">GameApi.ts</a></td><td>Visibility, object data, rules, map, timing, and randomness.</td></tr>
+            <tr><td>What a bot can command</td><td><a href="../src/game/api/ActionsApi.ts">ActionsApi.ts</a></td><td>All action creation and queue insertion is centralized here.</td></tr>
+            <tr><td>Built-in strategy behavior</td><td><a href="../src/game/ai/thirdpartbot/builtIn/bot/bot.ts">builtIn/bot/bot.ts</a></td><td>Top-level schedule; follow its imports into awareness, missions, strategy, and building logic.</td></tr>
+            <tr><td>Uploaded bot loading and restrictions</td><td><a href="../src/game/ai/thirdpartbot/BotUploader.ts">BotUploader.ts</a> and <a href="../src/game/ai/thirdpartbot/BotSandbox.ts">BotSandbox.ts</a></td><td>Archive extraction, file/source validation, type stripping, restricted execution, and registration.</td></tr>
+            <tr><td>Lobby bot persistence and selection UI</td><td><a href="../src/gui/screen/mainMenu/lobby/SkirmishScreen.ts">SkirmishScreen.ts</a> and <a href="../src/gui/screen/mainMenu/lobby/PregameController.ts">PregameController.ts</a></td><td>Upload management, local preferences, available names, and custom ID propagation.</td></tr>
+            <tr><td>Upload dialog presentation</td><td><a href="../src/gui/component/BotUploadDialog.tsx">BotUploadDialog.tsx</a></td><td>React file input, status messages, listing, and removal behavior.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="notes">
+        <p class="eyebrow">09 / Current notes</p>
+        <h2>Important implementation details</h2>
+        <div class="card-grid">
+          <article class="card amber">
+            <h3>Legacy shells remain</h3>
+            <p><a href="../src/game/ai/Ai.ts"><code>game/ai/Ai.ts</code></a> currently only stores the AI INI object and exposes <code>getIni()</code>. <a href="../src/game/bot/BotsLib.ts"><code>BotsLib.ts</code></a> is an empty class. Neither is the active decision loop documented above.</p>
+          </article>
+          <article class="card cyan">
+            <h3>External bot library loading</h3>
+            <p><a href="../src/gui/screen/game/GameLoader.ts"><code>GameLoader.loadBotsLib()</code></a> attempts to load <code>@chronodivide/sp-bots</code> and passes its result as <code>botConfig</code> into <code>GameFactory</code>. The current local <code>BotFactory</code> chooses from built-in and registry adapters instead of consulting <code>BotsLib</code> directly.</p>
+          </article>
+          <article class="card green">
+            <h3>Debug focus follows one bot</h3>
+            <p><code>BotManager</code> listens to <code>botDebugIndex</code>, resolves an AI player name, and toggles debug mode on exactly the matching bot. Built-in debug text can then be written through debug actions and its internal buffers.</p>
+          </article>
+          <article class="card purple">
+            <h3>Failure isolation is intentional</h3>
+            <p>Manager-level catches isolate bot creation, initialization, event, and tick errors. The built-in adapter adds a fail-safe after normal logic. Custom adapter tick errors are logged periodically to avoid flooding output.</p>
+          </article>
+        </div>
+        <div class="callout">
+          <strong>Maintenance rule</strong>
+          <p>If any of the paths or lifecycle boundaries above move, update this HTML document alongside the TypeScript change. The source links are intentionally local so the page remains useful from a checked-out repository without a documentation server.</p>
+        </div>
+      </section>
+
+      <section id="upstream">
+        <p class="eyebrow">10 / Upstream multiplayer</p>
+        <h2>Same strategy, different multiplayer runtime</h2>
+        <p class="section-intro">The local built-in bot is adapted from <a href="https://github.com/Supalosa/supalosa-chronodivide-bot">Supalosa's Chrono Divide bot</a>. The decision system is similar, but the upstream project demonstrates a separate online bot agent while this codebase embeds bots inside each local game simulation.</p>
+        <div class="card-grid">
+          <article class="card purple">
+            <h3>Upstream online agent</h3>
+            <p><code>packages/chronodivide-bot-driver/src/index.ts</code> calls <code>cdapi.createGame()</code> with <code>online: true</code> and a bot in the <code>agents</code> list. The bot runs in a Node process, connects as an online player, and updates its own game agent until the match finishes.</p>
+            <a class="source" href="https://github.com/Supalosa/supalosa-chronodivide-bot/blob/master/packages/chronodivide-bot-driver/src/index.ts">Upstream driver source</a>
+          </article>
+          <article class="card cyan">
+            <h3>Local lockstep AI</h3>
+            <p><code>GameFactory</code> creates one <code>BotManager</code> for each <code>Game</code>. On every multiplayer peer, that manager creates one bot per AI combatant and runs the bot locally during <code>Game.update()</code>.</p>
+            <a class="source" href="../src/game/GameFactory.ts">Local GameFactory source</a>
+          </article>
+        </div>
+        <div class="diagram-wrap" style="margin-top: 18px">
+          <svg class="diagram" viewBox="0 0 1040 245" role="img" aria-labelledby="upstream-title upstream-desc">
+            <title id="upstream-title">Bot instance ownership in upstream and local multiplayer</title>
+            <desc id="upstream-desc">The upstream model has a Node bot agent connected to an online game. The local model has a Game on each peer, with a BotManager and one bot instance per AI player.</desc>
+            <defs><marker id="arrow3" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#668493"></path></marker></defs>
+            <text class="legend" x="30" y="25">UPSTREAM ONLINE AGENT</text>
+            <rect class="box strategy" x="30" y="55" width="220" height="72" rx="9"></rect>
+            <text class="label" x="50" y="86">Node bot process</text>
+            <text class="sub" x="50" y="108">SupalosaBot instance</text>
+            <rect class="box active" x="330" y="55" width="220" height="72" rx="9"></rect>
+            <text class="label" x="350" y="86">Online game API</text>
+            <text class="sub" x="350" y="108">transport hidden in cdapi</text>
+            <rect class="box" x="630" y="55" width="220" height="72" rx="9"></rect>
+            <text class="label" x="650" y="86">One game</text>
+            <text class="sub" x="650" y="108">one bot player</text>
+            <path fill="none" stroke="#cba6f7" stroke-width="1.5" marker-end="url(#arrow3)" d="M250 91 H330"></path>
+            <path fill="none" stroke="#66d9ef" stroke-width="1.5" marker-end="url(#arrow3)" d="M550 91 H630"></path>
+
+            <text class="legend" x="30" y="162">LOCAL P2P LOCKSTEP</text>
+            <rect class="box active" x="30" y="185" width="220" height="45" rx="9"></rect>
+            <text class="label" x="50" y="213">Game on each peer</text>
+            <rect class="box" x="330" y="185" width="220" height="45" rx="9"></rect>
+            <text class="label" x="350" y="213">BotManager</text>
+            <rect class="box action" x="630" y="185" width="220" height="45" rx="9"></rect>
+            <text class="label" x="650" y="213">Bot per AI player</text>
+            <path fill="none" stroke="#66d9ef" stroke-width="1.5" marker-end="url(#arrow3)" d="M250 207 H330"></path>
+            <path fill="none" stroke="#a6e3a1" stroke-width="1.5" marker-end="url(#arrow3)" d="M550 207 H630"></path>
+          </svg>
+        </div>
+        <div class="callout info">
+          <strong>Instance isolation rule</strong>
+          <p>Each bot owns mutable match state: missions, threat caches, production decisions, assigned units, rally points, and debug buffers. Never share a bot instance between games or between AI players. In local multiplayer, every peer has its own equivalent bot instance and must run the same deterministic logic.</p>
+        </div>
+        <div class="callout danger">
+          <strong>Custom bot multiplayer requirement</strong>
+          <p>The local lobby synchronizes game options, not uploaded bot source. Every peer must have the same custom bot registered under the same ID. Otherwise peers can select different implementations and diverge from the lockstep simulation.</p>
+        </div>
+        <table>
+          <thead><tr><th>Question</th><th>Upstream repository</th><th>This codebase</th></tr></thead>
+          <tbody>
+            <tr><td>Where does the bot run?</td><td>Separate Node process / online agent.</td><td>Inside the browser's <code>Game</code> instance.</td></tr>
+            <tr><td>How many instances?</td><td>One instance per bot-controlled player and game.</td><td>One instance per AI combatant, per peer, per game.</td></tr>
+            <tr><td>Who owns networking?</td><td><code>@chronodivide/game-api</code> and its online runtime.</td><td><code>LanMatchSession</code> and <code>LanLockstepTurnManager</code> synchronize human actions; bot decisions are generated locally.</td></tr>
+            <tr><td>What must match?</td><td>Bot API/game runtime state.</td><td>Bot source, rules, map, seed, state, and random-call order on every peer.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <footer class="footer">
+        RA2WEB AI/Bot implementation reference. Generated from the current source tree. Open this file directly in a browser: <code>docs/ai-bot-implementation.html</code>.
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

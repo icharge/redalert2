@@ -2,9 +2,9 @@ import { EventType } from "@/game/event/EventType";
 import { TriggerCondition } from "@/game/trigger/TriggerCondition";
 export class SpyEnteringAsInfantryCondition extends TriggerCondition {
     private infantryIdx: number;
-    constructor(params: any[], targets: any[]) {
+    constructor(params: any, targets: any[]) {
         super(params, targets);
-        this.infantryIdx = Number(params[1]);
+        this.infantryIdx = Number(params.params[1]);
     }
     check(events: any[], targets: any[]): any[] {
         return events

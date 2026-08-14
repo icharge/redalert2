@@ -112,8 +112,7 @@ export class Projectile extends GameObject {
             (!this.isHoming() && this.fromWeapon.speed === Number.POSITIVE_INFINITY) ||
             this.rules.inaccurate ||
             this.rules.arcing ||
-            this.rules.flakScatter ||
-            this.isPrismSupportBeam(game)) {
+            this.rules.flakScatter) {
         }
         else {
             let damage = this.computeBaseDamage(game);
@@ -336,7 +335,7 @@ export class Projectile extends GameObject {
             let shouldDetonate = false;
             let collisionType = CollisionType.None;
             let collisionTarget: any;
-            if (moveDistance >= 1) {
+            if (distanceToTarget >= Coords.LEPTONS_PER_TILE / 4) {
                 const moveVector = this.homingMoveDir.clone().setLength(moveDistance);
                 if (verticalAdjustment) {
                     moveVector.y += verticalAdjustment;
@@ -354,12 +353,21 @@ export class Projectile extends GameObject {
                 const collision = this.checkObstacles(oldPosition, game);
                 collisionType = collision.type;
                 collisionTarget = collision.target;
-                if (collisionType || moveDistance < currentSpeed) {
+                if (collisionType) {
                     shouldDetonate = true;
+                }
+                else {
+                    const remaining = targetPos.clone().sub(this.position.worldPosition);
+                    const f = remaining.length();
+                    if (distanceToTarget < f && f < 2 * Coords.LEPTONS_PER_TILE) {
+                        shouldDetonate = true;
+                    }
                 }
             }
             else {
-                this.position.moveByLeptons3(toTarget);
+                if (game.map.isWithinHardBounds(targetPos)) {
+                    this.position.moveByLeptons3(toTarget);
+                }
                 shouldDetonate = true;
             }
             if (shouldDetonate) {
@@ -580,14 +588,6 @@ export class Projectile extends GameObject {
                     !game.alliances.areAllied(this.fromPlayer, owner)),
         });
     }
-    private isPrismSupportBeam(game: any): boolean {
-        const prismType = game.rules.general.prism.type;
-        return !!prismType &&
-            this.fromWeapon.type === WeaponType.Secondary &&
-            !!this.fromObject?.isBuilding() &&
-            this.fromObject.name === prismType;
-    }
-
     private computeBaseDamage(game: any): number {
         const weapon = this.fromWeapon;
         const warhead = weapon.warhead;
@@ -610,27 +610,17 @@ export class Projectile extends GameObject {
         if (weapon.type === WeaponType.DeathWeapon && warhead.rules.ivanBomb) {
             warhead = new Warhead(game.rules.getWarhead(game.rules.combatDamage.ivanWarhead));
         }
-        const damage = this.computeBaseDamage(game);
+        let damage = this.computeBaseDamage(game);
         game.destroyObject(this);
         this.state = ProjectileState.Detonation;
         const targetObj = this.target.obj;
         let parasiteSuccess = false;
-        // Flag for parasite warhead instant-killing infantry (distinct from vehicle parasitism; the attacker must return to the map after killing infantry)
-        let parasiteInfantryKill = false;
         if (warhead.rules.parasite &&
             targetObj?.isUnit() &&
             detonationTile === targetObj.tile &&
             warhead.canDamage(targetObj, detonationTile, detonationZone)) {
             if (targetObj.isInfantry()) {
-                // Dog and Terror Drone parasite warheads deal infinite damage to infantry for instant kill
-                const infiniteDamage = Number.POSITIVE_INFINITY;
-                warhead.inflictDamage(infiniteDamage, targetObj, {
-                    player: this.fromPlayer,
-                    weapon: weapon,
-                    obj: this.fromObject,
-                }, game, true);
-                // Do not set parasiteSuccess so the attacker can return from limbo to the map
-                parasiteInfantryKill = true;
+                damage = Number.POSITIVE_INFINITY;
             }
             else if (targetObj.parasiteableTrait && this.fromObject?.isUnit()) {
                 if (!(this.fromWeapon instanceof Weapon)) {
@@ -641,8 +631,8 @@ export class Projectile extends GameObject {
             }
         }
         let shouldDetonate = true;
-        // Skip normal warhead detonation logic after successful vehicle parasitism or infantry instant kill
-        if (parasiteSuccess || parasiteInfantryKill) {
+        // Skip normal warhead detonation logic after successful vehicle parasitism
+        if (parasiteSuccess) {
             shouldDetonate = false;
         }
         if (warhead.rules.sonic) {
@@ -658,6 +648,7 @@ export class Projectile extends GameObject {
                 const delay = game.rules.combatDamage.ivanTimedDelay;
                 targetObj.tntChargeTrait.setCharge(delay, game.currentTick, {
                     player: this.fromPlayer,
+                    obj: this.fromObject,
                 });
             }
         }
@@ -718,9 +709,6 @@ export class Projectile extends GameObject {
             }
             shouldDetonate = false;
         }
-        if (this.isPrismSupportBeam(game)) {
-            shouldDetonate = false;
-        }
         if (shouldDetonate) {
             warhead.detonate(game, damage, detonationTile, this.tileElevation, this.position.worldPosition, detonationZone, collisionType, this.target, {
                 player: this.fromPlayer,
@@ -750,7 +738,7 @@ export class Projectile extends GameObject {
                 ? !this.target.obj.isBuilding()
                 : game.map
                     .getGroundObjectsOnTile(this.target.tile)
-                    .some((obj: any) => obj.isTerrain()) &&
+                    .some((obj: any) => obj.isTerrain() || obj.isTechno()) &&
                     !weapon.projectileRules.isAntiAir) ||
                 this.isShrapnel)) {
             const shrapnelWeapon = game.rules.getWeapon(this.rules.shrapnelWeapon);

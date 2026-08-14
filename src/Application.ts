@@ -19,7 +19,7 @@ import { LocalPrefs, StorageKey } from './LocalPrefs';
 import type { Viewport, ViewportRect } from './gui/Viewport';
 import { Gui } from './Gui';
 import { BasicErrorBoxApi } from './gui/component/BasicErrorBoxApi';
-import { Engine } from './engine/Engine';
+import { Engine, EngineType } from './engine/Engine';
 import { ResourceLoader } from './engine/ResourceLoader';
 import { ImageContext } from './gui/component/ImageContext';
 import { ConsoleVars } from './ConsoleVars';
@@ -76,6 +76,9 @@ class ViewportAdapter implements Viewport {
     }
     getValue(): ViewportRect {
         return this.boxedVar.value;
+    }
+    get onChange() {
+        return this.boxedVar.onChange;
     }
     rootElement?: HTMLElement;
 }
@@ -579,6 +582,7 @@ export class Application {
                 console.log("Engine.iniFiles.has('art.ini'):", Engine.iniFiles.has("art.ini"));
                 console.log("[Diag] Engine.iniFiles.has('rulescd.ini'):", Engine.iniFiles.has("rulescd.ini"));
                 console.log("[Diag] Engine.iniFiles.has('artcd.ini'):", Engine.iniFiles.has("artcd.ini"));
+                Engine.setActiveEngine(EngineType.RedAlert2);
                 Engine.loadRules();
                 try {
                     const rulesIniUsed = Engine.getFileNameVariant('rules.ini');

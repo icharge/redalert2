@@ -1,3 +1,5 @@
 export interface PathFinderOptions {
-    id: string;
+    bestEffort?: boolean;
+    excludeNodes?: (node: PathNode) => boolean;
+    maxExpandedNodes?: number;
 }

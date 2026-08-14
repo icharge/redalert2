@@ -266,6 +266,7 @@ export class Overlay {
                     EngineMathUtils.translateTowardsCamera(shadowMesh, this.camera as any, (MAGIC_OFFSET + 0.05) * Coords.ISO_WORLD_SCALE);
                     shadowMesh.updateMatrix();
                 }
+                container.add(this.createBridgeShadowSurface());
             }
             if (this.gameObject.isBridge()) {
                 const renderOrder = this.gameObject.isHighBridge() ? 1 : -1;
@@ -337,7 +338,7 @@ export class Overlay {
     private createMainObject(imageSource: any, drawOffset: THREE.Vector3): ShpRenderable {
         const isWall = this.objectRules.wall;
         const heightOffset = this.gameObject.isHighBridge() ? 4 : 0;
-        const hasShadow = this.objectArt.hasShadow && !this.gameObject.isLowBridge() && !this.gameObject.isHighBridge();
+        const hasShadow = this.objectArt.hasShadow && !this.gameObject.isLowBridge();
         const renderable = ShpRenderable.factory(imageSource, this.palette, this.camera, drawOffset, hasShadow, heightOffset, isWall);
         renderable.setBatched(this.useSpriteBatching);
         if (this.useSpriteBatching) {

@@ -68,12 +68,12 @@ export class MoveAsideTask extends Task {
             return true;
         }
         targetBridge = map.tileOccupation.getBridgeOnTile(pushTile);
-        const pushableUnits = map.tileOccupation.getGroundObjectsOnTile(pushTile).filter(unit => unit.isUnit() &&
-            unit.owner === unit.owner &&
-            unit.tile === pushTile &&
-            unit.onBridge === !!targetBridge &&
-            !(unit.isInfantry() && unit.stance === StanceType.Paradrop) &&
-            !(unit.isAircraft() && unit.missileSpawnTrait));
+        const pushableUnits = map.tileOccupation.getGroundObjectsOnTile(pushTile).filter(pushedUnit => pushedUnit.isUnit() &&
+            pushedUnit.owner === unit.owner &&
+            pushedUnit.tile === pushTile &&
+            pushedUnit.onBridge === !!targetBridge &&
+            !(pushedUnit.isInfantry() && pushedUnit.stance === StanceType.Paradrop) &&
+            !(pushedUnit.isAircraft() && pushedUnit.missileSpawnTrait));
         if (pushableUnits.find(unit => unit.moveTrait.collisionState === CollisionState.Waiting ||
             unit.unitOrderTrait.hasTasks())) {
             this.children.push(new WaitTicksTask(5));

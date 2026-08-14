@@ -10,14 +10,13 @@ export class IronCurtainEffect extends SuperWeaponEffect {
         while ((tile = tileFinder.getNextTile())) {
             for (const object of game.map.getGroundObjectsOnTile(tile)) {
                 if (!object.isTechno() ||
+                    object.isDestroyed ||
                     (object.isUnit() && object.tile !== tile) ||
                     object.rules.missileSpawn) {
                     continue;
                 }
                 if (object.rules.organic) {
-                    if (!object.isDestroyed) {
-                        game.destroyObject(object, source);
-                    }
+                    game.destroyObject(object, source);
                 }
                 else {
                     object.invulnerableTrait.setActiveFor(duration, game.currentTick);

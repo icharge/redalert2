@@ -53,6 +53,7 @@ export interface WolChannelEvent {
         operator?: boolean;
         ping?: number;
         fresh?: boolean;
+        observer?: boolean;
     };
     channel: string;
 }
@@ -83,6 +84,7 @@ export class WolConnection {
     private _onLoginQueueUpdate = new EventDispatcher<WolConnection, WolLoginQueueEvent>();
     private _onChatMessage = new EventDispatcher<WolConnection, ChatMessage | Message | SystemMessage>();
     private _onJoinChannel = new EventDispatcher<WolConnection, WolChannelEvent>();
+    private _onJoinGameChannel = new EventDispatcher<WolConnection, WolChannelEvent>();
     private _onLeaveChannel = new EventDispatcher<WolConnection, WolChannelEvent>();
     private _onGameStart = new EventDispatcher<WolConnection, WolGameStartEvent>();
     private _onGameStartAbort = new EventDispatcher<WolConnection, WolGameStartAbortEvent>();
@@ -107,6 +109,9 @@ export class WolConnection {
     }
     get onJoinChannel() {
         return this._onJoinChannel.asEvent();
+    }
+    get onJoinGameChannel() {
+        return this._onJoinGameChannel.asEvent();
     }
     get onLeaveChannel() {
         return this._onLeaveChannel.asEvent();
@@ -327,8 +332,7 @@ export class WolConnection {
         const replies = await this.con.sendCommand("getlocale " + this.currentUser, {
             replyCodes: [WolCode.RPL_GET_LOCALE],
         });
-        const locale = replies[0].params?.[2].split("`")[1];
-        return locale !== undefined ? (Number(locale) as WolLocale) : WolLocale.Unknown;
+        return (replies[0].params?.[2].split("`")[1] ?? WolLocale.Unknown) as WolLocale;
     }
 
     async joinChannel(channel: string, password?: string): Promise<void> {
@@ -620,60 +624,60 @@ export class WolConnection {
         });
     }
 
-    sendPlayerReady(ready: boolean): Promise<any> {
+    sendPlayerReady(ready: boolean): void {
         if (!this.currentGameChannel) {
             throw new Error("No game channel active");
         }
-        return this.gameOpt(this.currentGameChannel, "A" + (ready ? 1 : 0));
+        this.gameOpt(this.currentGameChannel, "A" + (ready ? 1 : 0));
     }
 
-    sendPlayerHasMap(status: WolHasMapStatus): Promise<any> {
+    sendPlayerHasMap(status: WolHasMapStatus): void {
         if (!this.currentGameChannel) {
             throw new Error("No game channel active");
         }
-        return this.gameOpt(this.currentGameChannel, "K" + status);
+        this.gameOpt(this.currentGameChannel, "K" + status);
     }
 
-    sendGameStartRequest(): Promise<any> {
+    sendGameStartRequest(): void {
         if (!this.currentGameChannel) {
             throw new Error("No game channel active");
         }
-        return this.gameOpt(this.currentGameChannel, "G");
+        this.gameOpt(this.currentGameChannel, "G");
     }
 
-    sendGameSlotsInfo(slotsInfo: any): Promise<any> {
+    sendGameSlotsInfo(slotsInfo: any): void {
         if (!this.currentGameChannel) {
             throw new Error("No game channel active");
         }
-        return this.gameOpt(this.currentGameChannel, "L" + slotsInfo);
+        this.gameOpt(this.currentGameChannel, "L" + slotsInfo);
     }
 
-    sendPingData(pingData: string): Promise<any> {
+    sendPingData(pingData: string): void {
         if (!this.currentGameChannel) {
             throw new Error("No game channel active");
         }
-        return this.gameOpt(this.currentGameChannel, "P" + pingData);
+        this.gameOpt(this.currentGameChannel, "P" + pingData);
     }
 
-    sendObserverSlot(slotData: string): Promise<any> {
+    sendObserverSlot(slotData: string): void {
         if (!this.currentGameChannel) {
             throw new Error("No game channel active");
         }
-        return this.gameOpt(this.currentGameChannel, "O" + slotData);
+        this.gameOpt(this.currentGameChannel, "O" + slotData);
     }
 
-    sendGameOpts(serializedOpts: string): Promise<any> {
+    sendGameOpts(serializedOpts: string): void {
         if (!this.currentGameChannel) {
             throw new Error("No game channel active");
         }
-        return this.gameOpt(this.currentGameChannel, serializedOpts);
+        this.gameOpt(this.currentGameChannel, serializedOpts);
     }
 
-    sendPlayerOpts(channel: string, countryId: number, colorId: number, startPos: number, teamId: number): Promise<any> {
+    sendPlayerOpts(channel: string, countryId: number, colorId: number, startPos: number, teamId: number): void {
         if (!this.currentGameChannel) {
             throw new Error("No game channel active");
         }
-        return this.gameOpt(channel, `R${countryId},${colorId},${startPos},${teamId},0,0,0`);
+        this.gameOpt(channel, `R${countryId},${colorId},${startPos},${teamId},0,0,0`);
     }
 
     sendModeChannelMax(channel: string, maxPlayers: number): void {
@@ -688,7 +692,7 @@ export class WolConnection {
         this.con.sendMessage(`topic ${escapedChannel} :` + new Serializer().serializeTopic(topic));
     }
 
-    gameOpt(channel: string, opt: string): Promise<any> {
+    gameOpt(channel: string, opt: string): void {
         if (!this.currentUser) {
             throw new Error("Must login first");
         }
@@ -701,7 +705,6 @@ export class WolConnection {
             user: this.currentUser,
             opt,
         });
-        return Promise.resolve();
     }
 
     private handleJoin(message: string): void {
@@ -739,16 +742,18 @@ export class WolConnection {
         if (userName !== this.currentUser) {
             this.logger.info(`Player "${userName}" joined game "${channel}"`);
         }
-        this._onJoinChannel.dispatch(this, {
+        const event: WolChannelEvent = {
             type: "join",
             user: {
                 name: userName,
                 operator: false,
                 ping: Number(flagParts[5]),
-                fresh: Boolean(Number(flagParts[6])),
+                observer: flagParts[7] !== undefined ? Boolean(Number(flagParts[7])) : undefined,
             },
             channel,
-        });
+        };
+        this._onJoinChannel.dispatch(this, event);
+        this._onJoinGameChannel.dispatch(this, event);
     }
 
     private handleStartGame(message: string): void {

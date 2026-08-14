@@ -7,6 +7,7 @@ import { ZoneType } from "@/game/gameobject/unit/ZoneType";
 import { OBS_COUNTRY_ID } from "@/game/gameopts/constants";
 import { GameSpeed } from "@/game/GameSpeed";
 import { RadialTileFinder } from "@/game/map/tileFinder/RadialTileFinder";
+import { RadialBackFirstTileFinder } from "@/game/map/tileFinder/RadialBackFirstTileFinder";
 import { PowerupType } from "@/game/type/PowerupType";
 import { SpeedType } from "@/game/type/SpeedType";
 import { NotifyTick } from "@/game/trait/interface/NotifyTick";
@@ -110,21 +111,27 @@ export class CrateGeneratorTrait implements NotifyTick {
     spawnCrateAtRandom(tiles: any[], gameState: any): boolean {
         const spawnTile = this.chooseSpawnTile(tiles, gameState);
         if (spawnTile) {
-            return this.spawnRandomCrateAt(spawnTile, gameState);
+            return this.spawnRandomCrateAt(spawnTile, gameState, 0, true);
         }
         return false;
     }
-    spawnRandomCrateAt(tile: any, gameState: any): boolean {
+    spawnRandomCrateAt(tile: any, gameState: any, searchRadius: number = 0, cratesAppear: boolean = false): boolean {
+        if (!this.canPlaceCrateOnTile(gameState, tile) && searchRadius > 0) {
+            tile = new RadialBackFirstTileFinder(gameState.map.tiles, gameState.map.mapBounds, tile, { width: 1, height: 1 }, 1, searchRadius, (t: any) => this.canPlaceCrateOnTile(gameState, t)).getNextTile() ?? tile;
+        }
         if (this.canPlaceCrateOnTile(gameState, tile)) {
             const isWater = gameState.map.getTileZone(tile, true) === ZoneType.Water;
             const powerup = this.choosePowerup(isWater, gameState.rules.powerups.powerups, gameState);
             if (powerup) {
-                return !!this.spawnCrateAt(tile, powerup, gameState);
+                return !!this.spawnCrateAt(tile, powerup, gameState, searchRadius, cratesAppear);
             }
         }
         return false;
     }
-    spawnCrateAt(tile: any, powerup: any, gameState: any): any {
+    spawnCrateAt(tile: any, powerup: any, gameState: any, searchRadius: number = 0, cratesAppear: boolean = false): any {
+        if (!this.canPlaceCrateOnTile(gameState, tile) && searchRadius > 0) {
+            tile = new RadialBackFirstTileFinder(gameState.map.tiles, gameState.map.mapBounds, tile, { width: 1, height: 1 }, 1, searchRadius, (t: any) => this.canPlaceCrateOnTile(gameState, t)).getNextTile() ?? tile;
+        }
         if (this.canPlaceCrateOnTile(gameState, tile)) {
             const isWater = gameState.map.getTileZone(tile, true) === ZoneType.Water;
             const crateRules = gameState.rules.crateRules;
@@ -133,8 +140,10 @@ export class CrateGeneratorTrait implements NotifyTick {
             crateObject.overlayId = gameState.rules.getOverlayId(crateImage);
             crateObject.value = 0;
             gameState.spawnObject(crateObject, tile);
-            const ticksLeft = 60 * crateRules.crateRegen * GameSpeed.BASE_TICKS_PER_SECOND *
-                (0.5 + 1.5 * gameState.generateRandom());
+            const ticksLeft = cratesAppear
+                ? 60 * crateRules.crateRegen * GameSpeed.BASE_TICKS_PER_SECOND *
+                    (0.5 + 1.5 * gameState.generateRandom())
+                : Number.POSITIVE_INFINITY;
             this.crates.push({
                 obj: crateObject,
                 powerup: powerup,
@@ -169,7 +178,7 @@ export class CrateGeneratorTrait implements NotifyTick {
     }
     canPlaceCrateOnTile(gameState: any, tile: any): boolean {
         return gameState.map.mapBounds.isWithinBounds(tile) &&
-            !gameState.map.getGroundObjectsOnTile(tile).length &&
+            !gameState.map.getGroundObjectsOnTile(tile).find((obj: any) => !obj.isSmudge()) &&
             gameState.map.terrain.getPassableSpeed(tile, SpeedType.Amphibious, false, false) > 0 &&
             tile.terrainType !== TerrainType.Shore &&
             tile.rampType === 0;

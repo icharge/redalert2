@@ -108,7 +108,7 @@ export class MapApi {
         return this.map.terrain.getPassableSpeed(tile, speedType, isFoot, options) > 0;
     }
     findPath(tile: any, ...args: any[]) {
-        const [isFoot, start, end, options] = args[0] !== 'boolean'
+        const [isFoot, start, end, options] = typeof args[0] !== 'boolean'
             ? [tile === SpeedType.Foot, ...args]
             : args;
         const path = this.game.map.terrain.computePath(tile, isFoot, start.tile, start.onBridge, end.tile, end.onBridge, {
@@ -170,9 +170,12 @@ export class MapApi {
         const islandIdMap = terrain.getIslandIdMap(speedType, onBridge);
         return {
             isReachable(from: { tile: any; onBridge?: boolean }, to: { tile: any; onBridge?: boolean }): boolean {
-                const fromId = islandIdMap.get(from.tile, !!from.onBridge);
-                const toId = islandIdMap.get(to.tile, !!to.onBridge);
+                const fromId = this.getRegionId(from);
+                const toId = this.getRegionId(to);
                 return fromId !== undefined && fromId === toId;
+            },
+            getRegionId(node: { tile: any; onBridge?: boolean }): number | undefined {
+                return islandIdMap.get(node.tile, !!node.onBridge);
             },
         };
     }

@@ -12,6 +12,10 @@ interface PlayerInfo {
     name: string;
     status: PlayerConnectionStatus;
     loadPercent: number;
+    ping?: number;
+    lagAllowanceMillis?: number;
+    timeoutAt?: number;
+    showLoadTimeoutStatus?: boolean;
     country?: Country;
     color: string;
     team: number;
@@ -87,6 +91,7 @@ export class LoadingScreen extends React.Component<LoadingScreenProps> {
     }
     private renderStatus(player: PlayerInfo, showTeams: boolean): React.ReactElement {
         const opacity = player.status === PlayerConnectionStatus.Connected ? 1 : 0.5;
+        const timeoutStatusText = this.getTimeoutStatusText(player);
         return (<div key={player.name} className="player-status" style={{ opacity, color: player.color }}>
         {showTeams && (<span className="player-team">
             {player.country !== undefined &&
@@ -97,7 +102,17 @@ export class LoadingScreen extends React.Component<LoadingScreenProps> {
         <span className="player-name">
           {player.name}
         </span>
+        {timeoutStatusText && (<span className="player-load-status">
+            {timeoutStatusText}
+          </span>)}
       </div>);
+    }
+    private getTimeoutStatusText(player: PlayerInfo): string | undefined {
+        const remaining = player.timeoutAt !== undefined ? Math.max(0, player.timeoutAt - Date.now()) : undefined;
+        if (player.showLoadTimeoutStatus && remaining && !(100 <= player.loadPercent)) {
+            return this.props.strings.get("TS:LoadTimeoutStatus", Math.ceil(remaining / 1000));
+        }
+        return undefined;
     }
     private getStyle(bgImageSrc?: string): React.CSSProperties {
         const viewport = this.props.viewport;

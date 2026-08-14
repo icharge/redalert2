@@ -8,6 +8,8 @@ import { TurnTask } from './TurnTask';
 import { WaitMinutesTask } from './system/WaitMinutesTask';
 import { ZoneType } from '../unit/ZoneType';
 import { CallbackTask } from './system/CallbackTask';
+import { WaitTicksTask } from './system/WaitTicksTask';
+import { GameSpeed } from '@/game/GameSpeed';
 enum EvacuationState {
     None = 0,
     OnlyPassengers = 1,
@@ -170,6 +172,7 @@ export class EvacuateTransportTask extends Task {
         else {
             unit.unitOrderTrait.addTask(new ScatterTask(this.game as any, undefined as any, undefined as any));
         }
+        unit.unitOrderTrait.addTask(new WaitTicksTask(2 * GameSpeed.BASE_TICKS_PER_SECOND));
         this.game.events.dispatch(new LeaveTransportEvent(transport));
         return true;
     }

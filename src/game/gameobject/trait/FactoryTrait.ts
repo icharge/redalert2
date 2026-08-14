@@ -1,4 +1,5 @@
 import { Building, BuildStatus } from "@/game/gameobject/Building";
+import { DeathType } from "@/game/gameobject/common/DeathType";
 import { NotifyTick } from "@/game/gameobject/trait/interface/NotifyTick";
 import { ProductionQueue, QueueType, QueueStatus } from "@/game/player/production/ProductionQueue";
 import { TechnoRules, FactoryType } from "@/game/rules/TechnoRules";
@@ -75,6 +76,7 @@ export class FactoryTrait {
             building.rules.deployTime &&
             this.deliveringUnit &&
             !this.deliveringUnit.isDestroyed &&
+            building.deathType !== DeathType.Temporal &&
             this.unitIsInsideFactory(this.deliveringUnit, building, world)) {
             world.destroyObject(this.deliveringUnit, attacker, weapon);
         }

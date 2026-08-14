@@ -333,11 +333,25 @@ export class AttackTask extends Task {
                 return true;
             }
             let forcedMove = false;
-            if (this.weapon.rules.limboLaunch && moveTask) {
-                if (!moveTask.forceCancel(obj))
-                    return false;
-                obj.moveTrait.lastTargetOffset = undefined;
-                obj.moveTrait.lastVelocity = undefined;
+            if (this.weapon.rules.limboLaunch) {
+                let limboMoveTask: MoveTask | undefined = moveTask;
+                if (!limboMoveTask) {
+                    const currentTask = obj.unitOrderTrait.getCurrentTask();
+                    if (currentTask && currentTask !== this && attackTrait.getOpportunityFireTask() === this) {
+                        if (!(currentTask instanceof MoveTask)) {
+                            currentTask.cancel();
+                            return false;
+                        }
+                        limboMoveTask = currentTask;
+                    }
+                }
+                if (limboMoveTask) {
+                    if (!limboMoveTask.forceCancel(obj)) {
+                        return false;
+                    }
+                    obj.moveTrait.lastTargetOffset = undefined;
+                    obj.moveTrait.lastVelocity = undefined;
+                }
                 forcedMove = true;
             }
             this.weapon.fire(this.target, this.game, damageMultiplier);
@@ -526,12 +540,12 @@ export class AttackTask extends Task {
             this.moveExecuted = false;
             this.moveAttempts = 0;
             if (moveTask) {
-                const shouldCancelMove = (obj.rules.balloonHover && !obj.rules.hoverAttack) ||
+                const shouldKeepMove = (obj.rules.balloonHover && !obj.rules.hoverAttack) ||
                     obj.rules.fighter ||
                     obj.rules.spawned ||
                     (obj.rules.movementZone === MovementZone.Fly &&
                         !this.rangeHelper.isInRange2(obj, this.target.obj ?? this.target.tile, this.weapon.minRange, this.weapon.range - 1));
-                if (shouldCancelMove) {
+                if (!shouldKeepMove) {
                     moveTask.cancel();
                 }
             }

@@ -47,7 +47,12 @@ export class AudioSystem {
     initialize(): void {
         if (this.isInitialized())
             return;
-        this.audioContext = new AudioContext();
+        const AudioContextCtor = (window as any).AudioContext || (window as any).webkitAudioContext;
+        if (!AudioContextCtor) {
+            console.warn("[AudioSystem] Web Audio API not available");
+            return;
+        }
+        this.audioContext = new AudioContextCtor();
         this.mixer.onVolumeChange.subscribe(this.handleVolumeChange);
         this.disposables.add(() => this.mixer.onVolumeChange.unsubscribe(this.handleVolumeChange));
         this.createChannels(this.audioContext, this.mixer);
@@ -214,14 +219,20 @@ export class AudioSystem {
         const audioContext = this.audioContext!;
         const gainNode = audioContext.createGain();
         gainNode.gain.value = volume;
-        const panNode = audioContext.createStereoPanner();
-        panNode.pan.value = pan;
+        let panNode: AudioNode;
+        if (typeof (audioContext as any).createStereoPanner === "function") {
+            panNode = (audioContext as any).createStereoPanner();
+            (panNode as any).pan.value = pan;
+        }
+        else {
+            panNode = this.createFallbackPanner(audioContext, pan);
+        }
         const sourceNode = audioContext.createBufferSource();
         sourceNode.buffer = buffer;
         sourceNode.playbackRate.value = rate;
         sourceNode.loop = loop;
         sourceNode.connect(panNode).connect(gainNode).connect(this.getChannel(channel));
-        handle.setNodes(sourceNode, gainNode, panNode);
+        handle.setNodes(sourceNode, gainNode, panNode as any);
         sourceNode.addEventListener("ended", () => {
             this.soundsPlaying.delete(sourceNode);
             (handle as any).playing = false;
@@ -229,6 +240,18 @@ export class AudioSystem {
         this.soundsPlaying.add(sourceNode);
         sourceNode.start(startTime);
         return sourceNode;
+    }
+    private createFallbackPanner(audioContext: BaseAudioContext, pan: number): AudioNode {
+        const panNode = audioContext.createGain();
+        panNode.gain.value = 1;
+        if (typeof (audioContext as any).createPanner === "function" && pan !== 0) {
+            const panner = (audioContext as any).createPanner();
+            panner.panningModel = "equalpower";
+            panner.positionX.value = pan;
+            panner.connect(panNode);
+            return panner;
+        }
+        return panNode;
     }
     async initMusicLoop(): Promise<void> {
         if (!this.isInitialized()) {

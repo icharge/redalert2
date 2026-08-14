@@ -8,17 +8,10 @@ type HudChatProps = {
     onSubmit: (e: any) => void;
     onCancel: () => void;
 };
-export const HudChat: React.FC<HudChatProps & {
-    isComposing: boolean;
-    localPlayer?: {
-        color: {
-            asHexString: () => string;
-        };
-    };
-}> = ({ messageList, chatHistory, strings, onSubmit, onCancel, isComposing, localPlayer, }) => {
-    if (!isComposing)
+export const HudChat: React.FC<HudChatProps> = ({ messageList, chatHistory, strings, onSubmit, onCancel }) => {
+    if (!messageList.isComposing)
         return null;
-    const forceColor = localPlayer?.color.asHexString() ?? "white";
+    const forceColor = messageList.localPlayer?.color.asHexString() ?? "white";
     return (<ChatInput chatHistory={chatHistory} channels={[RECIPIENT_ALL, RECIPIENT_TEAM]} className="game-chat-input" forceColor={forceColor} noCycleHint={true} submitEmpty={true} strings={strings} onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
             if (e.key === "Escape")
                 e.preventDefault();

@@ -10,10 +10,28 @@ interface ScoreTableProps {
     singlePlayer: boolean;
     tournament: boolean;
     localPlayer: any;
+    isQuit?: boolean;
     gameReport?: any;
     strings: any;
 }
-export const ScoreTable: React.FC<ScoreTableProps> = ({ game, singlePlayer, tournament, localPlayer, gameReport, strings, }) => {
+const PointGain: React.FC<{
+    value: number;
+    win: boolean;
+    className?: string;
+}> = ({ value, win, className }) => {
+    let prefix: string;
+    if (value > 0) {
+        prefix = "+";
+    }
+    else if (value === 0) {
+        prefix = win ? "+" : "-";
+    }
+    else {
+        prefix = "";
+    }
+    return React.createElement("span", { className: classnames(className, { positive: win }) }, prefix, value);
+};
+export const ScoreTable: React.FC<ScoreTableProps> = ({ game, singlePlayer, tournament, localPlayer, isQuit, gameReport, strings, }) => {
     const players = game
         .getNonNeutralPlayers()
         .filter((player: any) => !player.isObserver || player.defeated)
@@ -26,7 +44,7 @@ export const ScoreTable: React.FC<ScoreTableProps> = ({ game, singlePlayer, tour
             game.stalemateDetectTrait.getCountdownTicks() === 0) {
             resultType = WolGameReportResult.Draw;
         }
-        else if (localPlayer.defeated) {
+        else if (localPlayer.defeated || isQuit) {
             if (!game.alliances
                 .getAllies(localPlayer)
                 .filter((ally: any) => !ally.isAi && !ally.defeated).length) {
@@ -48,40 +66,33 @@ export const ScoreTable: React.FC<ScoreTableProps> = ({ game, singlePlayer, tour
             !singlePlayer &&
             (tournament || resultType === undefined) &&
             React.createElement("div", { className: "pending-results" }, strings.get("gui:gameresultwaiting")), localPlayerReport?.points &&
-            React.createElement("div", { className: "points-gain" }, (localPlayerReport.points > 0 ? "+" : "") + localPlayerReport.points)),
+            React.createElement("div", { className: "points-gain" }, strings.get("GUI:LadderPoints"), " ", localPlayerReport.points.value, " (", React.createElement(PointGain, {
+                className: "points-gain-value",
+                value: localPlayerReport.points.gain,
+                win: resultType === WolGameReportResult.Win,
+            }), ")")),
         React.createElement("div", { className: "score-header" },
-            React.createElement("span", null, strings.get("GUI:Map") + ": " + (game.gameOpts?.mapTitle ?? "")),
-            React.createElement("span", null, strings.get("GUI:Time") + ": " + formatTimeDuration(Math.floor(game.currentTime / 1000 / (game.speed?.value ?? 1))))),
-        React.createElement("div", { className: "score-table-wrapper" }, React.createElement("table", { className: "score-table" }, React.createElement("thead", null, React.createElement("tr", null, React.createElement("th", { className: "player-col" }, strings.get("GUI:Player")), React.createElement("th", { className: "country-col" }, strings.get("GUI:Country")), React.createElement("th", { className: "color-col" }, strings.get("GUI:Color")), React.createElement("th", { className: "score-col" }, strings.get("GUI:Score")), React.createElement("th", { className: "units-col" }, strings.get("GUI:Kills")), React.createElement("th", { className: "buildings-col" }, strings.get("GUI:Losses")), showReport && React.createElement("th", { className: "rank-col" }, "Rank"))), React.createElement("tbody", null, players.map((player: any) => {
-        const isLocalPlayer = player === localPlayer;
+            React.createElement("div", { "data-r-tooltip": strings.get("STT:MPScoreLabelMapName") }, strings.get("TXT_MAP", game.gameOpts?.mapTitle ?? "")),
+            React.createElement("div", { "data-r-tooltip": strings.get("STT:MPScoreLabelTime") }, strings.get("GUI:Time"), ": ", formatTimeDuration(Math.floor(game.currentTime / 1000)))),
+        React.createElement("table", null, React.createElement("thead", null, React.createElement("tr", null, React.createElement("th", null), React.createElement("th", { className: "player-rank" }), React.createElement("th", { className: "player-name", "data-r-tooltip": strings.get("STT:MPScoreLabelPlayer") }, strings.get("GUI:Player")), showReport && React.createElement("th", { className: "number" }, strings.get("GUI:MMR")), React.createElement("th", { className: "number", "data-r-tooltip": strings.get("STT:MPScoreLabelKills") }, strings.get("GUI:Kills")), React.createElement("th", { className: "number", "data-r-tooltip": strings.get("STT:MPScoreLabelLosses") }, strings.get("GUI:Losses")), React.createElement("th", { className: "number", "data-r-tooltip": strings.get("STT:MPScoreLabelBuilt") }, strings.get("GUI:Built")), React.createElement("th", { className: "number", "data-r-tooltip": strings.get("STT:MPScoreLabelScore") }, strings.get("GUI:Score")))), React.createElement("tbody", null, players.map((player: any, index: number) => {
         const playerReport = gameReport?.players.find((p: any) => p.name.toLowerCase() === player.name.toLowerCase());
-        const rowColor = (typeof player.color === "string" ? player.color : player.color?.asHexString?.());
+        const mmrValue = playerReport?.mmr?.value;
+        const mmrGain = playerReport?.mmr?.gain;
         return React.createElement("tr", {
-            key: player.name,
-            className: classnames({
-                "local-player": isLocalPlayer,
-                defeated: player.defeated,
-            }),
-            style: { color: rowColor },
-        }, React.createElement("td", { className: "player-col" }, player.isAi
-            ? strings.get(aiUiNames.get(player.aiDifficulty) || "GUI:AIDummy")
-            : player.name), React.createElement("td", { className: "country-col" }, React.createElement(CountryIcon, { country: player.country })), React.createElement("td", { className: "color-col" }, React.createElement("div", {
-            className: "color-indicator",
-            style: {
-                backgroundColor: (typeof player.color === "string" ? player.color : player.color?.asHexString?.()),
-                width: 14,
-                height: 14,
-                border: "1px solid #000",
-                borderRadius: 2,
-            },
-        })), React.createElement("td", { className: "score-col" }, player.score), React.createElement("td", { className: "units-col" }, player.getUnitsKilled ? player.getUnitsKilled() : player.unitsKilled), React.createElement("td", { className: "buildings-col" }, player.getUnitsLost ? player.getUnitsLost() : (player.unitsLost ?? player.buildingsKilled)), showReport &&
-            React.createElement("td", { className: "rank-col" }, playerReport &&
-                React.createElement(RankIndicator, {
-                    playerProfile: {
-                        name: player.name,
-                        rankType: playerReport.rank,
-                    },
-                    strings: strings,
-                })));
-    })))));
+            key: index,
+            style: { color: player.color.asHexString() },
+        }, React.createElement("td", null, React.createElement(CountryIcon, { country: player.country.name })), React.createElement("td", { className: "player-rank" }, playerReport &&
+            React.createElement(RankIndicator, {
+                playerProfile: playerReport,
+                strings: strings,
+            })), React.createElement("td", { className: "player-name", "data-r-tooltip": strings.get("STT:MPScoreLabelPlayer") }, player.isAi
+            ? strings.get(aiUiNames.get(player.aiDifficulty))
+            : player.name), showReport &&
+            React.createElement("td", { className: "number player-mmr" }, mmrValue ?? "-", mmrGain !== undefined &&
+                React.createElement(React.Fragment, null, " (", React.createElement(PointGain, {
+                    className: "mmr-gain",
+                    value: mmrGain,
+                    win: playerReport?.resultType === WolGameReportResult.Win,
+                }), ")")), React.createElement("td", { className: "number", "data-r-tooltip": strings.get("STT:MPScoreLabelKills") }, player.getUnitsKilled()), React.createElement("td", { className: "number", "data-r-tooltip": strings.get("STT:MPScoreLabelLosses") }, player.getUnitsLost()), React.createElement("td", { className: "number", "data-r-tooltip": strings.get("STT:MPScoreLabelBuilt") }, player.getUnitsBuilt()), React.createElement("td", { className: "number", "data-r-tooltip": strings.get("STT:MPScoreLabelScore") }, player.score));
+    }))));
 };

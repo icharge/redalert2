@@ -142,6 +142,9 @@ export class ChatUi {
             users: this.users,
             chatHistory: this.chatHistory,
             playerProfiles: this.playerProfiles,
+            onInviteToTeam: (user: any) => {
+                this.wolCon.partyInvite(user.name);
+            },
             onSendMessage: (message: any) => {
                 if (message.value.length) {
                     if (this.wolCon.isOpen() && this.channelName) {

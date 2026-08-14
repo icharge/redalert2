@@ -571,7 +571,7 @@ export class LobbyScreen extends MainMenuScreen {
             this.wolCon.onGameStartAbort.subscribe(this.handleGameStartAbort);
             this.wolCon.onGameServer.subscribe(this.handleGameServer);
             this.wolCon.onLeaveChannel.subscribe(this.onChannelLeave);
-            this.wolCon.onJoinChannel.subscribe(this.onChannelJoin);
+            this.wolCon.onJoinGameChannel.subscribe(this.onChannelJoin);
             this.wolCon.onChatMessage.subscribe(this.onChannelMessage);
             this.wolCon.onClose.subscribe(this.onWolClose);
             this.wolCon.onPartyUpdate.subscribe(this.handlePartyUpdate);
@@ -1616,15 +1616,22 @@ export class LobbyScreen extends MainMenuScreen {
         }
         if (this.wolCon.isOpen() && this.gameChannelName && this.slotsInfo) {
             if (event.type === "join") {
-                let slotIndex = this.slotsInfo.findIndex((slot) => slot.type === SlotType.Open);
-                let isObserver = false;
-                if (slotIndex === -1) {
-                    slotIndex = this.slotsInfo.findIndex((slot) => slot.type === SlotType.OpenObserver);
-                    isObserver = true;
-                    if (slotIndex === -1) {
-                        this.kickPlayer(event.user.name);
-                        return;
+                let slotIndex: number;
+                let isObserver: boolean;
+                if (event.user.observer === undefined) {
+                    slotIndex = this.slotsInfo.findIndex((slot) => slot.type === SlotType.Open);
+                    isObserver = slotIndex === -1;
+                    if (isObserver) {
+                        slotIndex = this.slotsInfo.findIndex((slot) => slot.type === SlotType.OpenObserver);
                     }
+                }
+                else {
+                    isObserver = event.user.observer;
+                    slotIndex = this.slotsInfo.findIndex((slot) => slot.type === (isObserver ? SlotType.OpenObserver : SlotType.Open));
+                }
+                if (slotIndex === -1) {
+                    this.kickPlayer(event.user.name);
+                    return;
                 }
                 this.slotsInfo[slotIndex] = {
                     type: SlotType.Player,
@@ -2064,7 +2071,7 @@ export class LobbyScreen extends MainMenuScreen {
         this.wolCon.onGameStartAbort.unsubscribe(this.handleGameStartAbort);
         this.wolCon.onGameServer.unsubscribe(this.handleGameServer);
         this.wolCon.onLeaveChannel.unsubscribe(this.onChannelLeave);
-        this.wolCon.onJoinChannel.unsubscribe(this.onChannelJoin);
+        this.wolCon.onJoinGameChannel.unsubscribe(this.onChannelJoin);
         this.wolCon.onChatMessage.unsubscribe(this.onChannelMessage);
         this.wolCon.onClose.unsubscribe(this.onWolClose);
         this.wolCon.onPartyUpdate.unsubscribe(this.handlePartyUpdate);

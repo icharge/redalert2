@@ -7,8 +7,10 @@ import { GameObject } from '../gameobject/GameObject';
 export class SelectUnitsAction extends Action {
     private _unitIds: number[] = [];
     private orderActionContext: OrderActionContext;
+    private game: any;
     constructor(game: any, orderActionContext: OrderActionContext) {
         super(ActionType.SelectUnits);
+        this.game = game;
         this.orderActionContext = orderActionContext;
     }
     get unitIds(): number[] {
@@ -39,7 +41,13 @@ export class SelectUnitsAction extends Action {
         const player = this.player;
         const units: GameObject[] = [];
         for (const id of this.unitIds) {
-            const unit = player.getOwnedObjectById(id);
+            let unit = player.getOwnedObjectById(id);
+            if (!unit && this.game.getWorld().hasObjectId(id)) {
+                const worldObject = this.game.getWorld().getObjectById(id);
+                if (worldObject.isTechno()) {
+                    unit = worldObject;
+                }
+            }
             if (unit) {
                 units.push(unit);
             }

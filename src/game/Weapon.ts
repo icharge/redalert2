@@ -1,4 +1,5 @@
 import { Warhead } from "@/game/Warhead";
+import { ShroudType } from "@/game/map/MapShroud";
 import { FlhCoords } from "@/game/art/FlhCoords";
 import { WeaponFireEvent } from "@/game/event/WeaponFireEvent";
 import * as geometry from "@/game/math/geometry";
@@ -34,6 +35,7 @@ interface GameEngine {
     mapShroudTrait: {
         getPlayerShroud(owner: any): {
             isShrouded(tile: any, elevation: number): boolean;
+            getShroudType(tile: any, elevation: number): ShroudType;
             revealTemporarily(obj: GameObject): void;
         } | null;
     };
@@ -396,8 +398,11 @@ export class Weapon {
         }
         if (this.rules.revealOnFire && target.obj?.isTechno()) {
             const playerShroud = engine.mapShroudTrait.getPlayerShroud(target.obj.owner);
-            if (playerShroud?.isShrouded(gameObject.tile, gameObject.tileElevation)) {
-                playerShroud.revealTemporarily(gameObject);
+            if (playerShroud) {
+                const shroudType = playerShroud.getShroudType(gameObject.tile, gameObject.tileElevation);
+                if (shroudType === ShroudType.Unexplored || shroudType === ShroudType.TemporaryReveal) {
+                    playerShroud.revealTemporarily(gameObject);
+                }
             }
         }
         if (this.rules.decloakToFire) {

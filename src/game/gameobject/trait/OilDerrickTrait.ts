@@ -11,9 +11,12 @@ export class OilDerrickTrait {
             this.isActive = true;
         }
     }
-    [NotifyOwnerChange.onChange](gameObject: GameObject, world: World): void {
-        if (world.isNeutral && !gameObject.owner.isNeutral) {
+    [NotifyOwnerChange.onChange](gameObject: GameObject, oldOwner: any): void {
+        if (oldOwner.isNeutral && !gameObject.owner.isNeutral) {
             gameObject.owner.credits = Math.max(0, gameObject.owner.credits + gameObject.rules.produceCashStartup);
+            if (gameObject.rules.produceCashStartup > 0) {
+                gameObject.owner.creditsGained += gameObject.rules.produceCashStartup;
+            }
             this.isActive = true;
             this.produceCashCooldown = gameObject.rules.produceCashDelay;
         }
@@ -24,6 +27,9 @@ export class OilDerrickTrait {
             if (this.produceCashCooldown <= 0) {
                 this.produceCashCooldown = gameObject.rules.produceCashDelay;
                 gameObject.owner.credits = Math.max(0, gameObject.owner.credits + gameObject.rules.produceCashAmount);
+                if (gameObject.rules.produceCashAmount > 0) {
+                    gameObject.owner.creditsGained += gameObject.rules.produceCashAmount;
+                }
             }
         }
     }

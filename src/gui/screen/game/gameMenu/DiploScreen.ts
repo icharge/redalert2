@@ -3,6 +3,7 @@ import { HtmlView } from '@/gui/jsx/HtmlView';
 import { DiploForm } from '@/gui/screen/game/gameMenu/DiploForm';
 import { CompositeDisposable } from '@/util/disposable/CompositeDisposable';
 import { GameMenuScreen } from '@/gui/screen/game/GameMenuScreen';
+import { LoadInfoParser } from '@/network/gameopt/LoadInfoParser';
 interface Strings {
     get(key: string, ...args: any[]): string;
 }
@@ -115,11 +116,6 @@ interface PlayerInfo {
     muted: boolean;
     allianceToggleable: boolean;
     alliance?: Alliance;
-}
-class LoadInfoParser {
-    parse(data: any): any {
-        return data;
-    }
 }
 export class DiploScreen extends GameMenuScreen {
     private strings: Strings;

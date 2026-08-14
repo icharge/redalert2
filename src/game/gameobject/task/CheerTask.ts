@@ -17,7 +17,7 @@ export class CheerTask extends Task {
             !gameObject.art.sequences.has(SequenceType.Cheer) ||
             (gameObject.stance !== StanceType.None &&
                 gameObject.stance !== StanceType.Guard)) {
-            return false;
+            return true;
         }
         gameObject.stance = StanceType.Cheer;
         this.children.push(new WaitMinutesTask(1 / 60).setCancellable(false));

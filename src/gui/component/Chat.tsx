@@ -110,7 +110,7 @@ export class Chat extends Component<ChatProps> {
                 classes.push("operator-message");
             }
         }
-        const isSystemMessage = message.from === undefined;
+        const isSystemMessage = message.from === undefined && !message.untrustedContent;
         const text = formatter.formatTextHtml(message.text, isSystemMessage);
         return (<div key={index} className={classNames(classes)}>
         {prefix ? (<Fragment>
