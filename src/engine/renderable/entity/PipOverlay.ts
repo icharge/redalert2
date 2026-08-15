@@ -859,7 +859,12 @@ export class PipOverlay {
             ]);
             elementMap.forEach((element, index) => {
                 if (element) {
-                    element.visible = selectionLevel >= SELECTION_LEVEL_MAP[index];
+                    // The rally line is tactical intel: never reveal it for
+                    // enemy buildings even when selected (the selection-level
+                    // check alone would re-show it after updateRallyPointLine
+                    // hid it).
+                    element.visible = selectionLevel >= SELECTION_LEVEL_MAP[index] &&
+                        (index !== 5 || !this.objectIsOpaqueToViewer());
                 }
             });
         }
