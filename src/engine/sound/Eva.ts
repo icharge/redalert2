@@ -24,7 +24,7 @@ export class Eva {
     private sound: Sound;
     private renderer: Renderer;
     private evaWaitingList: EvaSpec[] = [];
-    private lastEvaEventBySpec = new Map<EvaSpec, number>();
+    private lastEvaEventByName = new Map<string, number>();
     private currentEvaPlaying?: any;
     constructor(evaSpecs: EvaSpecs, sound: Sound, renderer: Renderer) {
         this.evaSpecs = evaSpecs;
@@ -33,21 +33,20 @@ export class Eva {
     }
     private handleFrame = (time: number): void => {
         if (this.currentEvaPlaying?.isPlaying()) {
-            this.evaWaitingList = this.evaWaitingList.filter((eva) => eva.queue);
+            return;
         }
-        else {
-            this.currentEvaPlaying = undefined;
-            this.evaWaitingList.sort((a, b) => b.priority - a.priority);
-            this.evaWaitingList = this.evaWaitingList.filter((eva) => time - (this.lastEvaEventBySpec.get(eva) || 0) >= 5000);
-            if (this.evaWaitingList.length) {
-                const nextEva = this.evaWaitingList.shift()!;
-                const wavFile = this.sound.getWavFile(nextEva.sound);
-                if (wavFile) {
-                    this.currentEvaPlaying = this.sound.audioSystem.playWavFile(wavFile, ChannelType.Voice);
-                    this.lastEvaEventBySpec.set(nextEva, time);
-                    this.evaWaitingList.splice(1);
-                }
+        this.currentEvaPlaying = undefined;
+        this.evaWaitingList.sort((a, b) => b.priority - a.priority);
+        this.evaWaitingList = this.evaWaitingList.filter((eva) => time - (this.lastEvaEventByName.get(eva.sound) || 0) >= 5000);
+        while (this.evaWaitingList.length) {
+            const nextEva = this.evaWaitingList.shift()!;
+            const wavFile = this.sound.getWavFile(nextEva.sound);
+            if (!wavFile) {
+                continue;
             }
+            this.currentEvaPlaying = this.sound.audioSystem.playWavFile(wavFile, ChannelType.Voice);
+            this.lastEvaEventByName.set(nextEva.sound, time);
+            break;
         }
     };
     init(): void {
@@ -57,12 +56,9 @@ export class Eva {
         this.renderer.onFrame.unsubscribe(this.handleFrame);
         this.currentEvaPlaying?.stop();
     }
-    play(name: string, queue: boolean = false): void {
-        let spec = this.evaSpecs.getSpec(name);
+    play(name: string, _queue: boolean = false): void {
+        const spec = this.evaSpecs.getSpec(name);
         if (spec) {
-            if (queue) {
-                spec = { ...spec, queue: true };
-            }
             this.evaWaitingList.push(spec);
         }
         else {

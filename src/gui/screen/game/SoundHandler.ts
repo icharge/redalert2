@@ -6,6 +6,11 @@ import { Coords } from '@/game/Coords';
 import { PowerupType } from '@/game/type/PowerupType';
 import { SuperWeaponType } from '@/game/type/SuperWeaponType';
 import { RadarEventType } from '@/game/rules/general/RadarRules';
+import { OrderType } from '@/game/order/OrderType';
+import { OrderFeedbackType } from '@/game/order/OrderFeedbackType';
+import { QueueStatus } from '@/game/player/production/ProductionQueue';
+import { ObjectType } from '@/engine/type/ObjectType';
+import { equals } from '@/util/array';
 
 const detectedSuperWeaponEvaByType = new Map([
     [SuperWeaponType.MultiMissile, 'EVA_NuclearSiloDetected'],
@@ -66,6 +71,42 @@ export class SoundHandler {
     }
     dispose(): void {
         this.disposables.dispose();
+    }
+    handleAvailableObjectsUpdate(availableObjects: any[]): void {
+        const names = availableObjects.map((object: any) => object.name);
+        if (!equals(this.lastAvailableObjectNames, names) && names.length > this.lastAvailableObjectNames.length) {
+            this.lastAvailableObjectNames = names;
+            this.eva.play('EVA_NewConstructionOptions');
+        }
+    }
+    handleProductionQueueUpdate(queue: any): void {
+        const lastStatus = this.lastQueueStatuses.get(queue.type);
+        if (lastStatus === undefined || queue.status !== lastStatus) {
+            this.lastQueueStatuses.set(queue.type, queue.status);
+            switch (queue.status) {
+                case QueueStatus.Ready:
+                    if (queue.getFirst().rules.type === ObjectType.Building) {
+                        this.eva.play('EVA_ConstructionComplete');
+                    }
+                    else {
+                        this.eva.play('EVA_UnitReady');
+                    }
+                    break;
+                case QueueStatus.Active:
+                    if (queue.getFirst().rules.type === ObjectType.Building) {
+                        this.eva.play('EVA_Building');
+                    }
+                    else if (lastStatus === QueueStatus.Idle) {
+                        this.eva.play('EVA_Training');
+                    }
+                    break;
+                case QueueStatus.OnHold:
+                    this.eva.play('EVA_OnHold');
+                    break;
+                default:
+                    break;
+            }
+        }
     }
     private handleGameEvent(event: any): void {
         switch (event.type) {
@@ -276,17 +317,36 @@ export class SoundHandler {
     handleOrderPushed(unit: any, orderType: any, feedbackType: any): void {
         const now = Date.now();
         if (!this.lastFeedbackTime || now - this.lastFeedbackTime >= 250) {
-            let sound: string | undefined;
-            switch (feedbackType) {
-                case 'Attack':
-                    sound = unit.rules.voiceAttack;
-                    break;
-                case 'Move':
-                    sound = unit.rules.voiceMove;
-                    break;
-                case 'Capture':
-                    sound = unit.rules.voiceCapture || unit.rules.voiceSpecialAttack;
-                    break;
+            let sound: SoundKey | string | undefined;
+            if (orderType === OrderType.Stop) {
+                sound = SoundKey.StopSound;
+            }
+            else if (orderType === OrderType.Guard) {
+                sound = SoundKey.GuardSound;
+            }
+            else if (orderType === OrderType.Scatter) {
+                sound = SoundKey.ScatterSound;
+            }
+            else {
+                switch (feedbackType) {
+                    case OrderFeedbackType.Attack:
+                        sound = unit.rules.voiceAttack;
+                        break;
+                    case OrderFeedbackType.Move:
+                        sound = unit.rules.voiceMove;
+                        break;
+                    case OrderFeedbackType.Capture:
+                        sound = unit.rules.voiceCapture || unit.rules.voiceSpecialAttack;
+                        break;
+                    case OrderFeedbackType.SpecialAttack:
+                        sound = unit.rules.voiceSpecialAttack;
+                        break;
+                    case OrderFeedbackType.Enter:
+                        sound = unit.rules.voiceEnter || unit.rules.voiceMove;
+                        break;
+                    default:
+                        break;
+                }
             }
             if (sound) {
                 this.sound.play(sound, ChannelType.Effect);

@@ -745,7 +745,7 @@ export class GameScreen extends RootScreen {
         this.localPrefs.removeItem(StorageKey.LastConnection);
         this.loadingScreenApi?.dispose();
         this.music?.play(MusicType.Normal);
-        const evaSpecs = new EvaSpecs(SideType.GDI).readIni(Engine.getIni('eva.ini'));
+        const evaSpecs = new EvaSpecs(localPlayer.country?.side ?? SideType.GDI).readIni(Engine.getIni('eva.ini'));
         const eva = new Eva(evaSpecs, this.sound, this.renderer);
         eva.init();
         this.disposables.add(eva);
