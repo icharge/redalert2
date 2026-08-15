@@ -5,9 +5,8 @@ export class IniParser {
     private readonly arrayKeyRegex = /^(.*)\[\]$/;
     public parse(iniString: string): Record<string, IniSection> {
         const sections: Record<string, IniSection> = {};
-        let currentSectionName: string = "__ROOT__";
-        sections[currentSectionName] = new IniSection(currentSectionName);
-        let currentSectionObj: IniSection = sections[currentSectionName];
+        let currentSectionName: string | undefined;
+        let currentSectionObj: IniSection | undefined;
         const lines = iniString.split(/[\r\n]+/g);
         for (const line of lines) {
             const trimmedLine = line.trim();
@@ -28,6 +27,10 @@ export class IniParser {
                     currentSectionObj = sections[currentSectionName];
                 }
                 else if (match[2] !== undefined) {
+                    if (!currentSectionObj) {
+                        currentSectionName = "__ROOT__";
+                        currentSectionObj = sections[currentSectionName] = new IniSection(currentSectionName);
+                    }
                     let key = this.stripQuotesAndComments(match[2]);
                     let value = match[3] !== undefined ? this.stripQuotesAndComments(match[3]) : "";
                     const arrayKeyMatch = key.match(this.arrayKeyRegex);
