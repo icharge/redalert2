@@ -80,14 +80,14 @@ export class HomeScreen implements Screen {
                     await this.messageBoxApi.alert('Skirmish - Feature Under Development\n\nThe basic framework is configured, but the following components still need to be completed:\n• Game rules system\n• Map loader\n• AI opponent system\n• Game mode manager', this.strings.get('GUI:OK') || 'OK');
                 }
             }
-        }, {
+        }, ...(import.meta.env.DEV ? [{
             label: 'Live Interaction',
             tooltip: 'Enter live interaction mode: respond to join, like, and gift events to drive both sides into battle',
             onClick: () => {
                 console.log('[HomeScreen] Live Interaction clicked');
                 window.location.hash = '/liveinteraction';
             }
-        },
+        }] : []),
             {
                 label: 'Replays',
                 tooltip: 'View and replay game recordings',
@@ -137,7 +137,7 @@ export class HomeScreen implements Screen {
                     this.controller.pushScreen(MainMenuScreenType.Options);
                 }
             }
-        }, {
+        }, ...(import.meta.env.DEV ? [{
             label: 'Test Entry',
             tooltip: 'Enter low-level file system and test tools',
             onClick: () => {
@@ -146,7 +146,7 @@ export class HomeScreen implements Screen {
                     this.controller.pushScreen(MainMenuScreenType.TestEntry);
                 }
             }
-        }, {
+        }] : []), {
             label: this.strings.get('GUI:Fullscreen', getHumanReadableKey(FullScreen.hotKey)) || 'Fullscreen',
             tooltip: this.strings.get('STT:Fullscreen') || 'Toggle full screen mode',
             isBottom: true,
