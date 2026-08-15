@@ -6,8 +6,9 @@ This document describes the codebase layout, module boundaries, and how the majo
 
 ```text
 redalert2/
-├── public/                 # Static web assets, config.ini, locale JSON, legacy CSS
+├── public/                 # Static web assets, config.ini, locale JSON/CSF, legacy CSS
 ├── scripts/                # Playwright regression and debug flows
+├── tools/                  # Standalone CLI tools (see docs/csf-tool.md)
 ├── docs/                   # This documentation
 ├── src/
 │   ├── App.tsx             # React root component

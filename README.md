@@ -137,6 +137,7 @@ These tester pages are not isolated demos; they are important debugging and regr
 redalert2/
 ├── public/          Static assets, configs, locales, legacy styles
 ├── scripts/         Playwright automated regression scripts
+├── tools/           Standalone CLI tools (CSF locale manipulator, see docs/csf-tool.md)
 ├── src/
 │   ├── data/        Original resource formats, encoding, maps, VFS
 │   ├── engine/      Rendering, audio, resource loading, low-level engine

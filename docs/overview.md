@@ -102,6 +102,8 @@ The `Engine` class exposes static lazy resource collections (`Engine.images`, `E
 
 The `scripts/` folder contains Playwright-based regression flows for key features (lobby, map loading, units, superweapons, LAN mesh, etc.). Many flows drive the test pages under `src/tools/` rather than the production menu, so they double as both debugging and regression entry points.
 
+The `tools/` folder contains standalone CLI utilities — currently a CSF locale-file manipulator (`tools/csf.ts`, see [`csf-tool.md`](csf-tool.md)) used to maintain the bundled `public/*.csf` string tables.
+
 ## Common Terminology
 
 | Term | Meaning |
