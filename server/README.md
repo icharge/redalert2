@@ -97,8 +97,8 @@ origin you need TLS (terminate `wss://` in front of the server).
 ## Reverse proxy (nginx)
 
 A ready-to-adapt config lives in [`nginx.conf`](nginx.conf) that terminates TLS,
-proxies the WebSocket endpoints, and serves the built client (produce it with
-`bun run build:dist`):
+proxies the WebSocket endpoints, and serves the built client (produce the minified
+bundle with `bun run build:prod`):
 
 ```sh
 cd server && SERVER_HOST=127.0.0.1 \
