@@ -25,7 +25,6 @@ export class Target {
         if (obj) {
             if (obj.isOverlay() && obj.isBridge()) {
                 this.bridge = obj;
-                this.obj = obj;
                 this.tile = tile;
                 this.bridgeMode = TargetBridgeMode.Bridge;
             }
@@ -64,7 +63,7 @@ export class Target {
             : Coords.tile3dToWorld(this.tile.rx + 0.5, this.tile.ry + 0.5, this.tile.z + (this.bridge?.tileElevation ?? 0));
     }
     isBridge(): boolean {
-        return !!this.bridge;
+        return !this.obj && !!this.bridge;
     }
     getBridge() {
         return (this.bridge ||

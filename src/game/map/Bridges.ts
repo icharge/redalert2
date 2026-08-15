@@ -64,6 +64,7 @@ interface BridgeSpec {
     end: Tile;
     type: OverlayBridgeType;
     isHigh: boolean;
+    isXBridge: boolean;
 }
 interface HighBridgeBoundary {
     tile: Tile;
@@ -408,6 +409,7 @@ export class Bridges {
             end: isStartHead ? endTile : startTile,
             type: bridgeType,
             isHigh: isHighBridge,
+            isXBridge,
         };
     }
     private findHighBridgeBoundary(tile: Tile): HighBridgeBoundary | undefined {
