@@ -33,6 +33,7 @@ export interface ReplayRecorderOptions {
     modHash?: string;
     netRateMs: number;
     replaysDir: string;
+    enabled: boolean;
     log: Logger;
 }
 
@@ -96,6 +97,9 @@ export class GservReplayRecorder {
     }
 
     recordTurn(turnNo: number, allActions: Map<number, ActionData[]>): void {
+        if (!this.options.enabled) {
+            return;
+        }
         this.lastTurnNo = Math.max(this.lastTurnNo, turnNo);
         if ([...allActions.values()].some(hasActualActions)) {
             const payload = base64EncodeBytes(serializeAllPlayerActions(allActions));
@@ -104,6 +108,9 @@ export class GservReplayRecorder {
     }
 
     recordChat(nick: string, message: string): void {
+        if (!this.options.enabled) {
+            return;
+        }
         const playerId = this.nickToPlayerId.get(nick);
         if (playerId === undefined) {
             return;
@@ -116,6 +123,9 @@ export class GservReplayRecorder {
     }
 
     recordTaunt(nick: string, tauntNo: number): void {
+        if (!this.options.enabled) {
+            return;
+        }
         const playerId = this.nickToPlayerId.get(nick);
         if (playerId === undefined) {
             return;
@@ -140,6 +150,9 @@ export class GservReplayRecorder {
     }
 
     finalize(): string {
+        if (!this.options.enabled) {
+            throw new Error("Replay recorder is disabled");
+        }
         this.events.sort((a, b) => a.tickNo - b.tickNo || a.type - b.type);
         const engineVersion = this.options.gameVersion.split(".").slice(0, 2).join(".");
         const modHash = this.options.modHash ?? "0";

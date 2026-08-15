@@ -180,6 +180,31 @@ describe("GservServer action relay", () => {
         server.handleClose(bob.client);
         expect(readDir(replaysDir).length).toBe(0);
     });
+
+    test("does not save a replay when RECORD_REPLAYS=false, but still relays actions", () => {
+        const replaysDir = __dirname + "/tmp-replays";
+        rmSync(replaysDir, { recursive: true, force: true });
+        mkdirSync(replaysDir, { recursive: true });
+        const config = loadConfig({ REPLAYS_DIR: replaysDir, GSERV_NET_RATE_MS: "33", RECORD_REPLAYS: "false" });
+        const manager = new GservManager({ id: "gs1", url: "ws://test.local/gserv" });
+        const server = new GservServer(config, manager);
+        const instance = manager.create(["alice", "bob"], "ws://gserv");
+        instance.gameopts = buildGameOpts(["alice", "bob"]);
+        const alice = join(server, manager, instance, "alice");
+        const bob = join(server, manager, instance, "bob");
+        server.handleMessage(alice.client, "loaded 100");
+        server.handleMessage(bob.client, "loaded 100");
+
+        server.handleMessage(alice.client, buildRequestFrame(0, serializePlayerActions([{ id: 5, params: new Uint8Array([1, 2, 3]) }])));
+        server.handleMessage(bob.client, buildRequestFrame(0, serializePlayerActions([{ id: 0, params: new Uint8Array() }])));
+
+        expect(binarySent(alice.socket).length).toBe(1);
+        expect(binarySent(bob.socket).length).toBe(1);
+
+        server.handleClose(alice.client);
+        server.handleClose(bob.client);
+        expect(readDir(replaysDir).length).toBe(0);
+    });
 });
 
 function readDir(dir: string): string[] {

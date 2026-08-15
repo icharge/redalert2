@@ -245,6 +245,7 @@ export class GservServer {
             modHash: this.config.expectedModHash,
             netRateMs: this.config.netRateMs,
             replaysDir: this.config.replaysDir,
+            enabled: this.config.recordReplays,
             log: this.log,
         });
         const requiredNicks = new Set<string>();
