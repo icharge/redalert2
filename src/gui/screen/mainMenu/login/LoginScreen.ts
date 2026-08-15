@@ -205,7 +205,9 @@ export class LoginScreen extends MainMenuScreen {
     private handleAuthProviderComplete: () => Promise<void>;
 
     async onEnter(params: LoginScreenParams): Promise<void> {
-        this.params = params;
+        if (params) {
+            this.params = params;
+        }
         this.formRendered = false;
         this.turnstileToken = undefined;
         this.controller.toggleMainVideo(false);
