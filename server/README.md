@@ -102,17 +102,17 @@ proxies the WebSocket endpoints, and serves the built client (produce it with
 
 ```sh
 cd server && SERVER_HOST=127.0.0.1 \
-  EXTERNAL_URL=wss://game.example.com \
+  EXTERNAL_URL=wss://service.thaira2.com \
   WOL_URL_PATH=/wol \
-  CORS_ALLOWED_ORIGINS=https://game.example.com \
+  CORS_ALLOWED_ORIGINS=https://service.thaira2.com \
   bun run dev
 ```
 
 - `EXTERNAL_URL` is the public `wss://` base; the server uses it for the gserv URL in
   `STARTG` and to generate `/servers.ini`.
-- `WOL_URL_PATH=/wol` places the WOL WebSocket at `wss://game.example.com/wol`, so the
+- `WOL_URL_PATH=/wol` places the WOL WebSocket at `wss://service.thaira2.com/wol`, so the
   static root can serve the client without conflicting with the `/` location.
-- Point the client's `config.ini` `serversUrl` at `https://game.example.com/servers.ini`.
+- Point the client's `config.ini` `serversUrl` at `https://service.thaira2.com/servers.ini`.
 
 `/cdn/*` paths in the client config are **not** served by this server or the sample
 nginx config; add locations for them (or an existing CDN) as needed.
@@ -127,7 +127,7 @@ a different origin (e.g. the Vite dev server on `http://localhost:5173`).
   use `credentials: "include"`, which browsers reject with a wildcard
   `Access-Control-Allow-Origin`, so echoing the origin is required. The server never
   sets cookies, so no ambient credentials are exposed.
-- Restricted (e.g. `CORS_ALLOWED_ORIGINS=https://game.example.com`): only listed origins
+- Restricted (e.g. `CORS_ALLOWED_ORIGINS=https://service.thaira2.com`): only listed origins
   are echoed with credentials; unknown origins get no `Access-Control-Allow-Origin` on
   HTTP and are rejected with `403` on WebSocket upgrades. Use this in production.
 
