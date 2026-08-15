@@ -52,7 +52,7 @@ export class LockstepManager {
         private actionLogger?: { debug(message: string): void },
         private netLogger?: { debug?(message: string): void },
         private debugLogger?: (message: string) => void,
-        private replayRecorder?: { recordActions?(tick: number, actions: any[]): void },
+        private replayRecorder?: { recordActions?(tick: number, actions: any): void },
         private debugGameState = false,
     ) {
         this.gameTurnMillis = 1000 / (this.game.desiredSpeed.value * GameSpeed.BASE_TICKS_PER_SECOND);
@@ -155,7 +155,8 @@ export class LockstepManager {
                 if (this.currentNetworkTurn >= 2) {
                     const allActions = this.receivedActions.get(this.currentNetworkTurn - 2);
                     if (allActions) {
-                        this.replayRecorder?.recordActions?.(this.game.currentTick, this.processActions(allActions));
+                        this.replayRecorder?.recordActions?.(this.game.currentTick, allActions);
+                        this.processActions(allActions);
                     }
                     this.receivedActions.delete(this.currentNetworkTurn - 2);
                     this._onActionsProcessed.dispatch(undefined as any, this.currentNetworkTurn - 2);
