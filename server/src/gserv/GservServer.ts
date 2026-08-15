@@ -1,5 +1,5 @@
 import { ServerConfig } from "../config";
-import { Logger, makeLogger } from "../logger";
+import { Logger, makeLogger, fileLogOptionsOf } from "../logger";
 import { GservInstance, GservManager } from "./GservManager";
 import { SocketLike } from "../server/SocketLike";
 import { isValidNickChars, stripCrlf } from "../protocol/validate";
@@ -20,7 +20,7 @@ export interface GservClient {
     instance?: GservInstance;
     loaded: number;
     active: boolean;
-    rateBucket: TokenBucket;
+    rateBucket?: TokenBucket;
 }
 
 // Gameplay sends at most one binary frame per network turn (~30/s at the
@@ -42,12 +42,22 @@ interface PendingSubmission {
     blob: Uint8Array;
 }
 
+// Live per-instance counters, reset every stats interval to report real
+// frames/s and ticks/s during play.
+interface InstanceStats {
+    windowStart: number;
+    framesByNick: Map<string, number>;
+    framesTotal: number;
+    ticks: number;
+}
+
 interface InstanceState {
     recorder: GservReplayRecorder;
     members: Map<string, GservClient>;
     requiredNicks: Set<string>;
     pending: Map<number, Map<string, PendingSubmission>>;
     lastTurnNo: number;
+    stats: InstanceStats;
 }
 
 export class GservServer {
@@ -57,12 +67,13 @@ export class GservServer {
     private instanceMembers = new Map<string, Map<string, GservClient>>();
     private instanceStates = new Map<string, InstanceState>();
     private sweepInterval?: ReturnType<typeof setInterval>;
+    private statsInterval?: ReturnType<typeof setInterval>;
 
     constructor(
         private config: ServerConfig,
         private manager: GservManager,
     ) {
-        this.log = makeLogger(config.logLevel, "gserv");
+        this.log = makeLogger(config.logLevel, "gserv", fileLogOptionsOf(config));
     }
 
     startSweepLoop(): void {
@@ -74,7 +85,18 @@ export class GservServer {
             if (removed > 0) {
                 this.log.info(`swept ${removed} expired gserv instance(s)`);
             }
+            const aborted = this.abortStalledLoadingInstances();
+            if (aborted > 0) {
+                this.log.info(`aborted ${aborted} instance(s) that never started in time`);
+            }
         }, SWEEP_INTERVAL_MS);
+        if (this.config.gservStatsIntervalSeconds > 0) {
+            this.statsInterval = setInterval(() => {
+                for (const line of this.buildStatsLines()) {
+                    this.log.info(line);
+                }
+            }, this.config.gservStatsIntervalSeconds * 1000);
+        }
     }
 
     dispose(): void {
@@ -82,6 +104,40 @@ export class GservServer {
             clearInterval(this.sweepInterval);
             this.sweepInterval = undefined;
         }
+        if (this.statsInterval) {
+            clearInterval(this.statsInterval);
+            this.statsInterval = undefined;
+        }
+    }
+
+    // One line per active game every stats interval, e.g.:
+    //   instance g1-abcd1234: 2 player(s), 30 ticks/s, 62 frames/s (alice=31/s bob=31/s)
+    // Frames are action frames received from each player; ticks are turns
+    // relayed. Counters reset after each line, so the numbers are true rates.
+    private buildStatsLines(nowMs: number = Date.now()): string[] {
+        const lines: string[] = [];
+        for (const [gameId, state] of this.instanceStates) {
+            if (state.members.size === 0) {
+                continue;
+            }
+            const elapsed = (nowMs - state.stats.windowStart) / 1000;
+            if (elapsed <= 0) {
+                continue;
+            }
+            const ticksPerSec = Math.round(state.stats.ticks / elapsed);
+            const framesPerSec = Math.round(state.stats.framesTotal / elapsed);
+            const perPlayer = [...state.stats.framesByNick.entries()]
+                .map(([nick, frames]) => `${nick}=${Math.round(frames / elapsed)}/s`)
+                .join(" ");
+            lines.push(
+                `instance ${gameId}: ${state.members.size} player(s), ${ticksPerSec} ticks/s, ${framesPerSec} frames/s (${perPlayer})`,
+            );
+            state.stats.windowStart = nowMs;
+            state.stats.ticks = 0;
+            state.stats.framesTotal = 0;
+            state.stats.framesByNick.clear();
+        }
+        return lines;
     }
 
     handleOpen(socket: SocketLike): GservClient {
@@ -91,7 +147,9 @@ export class GservServer {
             authenticated: false,
             loaded: 0,
             active: true,
-            rateBucket: new TokenBucket(GSERV_RATE_CAPACITY, GSERV_RATE_REFILL_PER_SEC),
+            rateBucket: this.config.gservRateLimitEnabled
+                ? new TokenBucket(GSERV_RATE_CAPACITY, GSERV_RATE_REFILL_PER_SEC)
+                : undefined,
         };
         this.clients.set(socket, client);
         this.log.debug("gserv connection open");
@@ -104,7 +162,11 @@ export class GservServer {
             this.log.info(`disconnect ${client.nick} from instance ${gameId}`);
             this.broadcastLine(client, `:${this.serverName} ${Code.RPL_PLAYER_DISCONNECT} ${client.nick} :${client.nick}`);
             const members = this.instanceMembers.get(gameId);
-            members?.delete(client.nick);
+            // Delete by identity so an older socket closing can't evict a newer
+            // connection that re-joined with the same nick.
+            if (members?.get(client.nick) === client) {
+                members.delete(client.nick);
+            }
             const state = this.instanceStates.get(gameId);
             if (state) {
                 state.requiredNicks.delete(client.nick);
@@ -122,6 +184,22 @@ export class GservServer {
                 if (!members || members.size === 0) {
                     this.finalizeInstance(gameId, state);
                 }
+            }
+            else if (members && members.size > 0) {
+                // A player dropped while the game was still loading. The instance
+                // can no longer start (the game waits for every player to join and
+                // the departed player's ticket is already spent), so abort it:
+                // disconnect the rest instead of leaving them on a frozen
+                // loading screen.
+                this.log.info(`aborting instance ${gameId}: ${client.nick} disconnected before game start`);
+                for (const member of members.values()) {
+                    member.socket.close(4003, "A player disconnected before the game started");
+                }
+                members.clear();
+                this.manager.deleteInstance(gameId);
+            }
+            else if (members && members.size === 0) {
+                this.manager.deleteInstance(gameId);
             }
         }
         else {
@@ -146,7 +224,7 @@ export class GservServer {
                 this.log.warn(`dropping frame: line too long from ${client.nick}`);
                 break;
             }
-            if (line.length && !client.rateBucket.tryTake()) {
+            if (line.length && client.rateBucket && !client.rateBucket.tryTake()) {
                 this.log.warn(`rate limit exceeded for ${client.nick}; dropping connection`);
                 client.socket.close(4008, "Rate limit exceeded");
                 break;
@@ -198,6 +276,34 @@ export class GservServer {
             default:
                 break;
         }
+    }
+
+    // Instances that gathered at least one player but never started within the
+    // configured timeout are aborted: without this the remaining players would
+    // sit on the loading screen forever whenever a roster player never joins.
+    // (Instances nobody ever joined are left to sweepExpired.)
+    private abortStalledLoadingInstances(nowSeconds: number = Math.floor(Date.now() / 1000)): number {
+        let aborted = 0;
+        for (const instance of this.manager.instances.values()) {
+            if (instance.started || instance.loadingSince === undefined) {
+                continue;
+            }
+            if (nowSeconds - instance.loadingSince <= this.config.startTimeoutSeconds) {
+                continue;
+            }
+            const members = this.instanceMembers.get(instance.gameId);
+            if (!members || members.size === 0) {
+                continue;
+            }
+            this.log.warn(`aborting instance ${instance.gameId}: did not start within ${this.config.startTimeoutSeconds}s`);
+            for (const member of members.values()) {
+                member.socket.close(4003, "Game did not start in time");
+            }
+            members.clear();
+            this.manager.deleteInstance(instance.gameId);
+            aborted += 1;
+        }
+        return aborted;
     }
 
     private handleCvers(client: GservClient, parts: string[]): void {
@@ -259,6 +365,9 @@ export class GservServer {
             members = new Map();
             this.instanceMembers.set(gameId, members);
         }
+        if (members.size === 0 && instance.loadingSince === undefined) {
+            instance.loadingSince = Math.floor(Date.now() / 1000);
+        }
         members.set(client.nick, client);
         this.log.info(`join instance ${gameId} as ${client.nick}`);
         client.socket.send(`:${this.serverName} ${Code.RPL_INSTANCE_CONNECTED} ${client.nick} :connected\r\n`);
@@ -283,6 +392,13 @@ export class GservServer {
         }
         const members = this.instanceMembers.get(instance.gameId);
         if (!members || members.size === 0) {
+            return;
+        }
+        // The roster in instance.tickets is fixed at creation and never mutated,
+        // and handleJoin only admits roster nicks, so a full member set means
+        // every expected player has joined. Starting with a partial roster would
+        // clear the tickets still needed by late players to log in.
+        if (members.size < instance.tickets.size) {
             return;
         }
         if (![...members.values()].every(member => member.loaded >= 100)) {
@@ -311,6 +427,12 @@ export class GservServer {
             requiredNicks,
             pending: new Map(),
             lastTurnNo: -1,
+            stats: {
+                windowStart: Date.now(),
+                framesByNick: new Map(),
+                framesTotal: 0,
+                ticks: 0,
+            },
         });
         for (const member of members.values()) {
             member.socket.send(`:${this.serverName} ${Code.RPL_NET_RATE} ${member.nick} :${this.config.netRateMs},0\r\n`);
@@ -372,7 +494,7 @@ export class GservServer {
             this.log.warn(`dropping oversized action frame from ${client.nick}`);
             return;
         }
-        if (!client.rateBucket.tryTake()) {
+        if (client.rateBucket && !client.rateBucket.tryTake()) {
             this.log.warn(`rate limit exceeded for ${client.nick}; dropping connection`);
             client.socket.close(4008, "Rate limit exceeded");
             return;
@@ -405,6 +527,8 @@ export class GservServer {
             state.pending.set(turnNo, submissions);
         }
         submissions.set(client.nick, { playerId, blob: data.subarray(6) });
+        state.stats.framesByNick.set(client.nick, (state.stats.framesByNick.get(client.nick) ?? 0) + 1);
+        state.stats.framesTotal += 1;
         this.flushPendingTurns(state);
     }
 
@@ -438,7 +562,8 @@ export class GservServer {
         }
         state.pending.delete(turnNo);
         state.lastTurnNo = Math.max(state.lastTurnNo, turnNo);
-        this.log.debug(`relayed turn ${turnNo} (${entries.size} player(s))`);
+        state.stats.ticks += 1;
+        // this.log.debug(`relayed turn ${turnNo} (${entries.size} player(s))`);
     }
 
     private finalizeInstance(gameId: string, state: InstanceState): void {

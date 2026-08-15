@@ -13,6 +13,9 @@ export interface GservInstance {
     gameopts?: string;
     loaded: Map<string, number>;
     started: boolean;
+    // Unix seconds at which the first player joined the instance; used to
+    // abort instances that never gather the full roster and start.
+    loadingSince?: number;
 }
 
 export interface TicketInfo {
