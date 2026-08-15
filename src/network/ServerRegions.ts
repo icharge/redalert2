@@ -60,6 +60,10 @@ export class ServerRegions {
         return [...this.regions.values()];
     }
 
+    getSize(): number {
+        return this.regions.size;
+    }
+
     getFirstAvailable(): Region | undefined {
         return this.getAll().filter(region => region.available)[0];
     }
