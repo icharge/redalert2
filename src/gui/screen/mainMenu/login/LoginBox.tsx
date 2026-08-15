@@ -99,7 +99,7 @@ export const LoginBox = forwardRef<LoginBoxRef, LoginBoxProps>(({ regions, selec
         type: "password",
         required: true,
         maxLength: MAX_PASS_LEN,
-        autoComplete: "new-password",
+        autoComplete: "off",
         ref: passwordRef,
     })), cfTurnstile.isEnabledForLogin() && React.createElement("div", { className: "field turnstile-field" }, React.createElement("label", null), cfTurnstile.isLoaded()
         ? React.createElement(CfTurnstileWidget, {
