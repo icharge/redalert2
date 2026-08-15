@@ -10,6 +10,7 @@ import { OrderType } from '@/game/order/OrderType';
 import { OrderFeedbackType } from '@/game/order/OrderFeedbackType';
 import { QueueStatus } from '@/game/player/production/ProductionQueue';
 import { ObjectType } from '@/engine/type/ObjectType';
+import { StanceType } from '@/game/gameobject/infantry/StanceType';
 import { equals } from '@/util/array';
 
 const detectedSuperWeaponEvaByType = new Map([
@@ -145,6 +146,11 @@ export class SoundHandler {
             case EventType.ObjectDestroy:
                 this.handleObjectDestroySound(event);
                 break;
+            case EventType.ObjectMorph:
+                if (event.to?.isBuilding()) {
+                    this.worldSound.playEffect(SoundKey.BuildingDrop, event.to, event.to.owner);
+                }
+                break;
             case EventType.ObjectSpawn:
                 this.handleObjectSpawnSound(event);
                 break;
@@ -266,6 +272,9 @@ export class SoundHandler {
         const gameObject = event.gameObject;
         if (gameObject.isTechno() && gameObject.rules.createSound) {
             this.worldSound.playEffect(gameObject.rules.createSound, gameObject, gameObject.owner);
+        }
+        if (gameObject.isInfantry() && gameObject.stance === StanceType.Paradrop) {
+            this.worldSound.playEffect(SoundKey.ChuteSound, gameObject, gameObject.owner);
         }
     }
     private handleBuildingPlaceSound(event: any): void {
