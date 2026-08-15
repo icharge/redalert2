@@ -377,6 +377,7 @@ export class MainMenuRootScreen extends RootScreen {
                     screen = new screenClass(
                         this.config.botsEnabled,
                         this.appVersion,
+                        Engine.getActiveMod?.() ?? '',
                         activeModMeta,
                         this.rootController,
                         errorHandler,
