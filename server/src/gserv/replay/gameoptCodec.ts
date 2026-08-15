@@ -161,6 +161,21 @@ export function serializeAllPlayerActions(allActions: Map<number, ActionData[]>)
     return stream.toUint8Array();
 }
 
+// Serializes the all-players frame directly from already-serialized per-player
+// blobs (as relayed from each client), avoiding a parse + re-serialize pass.
+export function serializeAllPlayerActionBlobs(entries: Map<number, Uint8Array>): Uint8Array {
+    const stream = new DataStream();
+    stream.writeUint8(entries.size);
+    for (const [playerId, blob] of entries) {
+        stream.writeUint8(playerId);
+        stream.writeUint16(blob.byteLength);
+        if (blob.byteLength > 0) {
+            stream.writeBytes(blob);
+        }
+    }
+    return stream.toUint8Array();
+}
+
 export function parseAllPlayerActions(data: Uint8Array): Map<number, ActionData[]> {
     const stream = new DataStream(data);
     const playerCount = stream.readUint8();

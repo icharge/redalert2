@@ -117,7 +117,7 @@ export class GservConnection {
                 }
             }
             else if (message[0] === GservCode.RPL_BIN_GAME_ACTIONS) {
-                this.handlePlayerActions(message.slice(1));
+                this.handlePlayerActions(message.subarray(1));
             }
         };
         this.con = con;

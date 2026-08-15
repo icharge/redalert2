@@ -134,7 +134,7 @@ export class IrcConnection {
     private handleMessage(message: string | Uint8Array): void {
         if (typeof message !== "string") {
             if (message[0] === this.options.binaryRplPrefix) {
-                this._onMessage.dispatch(this, message.slice(1));
+                this._onMessage.dispatch(this, message.subarray(1));
                 return;
             }
             message = uint8ArrayToBinaryString(message);

@@ -10,6 +10,7 @@ import {
     hasActualActions,
     isObserverPlayer,
     parseGameOpts,
+    parsePlayerActions,
     serializeAllPlayerActions,
 } from "./gameoptCodec";
 
@@ -96,11 +97,15 @@ export class GservReplayRecorder {
         return (turnNo + 2) * this.subturnsPerTurn;
     }
 
-    recordTurn(turnNo: number, allActions: Map<number, ActionData[]>): void {
+    recordTurn(turnNo: number, playerBlobs: Map<number, Uint8Array>): void {
+        this.lastTurnNo = Math.max(this.lastTurnNo, turnNo);
         if (!this.options.enabled) {
             return;
         }
-        this.lastTurnNo = Math.max(this.lastTurnNo, turnNo);
+        const allActions = new Map<number, ActionData[]>();
+        for (const [playerId, blob] of playerBlobs) {
+            allActions.set(playerId, parsePlayerActions(blob));
+        }
         if ([...allActions.values()].some(hasActualActions)) {
             const payload = base64EncodeBytes(serializeAllPlayerActions(allActions));
             this.events.push({ tickNo: this.tickForTurn(turnNo), type: ReplayEventType.TurnActions, payload });

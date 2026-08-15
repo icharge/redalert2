@@ -6,10 +6,9 @@ import * as Code from "../protocol/gservCodes";
 import { GSERV_SERVER_NAME } from "../protocol/replies";
 import { GservReplayRecorder } from "./replay/GservReplayRecorder";
 import {
-    ActionData,
     NO_ACTION_ID,
-    parsePlayerActions,
-    serializeAllPlayerActions,
+    serializeAllPlayerActionBlobs,
+    serializePlayerActions,
 } from "./replay/gameoptCodec";
 
 export interface GservClient {
@@ -21,9 +20,11 @@ export interface GservClient {
     active: boolean;
 }
 
+const NO_ACTION_BLOB = serializePlayerActions([{ id: NO_ACTION_ID, params: new Uint8Array() }]);
+
 interface PendingSubmission {
     playerId: number;
-    actions: ActionData[];
+    blob: Uint8Array;
 }
 
 interface InstanceState {
@@ -77,10 +78,7 @@ export class GservServer {
                 if (playerId !== undefined) {
                     for (const submissions of state.pending.values()) {
                         if (!submissions.has(client.nick)) {
-                            submissions.set(client.nick, {
-                                playerId,
-                                actions: [{ id: NO_ACTION_ID, params: new Uint8Array() }],
-                            });
+                            submissions.set(client.nick, { playerId, blob: NO_ACTION_BLOB });
                         }
                     }
                 }
@@ -98,7 +96,7 @@ export class GservServer {
 
     handleMessage(client: GservClient, message: string | Uint8Array): void {
         if (typeof message !== "string") {
-            this.handleBinary(client, new Uint8Array(message));
+            this.handleBinary(client, message);
             return;
         }
         for (const line of message.split(/\r?\n/)) {
@@ -332,7 +330,7 @@ export class GservServer {
             submissions = new Map();
             state.pending.set(turnNo, submissions);
         }
-        submissions.set(client.nick, { playerId, actions: parsePlayerActions(data.subarray(6)) });
+        submissions.set(client.nick, { playerId, blob: data.subarray(6) });
         this.flushPendingTurns(state);
     }
 
@@ -350,12 +348,12 @@ export class GservServer {
         if (!submissions) {
             return;
         }
-        const allActions = new Map<number, ActionData[]>();
+        const entries = new Map<number, Uint8Array>();
         for (const submission of submissions.values()) {
-            allActions.set(submission.playerId, submission.actions);
+            entries.set(submission.playerId, submission.blob);
         }
-        state.recorder.recordTurn(turnNo, allActions);
-        const payload = serializeAllPlayerActions(allActions);
+        state.recorder.recordTurn(turnNo, entries);
+        const payload = serializeAllPlayerActionBlobs(entries);
         const frame = new Uint8Array(6 + payload.length);
         frame[0] = Code.RPL_BIN_PREFIX;
         frame[1] = Code.RPL_BIN_GAME_ACTIONS;
@@ -366,7 +364,7 @@ export class GservServer {
         }
         state.pending.delete(turnNo);
         state.lastTurnNo = Math.max(state.lastTurnNo, turnNo);
-        this.log.debug(`relayed turn ${turnNo} (${allActions.size} player(s))`);
+        this.log.debug(`relayed turn ${turnNo} (${entries.size} player(s))`);
     }
 
     private finalizeInstance(gameId: string, state: InstanceState): void {
