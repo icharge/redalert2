@@ -412,6 +412,7 @@ export class MainMenuRootScreen extends RootScreen {
                         services.serverRegions,
                         mapList,
                         errorHandler,
+                        services.sessionService,
                     );
                     break;
                 case MainMenuScreenType.Ladder:

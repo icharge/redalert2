@@ -72,6 +72,9 @@ interface JsxRenderer {
 interface ErrorHandler {
     handle(error: any, message: string, onClose: () => void): void;
 }
+interface SessionService {
+    clearRealmSession(): void;
+}
 export class CustomGameScreen extends MainMenuScreen {
     declare public title: string;
     declare public musicType: MusicType;
@@ -85,6 +88,7 @@ export class CustomGameScreen extends MainMenuScreen {
     private serverRegions: ServerRegions;
     private mapList: MapList;
     private errorHandler: ErrorHandler;
+    private sessionService: SessionService;
     private playerProfiles = new Map<string, PlayerProfile>();
     private disposables = new CompositeDisposable();
     private channelName?: string;
@@ -96,7 +100,7 @@ export class CustomGameScreen extends MainMenuScreen {
     private gameBrowser?: any;
     private refreshTimeoutId?: number;
     private ranksUpdateTask?: Task<void>;
-    constructor(engineModHash: string, strings: any, wolCon: any, wolService: WolService, wladderService: WladderService, jsxRenderer: JsxRenderer, sound: Sound, serverRegions: ServerRegions, mapList: MapList, errorHandler: ErrorHandler) {
+    constructor(engineModHash: string, strings: any, wolCon: any, wolService: WolService, wladderService: WladderService, jsxRenderer: JsxRenderer, sound: Sound, serverRegions: ServerRegions, mapList: MapList, errorHandler: ErrorHandler, sessionService: SessionService) {
         super();
         this.engineModHash = engineModHash;
         this.strings = strings;
@@ -108,6 +112,7 @@ export class CustomGameScreen extends MainMenuScreen {
         this.serverRegions = serverRegions;
         this.mapList = mapList;
         this.errorHandler = errorHandler;
+        this.sessionService = sessionService;
         this.title = this.strings.get("GUI:CustomMatch");
         this.musicType = MusicType.NormalShuffle;
     }
@@ -275,6 +280,22 @@ export class CustomGameScreen extends MainMenuScreen {
                     },
                 }] : []),
             {
+                label: this.strings.get("GUI:Logout"),
+                onClick: () => {
+                    this.sessionService.clearRealmSession();
+                    if (this.hasScreen(MainMenuScreenType.NicknameSelection)) {
+                        this.controller?.goToScreen(MainMenuScreenType.NicknameSelection, {
+                            afterLogin: (messages: any) => new MainMenuRoute(MainMenuScreenType.CustomGame as any, { messages }),
+                        });
+                    }
+                    else {
+                        this.controller?.goToScreen(MainMenuScreenType.Login, {
+                            afterLogin: (messages: any) => new MainMenuRoute(MainMenuScreenType.CustomGame as any, { messages }),
+                        });
+                    }
+                },
+            },
+            {
                 label: this.strings.get("GUI:Back"),
                 tooltip: this.strings.get("STT:LobbyButtonBack"),
                 isBottom: true,
@@ -285,6 +306,9 @@ export class CustomGameScreen extends MainMenuScreen {
             },
         ];
         this.controller.setSidebarButtons(buttons);
+    }
+    private hasScreen(screenType: number): boolean {
+        return !!(this.controller as any)?.screens?.has?.(screenType);
     }
     private initView(cancellationToken: CancellationToken) {
         const [component] = this.jsxRenderer.render(jsx(HtmlView, {
