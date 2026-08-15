@@ -14,16 +14,23 @@ export function isOriginAllowed(config: ServerConfig, request: Request): boolean
 
 export function corsHeaders(config: ServerConfig, request: Request): Record<string, string> {
     const allowed = config.corsAllowedOrigins;
+    const origin = request.headers.get("Origin");
     const headers: Record<string, string> = {
         "Access-Control-Allow-Methods": CORS_METHODS,
         "Access-Control-Allow-Headers": CORS_ALLOW_HEADERS,
         "Vary": "Origin",
     };
     if (allowed.length === 1 && allowed[0] === "*") {
-        headers["Access-Control-Allow-Origin"] = "*";
+        // Open mode: echo the origin so requests using credentials: "include"
+        // (AuthService/RealmService) are not rejected by the browser's
+        // wildcard + credentials rule. The server never sets cookies, so this
+        // leaks no ambient credentials. Set CORS_ALLOWED_ORIGINS for production.
+        if (origin) {
+            headers["Access-Control-Allow-Origin"] = origin;
+            headers["Access-Control-Allow-Credentials"] = "true";
+        }
         return headers;
     }
-    const origin = request.headers.get("Origin");
     if (origin && allowed.includes(origin)) {
         headers["Access-Control-Allow-Origin"] = origin;
         headers["Access-Control-Allow-Credentials"] = "true";

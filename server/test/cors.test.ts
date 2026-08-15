@@ -11,13 +11,20 @@ function request(origin?: string): Request {
 }
 
 describe("cors", () => {
-    test("default allows any origin", () => {
+    test("default echoes the request origin with credentials", () => {
         const config = loadConfig({});
         const headers = corsHeaders(config, request("http://localhost:5173"));
-        expect(headers["Access-Control-Allow-Origin"]).toBe("*");
+        expect(headers["Access-Control-Allow-Origin"]).toBe("http://localhost:5173");
+        expect(headers["Access-Control-Allow-Credentials"]).toBe("true");
         expect(headers["Access-Control-Allow-Headers"]).toContain("X-CSRF-Token");
         expect(headers["Vary"]).toBe("Origin");
         expect(isOriginAllowed(config, request("http://localhost:5173"))).toBe(true);
+    });
+
+    test("default sends no allow-origin when no Origin header is present", () => {
+        const config = loadConfig({});
+        const headers = corsHeaders(config, request());
+        expect(headers["Access-Control-Allow-Origin"]).toBeUndefined();
     });
 
     test("restricted origins echo the matching origin with credentials", () => {
@@ -37,6 +44,7 @@ describe("cors", () => {
     test("withCors attaches headers to a response", () => {
         const config = loadConfig({});
         const response = withCors(new Response("x", { status: 200 }), config, request("http://localhost:5173"));
-        expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+        expect(response.headers.get("Access-Control-Allow-Origin")).toBe("http://localhost:5173");
+        expect(response.headers.get("Access-Control-Allow-Credentials")).toBe("true");
     });
 });

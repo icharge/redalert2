@@ -16,9 +16,15 @@ function make() {
 describe("http routes", () => {
     test("GET /auth/session returns 401 when not logged in", async () => {
         const { config, accounts, sessions } = make();
-        const res = await handleHttp(new Request("http://localhost/auth/session"), accounts, sessions, config);
+        const res = await handleHttp(
+            new Request("http://localhost/auth/session", { headers: { Origin: "http://localhost:5173" } }),
+            accounts,
+            sessions,
+            config,
+        );
         expect(res.status).toBe(401);
-        expect(res.headers.get("Access-Control-Allow-Origin")).toBe("*");
+        expect(res.headers.get("Access-Control-Allow-Origin")).toBe("http://localhost:5173");
+        expect(res.headers.get("Access-Control-Allow-Credentials")).toBe("true");
     });
 
     test("GET /auth/csrf returns a token", async () => {
@@ -125,7 +131,8 @@ describe("http routes", () => {
             config,
         );
         expect(res.status).toBe(204);
-        expect(res.headers.get("Access-Control-Allow-Origin")).toBe("*");
+        expect(res.headers.get("Access-Control-Allow-Origin")).toBe("http://localhost:5173");
+        expect(res.headers.get("Access-Control-Allow-Credentials")).toBe("true");
         expect(res.headers.get("Access-Control-Allow-Headers")).toContain("X-CSRF-Token");
     });
 });

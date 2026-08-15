@@ -98,11 +98,14 @@ origin you need TLS (terminate `wss://` in front of the server).
 The HTTP endpoints and WebSocket endpoints send CORS headers so the client can run from
 a different origin (e.g. the Vite dev server on `http://localhost:5173`).
 
-- Default (`CORS_ALLOWED_ORIGINS=*`): every origin is allowed; no credentials.
-- Restricted (e.g. `CORS_ALLOWED_ORIGINS=http://localhost:5173`): matching origins are
-  echoed with `Access-Control-Allow-Credentials: true`; unknown origins get no
-  `Access-Control-Allow-Origin` header on HTTP and are rejected with `403` on WebSocket
-  upgrades.
+- Default (`CORS_ALLOWED_ORIGINS=*`): the request's `Origin` is echoed back with
+  `Access-Control-Allow-Credentials: true`. The client's `AuthService`/`RealmService`
+  use `credentials: "include"`, which browsers reject with a wildcard
+  `Access-Control-Allow-Origin`, so echoing the origin is required. The server never
+  sets cookies, so no ambient credentials are exposed.
+- Restricted (e.g. `CORS_ALLOWED_ORIGINS=https://game.example.com`): only listed origins
+  are echoed with credentials; unknown origins get no `Access-Control-Allow-Origin` on
+  HTTP and are rejected with `403` on WebSocket upgrades. Use this in production.
 
 Preflight (`OPTIONS`) is handled for `Content-Type` and `X-CSRF-Token` request headers
 (the CSRF header the client's realm auth flow uses). Responses include `Vary: Origin`.
