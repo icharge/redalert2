@@ -77,9 +77,12 @@ export class LobbyForm extends React.Component<LobbyFormProps> {
         const iterator = this.props.availableAiNames.keys();
         const first = iterator.next();
         if (first.done) return AiDifficulty.Easy;
-        const key = first.value as string;
-        if (key.startsWith('Custom:')) return AiDifficulty.Custom;
-        return AiDifficulty[key as keyof typeof AiDifficulty] ?? AiDifficulty.Easy;
+        const key = first.value;
+        if (typeof key === "string") {
+            if (key.startsWith("Custom:")) return AiDifficulty.Custom;
+            return AiDifficulty[key as keyof typeof AiDifficulty] ?? AiDifficulty.Easy;
+        }
+        return key as AiDifficulty;
     }
     onPlayerSelect = (value: string, slotIndex: number) => {
         let occupation: number;
@@ -96,9 +99,10 @@ export class LobbyForm extends React.Component<LobbyFormProps> {
             } else {
                 aiDifficulty = AiDifficulty[value as keyof typeof AiDifficulty];
                 if (aiDifficulty === undefined ||
-                    !this.props.availableAiNames.has(value)) {
+                    (!this.props.availableAiNames.has(value) &&
+                        !this.props.availableAiNames.has(aiDifficulty))) {
                     const firstKey = this.props.availableAiNames.keys().next().value;
-                    if (firstKey?.startsWith('Custom:')) {
+                    if (typeof firstKey === "string" && firstKey.startsWith('Custom:')) {
                         aiDifficulty = AiDifficulty.Custom;
                         customBotId = firstKey.slice('Custom:'.length);
                     } else {
@@ -311,17 +315,24 @@ export class LobbyForm extends React.Component<LobbyFormProps> {
             if (slot.customBotId && this.props.availableAiNames.has(`Custom:${slot.customBotId}`)) {
                 selectedValue = `Custom:${slot.customBotId}`;
             } else {
-                const diffKey = AiDifficulty[slot.aiDifficulty];
-                selectedValue = this.props.availableAiNames.has(diffKey)
-                    ? diffKey
-                    : [...this.props.availableAiNames.keys()][0] ?? 'Easy';
+                selectedValue = typeof slot.aiDifficulty === "number"
+                    ? AiDifficulty[slot.aiDifficulty]
+                    : slot.aiDifficulty;
             }
         }
         if (slot.type !== SlotType.Observer) {
+            const aiOptionKeys: string[] = [];
             this.props.availableAiNames.forEach((name: string, key: string) => {
-                const resolvedName = key.startsWith('Custom:') ? name : strings.get(name);
-                optionsMap.set(key, resolvedName);
+                const optionKey = typeof key === "string" ? key : AiDifficulty[key];
+                aiOptionKeys.push(optionKey);
+                optionsMap.set(optionKey,
+                    typeof key === "string" && key.startsWith("Custom:") ? name : strings.get(name));
             });
+            if (displayOccupation === SlotOccupation.Occupied &&
+                slot.type === SlotType.Ai &&
+                !aiOptionKeys.includes(selectedValue)) {
+                selectedValue = aiOptionKeys[0] ?? "Easy";
+            }
         }
         return (<Select initialValue={"" + selectedValue} disabled={!isHost} onSelect={(value) => this.onPlayerSelect(value, index)} className="player-name" tooltip={isSingleplayer
                 ? strings.get("STT:SkirmishComboAiPlayer")
