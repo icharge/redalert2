@@ -357,8 +357,8 @@ export class ObjectArt {
                 rotors.push({
                     name: rotorNames[i],
                     axis: axis,
-                    speed: this.art.getNumber(`Rotor${i + 1}Rate`),
-                    idleSpeed: this.art.getNumber(`Rotor${i + 1}IdleRate`)
+                    speed: this.art.getNumber(`Rotor${i + 1}Rate`) || undefined,
+                    idleSpeed: this.art.getNumber(`Rotor${i + 1}IdleRate`) || undefined
                 });
             }
             if (rotors.length) {
