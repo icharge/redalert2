@@ -498,13 +498,13 @@ export class GameScreen extends RootScreen {
     }
     private async connectToServerInstance(params: any, cancellationToken: any): Promise<any> {
         let messageBoxShown = false;
+        const showTimer = setTimeout(() => {
+            if (!cancellationToken.isCancelled()) {
+                this.messageBoxApi.show(this.strings.get('TXT_CONNECTING'));
+                messageBoxShown = true;
+            }
+        }, 1000);
         try {
-            setTimeout(() => {
-                if (!cancellationToken.isCancelled()) {
-                    this.messageBoxApi.show(this.strings.get('TXT_CONNECTING'));
-                    messageBoxShown = true;
-                }
-            }, 1000);
             await this.gservCon.connect(params.gservUrl);
             await this.gservCon.cvers(this.engineVersion);
             await this.gservCon.login(params.ticket, params.playerName);
@@ -517,6 +517,7 @@ export class GameScreen extends RootScreen {
             throw error;
         }
         finally {
+            clearTimeout(showTimer);
             if (messageBoxShown) {
                 this.messageBoxApi.destroy();
             }
