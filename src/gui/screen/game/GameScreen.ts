@@ -140,21 +140,10 @@ export class GameScreen extends RootScreen {
             gameOpts = lanLaunch.gameOpts;
         }
         else {
-            const credentials = this.wolService.getCredentials();
-            if (!credentials || credentials.user !== playerName) {
-                this.localPrefs.removeItem(StorageKey.LastConnection);
-                this.controller?.goToScreen(ScreenType.MainMenuRoot, {
-                    route: new MainMenuRoute(MainMenuScreenType.Login, {
-                        forceUser: playerName,
-                        afterLogin: (user: any) => new RootRoute('Game', params)
-                    })
-                });
-                return;
-            }
             this.wolService.setAutoReconnect(true);
             this.gservCon.onClose.subscribe(this.onGservClose);
             try {
-                gameOpts = await this.connectToServerInstance(params, credentials, cancellationToken);
+                gameOpts = await this.connectToServerInstance(params, cancellationToken);
             }
             catch (error) {
                 this.handleGservConError(error);
@@ -507,7 +496,7 @@ export class GameScreen extends RootScreen {
             }
         })();
     }
-    private async connectToServerInstance(params: any, credentials: any, cancellationToken: any): Promise<any> {
+    private async connectToServerInstance(params: any, cancellationToken: any): Promise<any> {
         let messageBoxShown = false;
         try {
             setTimeout(() => {
@@ -518,7 +507,7 @@ export class GameScreen extends RootScreen {
             }, 1000);
             await this.gservCon.connect(params.gservUrl);
             await this.gservCon.cvers(this.engineVersion);
-            await this.gservCon.login(credentials.user, credentials.pass);
+            await this.gservCon.login(params.ticket, params.playerName);
             if (params.create) {
                 const serializedOpts = this.gameOptsSerializer.serializeOptions(params.gameOpts);
                 const { gameId, timestamp } = params;

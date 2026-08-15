@@ -15,7 +15,7 @@ export class RootController extends Controller {
     async pushScreen(screenType: ScreenType, params?: any): Promise<void> {
         return super.pushScreen(screenType, params);
     }
-    createGame(gameId: string, timestamp: number, gameServer?: string, playerName?: string, gameOpts?: any, singlePlayer?: boolean, tournament?: boolean, mapTransfer: boolean = false, createPrivateGame: boolean = false, returnTo?: any): void {
+    createGame(gameId: string, timestamp: number, gameServer?: string, playerName?: string, ticket?: string, gameOpts?: any, singlePlayer?: boolean, tournament?: boolean, mapTransfer: boolean = false, createPrivateGame: boolean = false, returnTo?: any): void {
         if (!this.serverRegions) {
             throw new Error('Server regions must be loaded first');
         }
@@ -31,6 +31,7 @@ export class RootController extends Controller {
             gameId,
             timestamp,
             playerName,
+            ticket,
             gameOpts,
             singlePlayer,
             tournament,
@@ -40,7 +41,7 @@ export class RootController extends Controller {
             returnTo,
         });
     }
-    joinGame(gameId: string, timestamp: number, gservUrl: string, playerName?: string, tournament?: boolean, mapTransfer: boolean = false, returnTo?: any): void {
+    joinGame(gameId: string, timestamp: number, gservUrl: string, playerName?: string, ticket?: string, tournament?: boolean, mapTransfer: boolean = false, returnTo?: any): void {
         if (!this.serverRegions) {
             throw new Error('Server regions must be loaded first');
         }
@@ -49,6 +50,7 @@ export class RootController extends Controller {
             gameId,
             timestamp,
             playerName,
+            ticket,
             tournament,
             mapTransfer,
             gservUrl,

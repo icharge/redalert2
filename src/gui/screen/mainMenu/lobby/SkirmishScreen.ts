@@ -42,7 +42,7 @@ interface MapFileLoader {
 }
 
 interface RootController {
-    createGame(gameId: string, timestamp: number, gservUrl: string, username: string, gameOpts: any, singlePlayer: boolean, tournament: boolean, mapTransfer: boolean, privateGame: boolean, fallbackRoute: MainMenuRoute): void;
+    createGame(gameId: string, timestamp: number, gservUrl: string, username: string, ticket: string, gameOpts: any, singlePlayer: boolean, tournament: boolean, mapTransfer: boolean, privateGame: boolean, fallbackRoute: MainMenuRoute): void;
 }
 
 interface ErrorHandler {
@@ -294,7 +294,7 @@ export class SkirmishScreen extends MainMenuScreen {
         const gameId = '0';
         const timestamp = Date.now();
         const fallbackRoute = new MainMenuRoute(MainMenuScreenType.Skirmish, {});
-        this.rootController.createGame(gameId, timestamp, '', this.playerName, gameOpts, true, false, false, false, fallbackRoute);
+        this.rootController.createGame(gameId, timestamp, '', this.playerName, undefined, gameOpts, true, false, false, false, fallbackRoute);
     }
 
     private syncDebugState(): void {

@@ -84,8 +84,8 @@ interface GservConnection {
 }
 
 interface RootController {
-    createGame(gameId: string, timestamp: number, gameServer?: string, playerName?: string, gameOpts?: any, singlePlayer?: boolean, tournament?: boolean, mapTransfer?: boolean, createPrivateGame?: boolean, returnTo?: any): void;
-    joinGame(gameId: string, timestamp: number, gservUrl: string, playerName?: string, tournament?: boolean, mapTransfer?: boolean, returnTo?: any): void;
+    createGame(gameId: string, timestamp: number, gameServer?: string, playerName?: string, ticket?: string, gameOpts?: any, singlePlayer?: boolean, tournament?: boolean, mapTransfer?: boolean, createPrivateGame?: boolean, returnTo?: any): void;
+    joinGame(gameId: string, timestamp: number, gservUrl: string, playerName?: string, ticket?: string, tournament?: boolean, mapTransfer?: boolean, returnTo?: any): void;
 }
 
 interface ErrorHandler {
@@ -420,6 +420,7 @@ export class LobbyScreen extends MainMenuScreen {
                     event.timestamp,
                     event.gservUrl,
                     username!,
+                    event.ticket,
                     this.gameOpts!,
                     false,
                     this.isTournament,
@@ -434,6 +435,7 @@ export class LobbyScreen extends MainMenuScreen {
                     event.timestamp,
                     event.gservUrl,
                     username!,
+                    event.ticket,
                     this.isTournament,
                     mapTransfer,
                     fallbackRoute,

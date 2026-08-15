@@ -73,6 +73,7 @@ export const LoginBox = forwardRef<LoginBoxRef, LoginBoxProps>(({ regions, selec
         },
         className: "login-form login-box",
         ref: formRef,
+        autoComplete: "off",
     }, React.createElement("div", { className: "field" }, React.createElement("label", null, strings.get("TS:Region")), React.createElement(ServerList, {
         regionId: selectedRegion?.id,
         regions,
@@ -84,19 +85,21 @@ export const LoginBox = forwardRef<LoginBoxRef, LoginBoxProps>(({ regions, selec
         type: "button",
         className: "icon-button refresh-button",
         onClick: onRequestRegionRefresh,
-    })), React.createElement("div", { className: "field" }, React.createElement("label", null, strings.get("GUI:Nickname")), React.createElement("input", {
+    })), React.createElement("div", { className: "field" }, React.createElement("label", null, strings.get("GUI:Nickname")),     React.createElement("input", {
         name: "user",
         type: "text",
         required: true,
         minLength: MIN_USERNAME_LEN,
         maxLength: MAX_USERNAME_LEN,
         pattern: "[a-zA-Z0-9_\\-]+",
+        autoComplete: "off",
         ref: usernameRef,
     })), React.createElement("div", { className: "field" }, React.createElement("label", null, strings.get("GUI:Password")), React.createElement("input", {
         name: "pass",
         type: "password",
         required: true,
         maxLength: MAX_PASS_LEN,
+        autoComplete: "new-password",
         ref: passwordRef,
     })), cfTurnstile.isEnabledForLogin() && React.createElement("div", { className: "field turnstile-field" }, React.createElement("label", null), cfTurnstile.isLoaded()
         ? React.createElement(CfTurnstileWidget, {

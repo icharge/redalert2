@@ -286,7 +286,7 @@ export class QuickGameScreen extends MainMenuScreen {
                     if (!this.form) {
                         await this.controller?.popScreen();
                     }
-                    this.rootController.joinGame(event.gameId, event.timestamp, event.gservUrl, username, true, false, fallbackRoute);
+                    this.rootController.joinGame(event.gameId, event.timestamp, event.gservUrl, username, event.ticket, true, false, fallbackRoute);
                 }
                 catch (error) {
                     this.leaveQueue();
