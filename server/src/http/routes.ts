@@ -28,16 +28,16 @@ export async function handleHttp(req: Request, accounts: AccountStore, sessions:
             body = await req.json();
         }
         catch {
-            return withCors(json({ error: "Invalid request body", errorCode: "invalid_request" }, 400), config, req);
+            return withCors(json({ error: "Invalid request body", errorCode: "invalid_request" }), config, req);
         }
         const user = String(body.user ?? "");
         const pass = String(body.pass ?? "");
         const account = await accounts.verify(user, pass);
         if (!account) {
-            return withCors(json({ error: "Invalid username or password", errorCode: "invalid_credentials" }, 401), config, req);
+            return withCors(json({ error: "Invalid username or password", errorCode: "invalid_credentials" }), config, req);
         }
         if (account.banned) {
-            return withCors(json({ error: "Account is banned", errorCode: "banned_from_server" }, 403), config, req);
+            return withCors(json({ error: "Account is banned", errorCode: "banned_from_server" }), config, req);
         }
         const sessionToken = sessions.create(account.username);
         return withCors(json({ user: account.username, sessionToken }), config, req);
@@ -49,7 +49,7 @@ export async function handleHttp(req: Request, accounts: AccountStore, sessions:
             body = await req.json();
         }
         catch {
-            return withCors(json({ error: "Invalid request body", errorCode: "invalid_request" }, 400), config, req);
+            return withCors(json({ error: "Invalid request body", errorCode: "invalid_request" }), config, req);
         }
         const user = String(body.user ?? "");
         const pass = String(body.pass ?? "");
@@ -59,7 +59,7 @@ export async function handleHttp(req: Request, accounts: AccountStore, sessions:
             return withCors(json({ user: account.username, sessionToken }), config, req);
         }
         catch (error) {
-            return withCors(json({ error: String((error as Error).message), errorCode: "registration_failed" }, 400), config, req);
+            return withCors(json({ error: String((error as Error).message), errorCode: "registration_failed" }), config, req);
         }
     }
 

@@ -60,6 +60,59 @@ describe("http routes", () => {
         expect(data.sessionToken).toBeTruthy();
     });
 
+    test("failed login returns 200 with an error body (client contract)", async () => {
+        const { config, accounts, sessions } = make();
+        await handleHttp(
+            new Request("http://localhost/register", {
+                method: "POST",
+                body: JSON.stringify({ user: "routeuser", pass: "password123" }),
+            }),
+            accounts,
+            sessions,
+            config,
+        );
+        const res = await handleHttp(
+            new Request("http://localhost/login", {
+                method: "POST",
+                body: JSON.stringify({ user: "routeuser", pass: "wrongpass" }),
+            }),
+            accounts,
+            sessions,
+            config,
+        );
+        expect(res.status).toBe(200);
+        const data: any = await res.json();
+        expect(data.error).toBeTruthy();
+        expect(data.errorCode).toBe("invalid_credentials");
+        expect(data.sessionToken).toBeUndefined();
+    });
+
+    test("duplicate register returns 200 with an error body", async () => {
+        const { config, accounts, sessions } = make();
+        await handleHttp(
+            new Request("http://localhost/register", {
+                method: "POST",
+                body: JSON.stringify({ user: "routeuser", pass: "password123" }),
+            }),
+            accounts,
+            sessions,
+            config,
+        );
+        const res = await handleHttp(
+            new Request("http://localhost/register", {
+                method: "POST",
+                body: JSON.stringify({ user: "routeuser", pass: "password123" }),
+            }),
+            accounts,
+            sessions,
+            config,
+        );
+        expect(res.status).toBe(200);
+        const data: any = await res.json();
+        expect(data.error).toBeTruthy();
+        expect(data.sessionToken).toBeUndefined();
+    });
+
     test("OPTIONS preflight is answered with CORS headers", async () => {
         const { config, accounts, sessions } = make();
         const res = await handleHttp(

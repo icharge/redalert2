@@ -40,18 +40,18 @@ async function registerOrLogin(): Promise<string> {
         headers: { "Content-Type": "application/json" },
         body,
     });
-    if (register.status === 200) {
-        const data: any = await register.json();
-        check("register new account", !!data.sessionToken);
-        return data.sessionToken;
+    const registerData: any = await register.json().catch(() => ({}));
+    if (registerData.sessionToken) {
+        check("register new account", true);
+        return registerData.sessionToken;
     }
     const login = await fetch(`${BASE_URL}/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body,
     });
-    const data: any = await login.json();
-    check("login existing account", !!data.sessionToken);
+    const data: any = await login.json().catch(() => ({}));
+    check("login existing account", !!data.sessionToken, JSON.stringify(data));
     return data.sessionToken;
 }
 

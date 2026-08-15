@@ -73,16 +73,19 @@ export async function registerOrLogin(baseUrl: string, username: string, passwor
         headers: { "Content-Type": "application/json" },
         body,
     });
-    if (register.status === 200) {
-        const data: any = await register.json();
-        return data.sessionToken;
+    const registerData: any = await register.json().catch(() => ({}));
+    if (registerData.sessionToken) {
+        return registerData.sessionToken;
     }
     const login = await fetch(`${baseUrl}/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body,
     });
-    const data: any = await login.json();
+    const data: any = await login.json().catch(() => ({}));
+    if (!data.sessionToken) {
+        throw new Error(`register/login failed for ${username}: ${JSON.stringify(data)}`);
+    }
     return data.sessionToken;
 }
 
