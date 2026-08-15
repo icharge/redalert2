@@ -12,7 +12,7 @@ function json(body: unknown, status = 200): Response {
 }
 
 function httpUrlOf(config: ServerConfig): string {
-    return config.externalUrl.replace(/^wss?/, "http");
+    return config.externalUrl.replace(/^wss/, "https").replace(/^ws/, "http");
 }
 
 export async function handleHttp(req: Request, accounts: AccountStore, sessions: SessionManager, config: ServerConfig): Promise<Response> {
@@ -65,7 +65,7 @@ export async function handleHttp(req: Request, accounts: AccountStore, sessions:
 
     if (req.method === "GET" && url.pathname === "/servers.ini") {
         const baseUrl = httpUrlOf(config);
-        const wsUrl = config.externalUrl;
+        const wsUrl = config.externalUrl + config.wolUrlPath;
         const ini = `[local]
 label="Local Dev"
 available=yes

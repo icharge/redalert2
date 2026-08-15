@@ -135,4 +135,16 @@ describe("http routes", () => {
         expect(res.headers.get("Access-Control-Allow-Credentials")).toBe("true");
         expect(res.headers.get("Access-Control-Allow-Headers")).toContain("X-CSRF-Token");
     });
+
+    test("servers.ini respects EXTERNAL_URL and WOL_URL_PATH", async () => {
+        const config = loadConfig({ EXTERNAL_URL: "wss://game.example.com", WOL_URL_PATH: "/wol" });
+        const storage = makeTestStorage();
+        const accounts = new AccountStore(storage, config);
+        const sessions = new SessionManager(storage, config.sessionTtlSeconds);
+        const res = await handleHttp(new Request("http://localhost/servers.ini"), accounts, sessions, config);
+        const text = await res.text();
+        expect(text).toContain('wolUrl="wss://game.example.com/wol"');
+        expect(text).toContain('apiLoginUrl="https://game.example.com/login"');
+        expect(text).toContain('apiRegUrl="https://game.example.com/register"');
+    });
 });

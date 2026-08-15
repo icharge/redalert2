@@ -17,6 +17,7 @@ export interface ServerConfig {
     freshAccountAgeSeconds: number;
     gservUrlPath: string;
     gservId: string;
+    wolUrlPath: string;
     expectedModHash?: string;
     pingIntervalSeconds: number;
     corsAllowedOrigins: string[];
@@ -44,6 +45,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
         freshAccountAgeSeconds: Number(env.FRESH_ACCOUNT_AGE_SECONDS ?? 24 * 60 * 60),
         gservUrlPath,
         gservId: env.GSERV_ID ?? "gs1",
+        wolUrlPath: env.WOL_URL_PATH ?? "",
         expectedModHash: env.EXPECTED_MOD_HASH || undefined,
         pingIntervalSeconds: Number(env.PING_INTERVAL_SECONDS ?? 30),
         corsAllowedOrigins: env.CORS_ALLOWED_ORIGINS

@@ -67,6 +67,7 @@ bun run smoke        # smoke + two-player + gserv tests over real WebSockets
 | `FRESH_ACCOUNT_AGE_SECONDS` | `86400` | Accounts younger than this are "fresh" (cannot invite to a party). |
 | `GSERV_URL_PATH` | `/gserv` | Path of the match-relay endpoint. |
 | `GSERV_ID` | `gs1` | gserv id reported in `GSERV` messages. |
+| `WOL_URL_PATH` | *(empty)* | Extra path suffix for the WOL WebSocket URL reported in `/servers.ini` (e.g. `/wol` behind a reverse proxy). The server accepts the WOL protocol on any path that is not `GSERV_URL_PATH`. |
 | `PING_INTERVAL_SECONDS` | `30` | Server→client `PING` interval (measures player pings). |
 | `STORAGE` | `sqlite` | Storage backend for accounts/sessions: `sqlite` or `memory`. |
 | `DB_PATH` | `server/data/ra2web.sqlite` | SQLite database file; `:memory:` uses an in-memory SQLite DB. |
@@ -92,6 +93,28 @@ apiRegUrl="http://127.0.0.1:9090/register"
 `wolUrl` is used as-is by `IrcConnection` (`new WebSocket(url)`), so it must include the
 `ws://`/`wss://` scheme. From an `http://` dev origin, `ws://` works; from an `https://`
 origin you need TLS (terminate `wss://` in front of the server).
+
+## Reverse proxy (nginx)
+
+A ready-to-adapt config lives in [`nginx.conf`](nginx.conf) that terminates TLS,
+proxies the WebSocket endpoints, and serves the built client:
+
+```sh
+cd server && SERVER_HOST=127.0.0.1 \
+  EXTERNAL_URL=wss://game.example.com \
+  WOL_URL_PATH=/wol \
+  CORS_ALLOWED_ORIGINS=https://game.example.com \
+  bun run dev
+```
+
+- `EXTERNAL_URL` is the public `wss://` base; the server uses it for the gserv URL in
+  `STARTG` and to generate `/servers.ini`.
+- `WOL_URL_PATH=/wol` places the WOL WebSocket at `wss://game.example.com/wol`, so the
+  static root can serve the client without conflicting with the `/` location.
+- Point the client's `config.ini` `serversUrl` at `https://game.example.com/servers.ini`.
+
+`/cdn/*` paths in the client config are **not** served by this server or the sample
+nginx config; add locations for them (or an existing CDN) as needed.
 
 ## Cross-origin (CORS)
 
