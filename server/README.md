@@ -65,6 +65,7 @@ bun run smoke        # smoke + two-player + gserv tests over real WebSockets
 | `GSERV_URL_PATH` | `/gserv` | Path of the match-relay endpoint. |
 | `GSERV_ID` | `gs1` | gserv id reported in `GSERV` messages. |
 | `PING_INTERVAL_SECONDS` | `30` | Server→client `PING` interval (measures player pings). |
+| `CORS_ALLOWED_ORIGINS` | `*` | Comma-separated allowed browser origins for the HTTP endpoints **and** WebSocket upgrades. With a specific list, matching origins are echoed back with `Access-Control-Allow-Credentials: true` and other origins (including WebSocket handshakes) are rejected with `403`. |
 
 ## Pointing the game client at it
 
@@ -86,6 +87,20 @@ apiRegUrl="http://127.0.0.1:9090/register"
 `wolUrl` is used as-is by `IrcConnection` (`new WebSocket(url)`), so it must include the
 `ws://`/`wss://` scheme. From an `http://` dev origin, `ws://` works; from an `https://`
 origin you need TLS (terminate `wss://` in front of the server).
+
+## Cross-origin (CORS)
+
+The HTTP endpoints and WebSocket endpoints send CORS headers so the client can run from
+a different origin (e.g. the Vite dev server on `http://localhost:5173`).
+
+- Default (`CORS_ALLOWED_ORIGINS=*`): every origin is allowed; no credentials.
+- Restricted (e.g. `CORS_ALLOWED_ORIGINS=http://localhost:5173`): matching origins are
+  echoed with `Access-Control-Allow-Credentials: true`; unknown origins get no
+  `Access-Control-Allow-Origin` header on HTTP and are rejected with `403` on WebSocket
+  upgrades.
+
+Preflight (`OPTIONS`) is handled for `Content-Type` and `X-CSRF-Token` request headers
+(the CSRF header the client's realm auth flow uses). Responses include `Vary: Origin`.
 
 ## Protocol summary
 

@@ -106,7 +106,18 @@ export class WolServer {
         }
     }
 
-    handleMessage(user: ServerUser, line: string): void {
+    handleMessage(user: ServerUser, message: string | Uint8Array): void {
+        if (typeof message !== "string") {
+            return;
+        }
+        for (const line of message.split(/\r?\n/)) {
+            if (line.length) {
+                this.handleLine(user, line);
+            }
+        }
+    }
+
+    private handleLine(user: ServerUser, line: string): void {
         const parts = line.split(" ");
         const cmd = parts[0].toLowerCase();
         const args = parts.slice(1);

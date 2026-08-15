@@ -49,7 +49,15 @@ export class GservServer {
             this.handleBinary(client, new Uint8Array(message));
             return;
         }
-        const parts = message.split(" ");
+        for (const line of message.split(/\r?\n/)) {
+            if (line.length) {
+                this.handleLine(client, line);
+            }
+        }
+    }
+
+    private handleLine(client: GservClient, line: string): void {
+        const parts = line.split(" ");
         const cmd = parts[0].toLowerCase();
         switch (cmd) {
             case "ping": {
@@ -84,7 +92,7 @@ export class GservServer {
                 this.handleTaunt(client, parts);
                 break;
             case "privmsg":
-                this.handlePrivmsg(client, message);
+                this.handlePrivmsg(client, line);
                 break;
             default:
                 break;

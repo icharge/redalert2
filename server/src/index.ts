@@ -6,6 +6,7 @@ import { ServerUser } from "./server/ServerUser";
 import { GservServer, GservClient } from "./gserv/GservServer";
 import { GservManager } from "./gserv/GservManager";
 import { handleHttp } from "./http/routes";
+import { isOriginAllowed } from "./http/cors";
 
 interface WsData {
     target: "wol" | "gserv";
@@ -27,6 +28,9 @@ const server = Bun.serve<WsData>({
     port: config.port,
     fetch(req, srv) {
         if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
+            if (!isOriginAllowed(config, req)) {
+                return new Response("Forbidden", { status: 403 });
+            }
             const url = new URL(req.url);
             const target: WsData["target"] = url.pathname.startsWith(config.gservUrlPath) ? "gserv" : "wol";
             const upgraded = srv.upgrade(req, { data: { target } });

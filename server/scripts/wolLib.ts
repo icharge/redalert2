@@ -19,7 +19,7 @@ export function makeClient(wsUrl: string): WolTestClient {
         const data = String(event.data).replace(/\r?\n$/, "");
         const parts = data.split(" ");
         if (parts[0]?.toLowerCase() === "ping") {
-            ws.send(`PONG ${parts[1] ?? ""}`);
+            ws.send(`PONG ${parts[1] ?? ""}\r\n`);
             return;
         }
         for (const w of [...waiters]) {
@@ -41,7 +41,7 @@ export function makeClient(wsUrl: string): WolTestClient {
     });
     return {
         open: opened,
-        send: (line: string) => ws.send(line),
+        send: (line: string) => ws.send(line + "\r\n"),
         waitFor: (predicate, name) => {
             const index = buffer.findIndex(predicate);
             if (index !== -1) {

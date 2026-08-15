@@ -51,6 +51,31 @@ describe("WolServer login", () => {
         expect(user.authenticated).toBe(false);
         expect(hasLine(socket, line => line.startsWith(":wol-ra2web 378"))).toBe(true);
     });
+
+    test("authenticates a session token sent with CRLF framing (real client)", async () => {
+        const { server, accounts, sessions } = makeServer();
+        await accounts.register("carol", "password123");
+        const token = sessions.create("carol");
+        const socket = new FakeSocket();
+        const user = server.handleOpen(socket);
+        server.handleMessage(user, `cvers 0.83.3 16640\r\n`);
+        server.handleMessage(user, `session ${token}\r\n`);
+        expect(user.authenticated).toBe(true);
+        expect(user.nick).toBe("carol");
+        expect(hasLine(socket, line => line.startsWith(":wol-ra2web 376 carol"))).toBe(true);
+    });
+
+    test("handles multiple CRLF-terminated lines in one frame", async () => {
+        const { server, accounts, sessions } = makeServer();
+        await accounts.register("dave", "password123");
+        const token = sessions.create("dave");
+        const socket = new FakeSocket();
+        const user = server.handleOpen(socket);
+        server.handleMessage(user, `session ${token}\r\njoin #Lob_45_0 zotclot9\r\n`);
+        expect(user.authenticated).toBe(true);
+        expect(user.channels.has(LOBBY)).toBe(true);
+        expect(hasLine(socket, line => /JOIN :\d+,\d+,\d+,\d+ #Lob_45_0$/.test(line))).toBe(true);
+    });
 });
 
 describe("WolServer channels", () => {

@@ -47,7 +47,7 @@ function makeBinaryClient(url: string) {
     });
     return {
         open: opened,
-        send: (data: string | Uint8Array) => ws.send(data),
+        send: (data: string | Uint8Array) => ws.send(typeof data === "string" ? data + "\r\n" : data),
         waitFor: (predicate: (line: string) => boolean, name: string) => {
             const index = buffer.findIndex(predicate);
             if (index !== -1) {

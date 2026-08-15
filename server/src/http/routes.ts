@@ -1,20 +1,12 @@
 import { AccountStore } from "../auth/accountStore";
 import { SessionManager } from "../auth/session";
 import { ServerConfig } from "../config";
-
-const CORS_HEADERS = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
-};
+import { corsHeaders, withCors } from "./cors";
 
 function json(body: unknown, status = 200): Response {
     return new Response(JSON.stringify(body), {
         status,
-        headers: {
-            "Content-Type": "application/json",
-            ...CORS_HEADERS,
-        },
+        headers: { "Content-Type": "application/json" },
     });
 }
 
@@ -26,7 +18,7 @@ export async function handleHttp(req: Request, accounts: AccountStore, sessions:
     const url = new URL(req.url);
 
     if (req.method === "OPTIONS") {
-        return new Response(null, { status: 204, headers: CORS_HEADERS });
+        return new Response(null, { status: 204, headers: corsHeaders(config, req) });
     }
 
     if (req.method === "POST" && url.pathname === "/login") {
@@ -35,19 +27,19 @@ export async function handleHttp(req: Request, accounts: AccountStore, sessions:
             body = await req.json();
         }
         catch {
-            return json({ error: "Invalid request body", errorCode: "invalid_request" }, 400);
+            return withCors(json({ error: "Invalid request body", errorCode: "invalid_request" }, 400), config, req);
         }
         const user = String(body.user ?? "");
         const pass = String(body.pass ?? "");
         const account = await accounts.verify(user, pass);
         if (!account) {
-            return json({ error: "Invalid username or password", errorCode: "invalid_credentials" }, 401);
+            return withCors(json({ error: "Invalid username or password", errorCode: "invalid_credentials" }, 401), config, req);
         }
         if (account.banned) {
-            return json({ error: "Account is banned", errorCode: "banned_from_server" }, 403);
+            return withCors(json({ error: "Account is banned", errorCode: "banned_from_server" }, 403), config, req);
         }
         const sessionToken = sessions.create(account.username);
-        return json({ user: account.username, sessionToken });
+        return withCors(json({ user: account.username, sessionToken }), config, req);
     }
 
     if (req.method === "POST" && url.pathname === "/register") {
@@ -56,17 +48,17 @@ export async function handleHttp(req: Request, accounts: AccountStore, sessions:
             body = await req.json();
         }
         catch {
-            return json({ error: "Invalid request body", errorCode: "invalid_request" }, 400);
+            return withCors(json({ error: "Invalid request body", errorCode: "invalid_request" }, 400), config, req);
         }
         const user = String(body.user ?? "");
         const pass = String(body.pass ?? "");
         try {
             const account = await accounts.register(user, pass);
             const sessionToken = sessions.create(account.username);
-            return json({ user: account.username, sessionToken });
+            return withCors(json({ user: account.username, sessionToken }), config, req);
         }
         catch (error) {
-            return json({ error: String((error as Error).message), errorCode: "registration_failed" }, 400);
+            return withCors(json({ error: String((error as Error).message), errorCode: "registration_failed" }, 400), config, req);
         }
     }
 
@@ -81,17 +73,12 @@ wolUrl="${wsUrl}"
 apiLoginUrl="${baseUrl}/login"
 apiRegUrl="${baseUrl}/register"
 `;
-        return new Response(ini, {
-            headers: {
-                "Content-Type": "text/plain",
-                ...CORS_HEADERS,
-            },
-        });
+        return withCors(new Response(ini, { headers: { "Content-Type": "text/plain" } }), config, req);
     }
 
     if (req.method === "GET" && url.pathname === "/health") {
-        return json({ status: "ok", accounts: accounts.size(), sessions: sessions.size() });
+        return withCors(json({ status: "ok", accounts: accounts.size(), sessions: sessions.size() }), config, req);
     }
 
-    return new Response("Not Found", { status: 404, headers: CORS_HEADERS });
+    return withCors(new Response("Not Found", { status: 404 }), config, req);
 }

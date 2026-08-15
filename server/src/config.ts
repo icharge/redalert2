@@ -16,6 +16,7 @@ export interface ServerConfig {
     gservId: string;
     expectedModHash?: string;
     pingIntervalSeconds: number;
+    corsAllowedOrigins: string[];
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env as Record<string, string | undefined>): ServerConfig {
@@ -40,5 +41,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
         gservId: env.GSERV_ID ?? "gs1",
         expectedModHash: env.EXPECTED_MOD_HASH || undefined,
         pingIntervalSeconds: Number(env.PING_INTERVAL_SECONDS ?? 30),
+        corsAllowedOrigins: env.CORS_ALLOWED_ORIGINS
+            ? env.CORS_ALLOWED_ORIGINS.split(",").map(s => s.trim()).filter(Boolean)
+            : ["*"],
     };
 }
