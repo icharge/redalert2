@@ -136,16 +136,27 @@ export class GservServer {
             return;
         }
         const gameId = parts[1];
-        const timestamp = Number(parts[2]);
-        const ticket = parts[3];
-        const info = this.manager.validateTicket(ticket);
+        const version = parts[2];
+        const modHash = parts[3];
         const instance = gameId ? this.manager.get(gameId) : undefined;
-        if (!info || !instance || info.gameId !== gameId || info.timestamp !== timestamp) {
+        if (!instance) {
             client.socket.send(`:${this.serverName} ${Code.RPL_INSTANCE_NONEXISTENT} ${client.nick} :no such instance\r\n`);
             return;
         }
         if (instance.started) {
             client.socket.send(`:${this.serverName} ${Code.RPL_INSTANCE_ALREADY_STARTED} ${client.nick} :instance already started\r\n`);
+            return;
+        }
+        if (version && version.split(".").slice(0, 2).join(".") !== this.config.gameVersion.split(".").slice(0, 2).join(".")) {
+            client.socket.send(`:${this.serverName} ${Code.RPL_INSTANCE_VERS_MISMATCH} ${client.nick} :version mismatch\r\n`);
+            return;
+        }
+        if (this.config.expectedModHash !== undefined && modHash !== this.config.expectedModHash) {
+            client.socket.send(`:${this.serverName} ${Code.RPL_INSTANCE_VERS_MISMATCH} ${client.nick} :mod hash mismatch\r\n`);
+            return;
+        }
+        if (!instance.tickets.has(client.nick)) {
+            client.socket.send(`:${this.serverName} ${Code.RPL_INSTANCE_NOT_ALLOWED} ${client.nick} :not allowed\r\n`);
             return;
         }
         client.instance = instance;

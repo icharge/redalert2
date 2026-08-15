@@ -508,17 +508,8 @@ export class GameScreen extends RootScreen {
             await this.gservCon.connect(params.gservUrl);
             await this.gservCon.cvers(this.engineVersion);
             await this.gservCon.login(params.ticket, params.playerName);
-            if (params.create) {
-                const serializedOpts = this.gameOptsSerializer.serializeOptions(params.gameOpts);
-                const { gameId, timestamp } = params;
-                await this.gservCon.createGame(gameId, timestamp, serializedOpts, this.engineVersion, this.engineModHash, params.createPrivateGame);
-                console.log(`Created game instance with id ${params.gameId}.`);
-                this.localPrefs.removeItem(StorageKey.LastConnection);
-            }
-            else {
-                await this.joinGame(params.gameId, 5, cancellationToken);
-                console.log('Joined game instance with id ' + params.gameId);
-            }
+            await this.joinGame(params.gameId, 5, cancellationToken);
+            console.log('Joined game instance with id ' + params.gameId);
             const gameOptsData = await this.gservCon.gameOpts();
             return this.gameOptsParser.parseOptions(gameOptsData);
         }
@@ -1113,7 +1104,7 @@ export class GameScreen extends RootScreen {
         this.playerUi.init?.(hud);
         this.disposables.add(this.playerUi, () => this.playerUi = undefined);
         if (this.usesServerConnection()) {
-            const chatNetHandler = new ChatNetHandler(this.gservCon, this.wolService, messageList, chatHistory, new ChatMessageFormat(this.strings, localPlayer.name), localPlayer, game, this.replayRecorderInstance, this.mutedPlayers ?? new Set<string>());
+            const chatNetHandler = new ChatNetHandler(this.gservCon, this.wolService.getConnection(), messageList, chatHistory, new ChatMessageFormat(this.strings, localPlayer.name), localPlayer, game, this.replayRecorderInstance, this.mutedPlayers ?? new Set<string>());
             chatNetHandler.init();
             const worldInteraction = this.playerUi.worldInteraction;
             const chatTypingHandler = new ChatTypingHandler(worldInteraction.keyboardHandler, worldInteraction.arrowScrollHandler, messageList, chatHistory);
@@ -1370,6 +1361,9 @@ export class GameScreen extends RootScreen {
     private handleGameError(error: any, message: string, game: any, debugDataProvider?: () => Promise<any>, isCustomMap?: boolean): void {
         const replay = this.replay;
         if (replay) {
+            replay.name += " (crashdump)";
+            replay.debugInfo = error instanceof Error ? error.stack : error;
+            replay.finish(game.currentTick);
             this.saveReplay(replay);
         }
         this.handleError(error, message, isCustomMap);

@@ -94,7 +94,7 @@ async function main(): Promise<void> {
     if (!match) {
         process.exit(1);
     }
-    const [, gservUrl, gameId, timestamp, ticket] = match;
+    const [, gservUrl, gameId, , ticket] = match;
 
     const gserv = makeBinaryClient(gservUrl);
     await gserv.open;
@@ -107,7 +107,7 @@ async function main(): Promise<void> {
     const loggedIn = await gserv.waitFor(line => line.includes(" 100 "), "gserv ticket 100");
     check("gserv ticket logged in (100)", / 100 /.test(loggedIn), loggedIn);
 
-    gserv.send(`join ${gameId} ${timestamp} ${ticket}`);
+    gserv.send(`join ${gameId} 0.83.2 `);
     const connected = await gserv.waitFor(line => line.includes(" 400 "), "gserv join 400");
     check("gserv join instance connected (400)", / 400 /.test(connected), connected);
 

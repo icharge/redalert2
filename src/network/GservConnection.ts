@@ -178,8 +178,8 @@ export class GservConnection {
         this.serverName = replies[0].raw.match(/^:([^\s]+)/)?.[1] || "";
     }
 
-    async joinGame(gameId: string, timestamp: number, ticket: string): Promise<void> {
-        const replies = await this.con.sendCommand(`join ${gameId} ${timestamp} ` + ticket, {
+    async joinGame(gameId: string, version: string, modHash: string): Promise<void> {
+        const replies = await this.con.sendCommand(`join ${gameId} ${version} ${modHash}`, {
             replyCodes: [
                 GservCode.RPL_INSTANCE_CONNECTED,
                 GservCode.RPL_INSTANCE_NONEXISTENT,

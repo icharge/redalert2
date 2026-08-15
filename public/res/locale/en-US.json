@@ -381,5 +381,6 @@
     "TXT_LOB_6": "French Command Post",
     "TXT_LOB_7": "Taiwanese Barracks",
     "TXT_LOB_8": "Intelligence Command Center",
-    "TXT_LOBBY": "Lobby"
+    "TXT_LOBBY": "Lobby",
+    "TXT_CONNECTING": "Connecting..."
 }
