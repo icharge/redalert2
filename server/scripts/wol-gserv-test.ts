@@ -122,6 +122,8 @@ async function main(): Promise<void> {
     gserv.send(actions);
 
     gserv.send(`loaded 100`);
+    const netRate = await gserv.waitFor(line => line.includes(" 802 "), "gserv net rate 802");
+    check("gserv sends net rate (802)", / 802 .*:33,0/.test(netRate), netRate);
     const gameStart = await gserv.waitFor(line => line.includes(" 700 "), "gserv game start 700");
     check("gserv signals game start (700)", / 700 /.test(gameStart), gameStart);
 

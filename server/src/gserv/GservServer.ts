@@ -195,6 +195,7 @@ export class GservServer {
             instance.started = true;
             this.log.info(`instance ${instance.gameId} started`);
             for (const member of members.values()) {
+                member.socket.send(`:${this.serverName} ${Code.RPL_NET_RATE} ${member.nick} :${this.config.netRateMs},0\r\n`);
                 member.socket.send(`:${this.serverName} ${Code.RPL_GAME_START} ${member.nick} :start\r\n`);
             }
         }
