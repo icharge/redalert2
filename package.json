@@ -10,6 +10,7 @@
     "build": "bun --bun vite build --sourcemap",
     "build:dist": "bun --bun vite build --sourcemap",
     "build:prod": "bun --bun vite build --mode single && bun --bun tsc -p tsconfig.build.json --noEmit",
+    "build:prod:map": "bun --bun vite build --mode single --sourcemap && bun --bun tsc -p tsconfig.build.json --noEmit",
     "test": "bun test",
     "typecheck:entry": "bun --bun tsc -p tsconfig.build.json",
     "preview": "bun --bun vite preview",
