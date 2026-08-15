@@ -8,6 +8,7 @@ import { ServerUser } from "./server/ServerUser";
 import { GservServer, GservClient } from "./gserv/GservServer";
 import { GservManager } from "./gserv/GservManager";
 import { handleHttp } from "./http/routes";
+import { resetRateLimiters } from "./http/routes";
 import { isOriginAllowed } from "./http/cors";
 
 interface WsData {
@@ -97,6 +98,52 @@ function shutdown(signal: string): void {
     storage.close();
     process.exit(0);
 }
+
+// Settings that are fixed when the sockets bind or the storage opens; they
+// require a full restart to change.
+const RESTART_ONLY_KEYS = [
+    "host",
+    "port",
+    "externalUrl",
+    "gservUrlPath",
+    "maxPayloadBytes",
+    "storageEngine",
+    "dbPath",
+] as const;
+
+// Hot reload for `systemctl reload` / `kill -HUP`: re-reads env + .env files
+// and applies changes to the live config object. Existing WebSocket
+// connections, lobby sessions and in-progress game instances are kept as-is;
+// only settings read at connection/action time change behavior (motd, channel
+// pass, mod hash, net rate, rate limits, ping interval, log level, CORS).
+function reload(signal: string): void {
+    const fresh = loadConfig();
+    const restartOnly: string[] = [];
+    for (const key of RESTART_ONLY_KEYS) {
+        if (fresh[key] !== config[key]) {
+            restartOnly.push(`${key} (${String(config[key])} -> ${String(fresh[key])})`);
+        }
+    }
+    if (fresh.logLevel !== config.logLevel) {
+        log.level = fresh.logLevel;
+        wol.log.level = fresh.logLevel;
+        gserv.log.level = fresh.logLevel;
+    }
+    const pingChanged = fresh.pingIntervalSeconds !== config.pingIntervalSeconds;
+    Object.assign(config, fresh);
+    resetRateLimiters(config);
+    if (pingChanged) {
+        wol.refreshPingLoop();
+    }
+    if (restartOnly.length) {
+        log.warn(`reload: ${restartOnly.join("; ")} require a full restart to apply`);
+    }
+    log.info(`config reloaded (${signal}); connections and game sessions were kept`);
+}
+
 process.once("SIGINT", () => shutdown("SIGINT"));
 process.once("SIGTERM", () => shutdown("SIGTERM"));
+if (process.platform !== "win32") {
+    process.on("SIGHUP", () => reload("SIGHUP"));
+}
 

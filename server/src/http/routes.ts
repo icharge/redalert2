@@ -37,6 +37,11 @@ function limitersFor(config: ServerConfig): { login: FixedWindowLimiter; registe
     return entry;
 }
 
+// Drop cached rate-limit windows so a config reload takes effect immediately.
+export function resetRateLimiters(config: ServerConfig): void {
+    limitersByConfig.delete(config);
+}
+
 export async function handleHttp(req: Request, accounts: AccountStore, sessions: SessionManager, config: ServerConfig, log: Logger = makeLogger("error", "http")): Promise<Response> {
     const url = new URL(req.url);
     const ip = remoteOf(req);

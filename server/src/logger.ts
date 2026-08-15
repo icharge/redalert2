@@ -17,6 +17,7 @@ export function parseLogLevel(value: string | undefined): LogLevel {
 }
 
 export interface Logger {
+    level: LogLevel;
     debug(message: string, ...args: unknown[]): void;
     info(message: string, ...args: unknown[]): void;
     warn(message: string, ...args: unknown[]): void;
@@ -24,7 +25,13 @@ export interface Logger {
 }
 
 export function makeLogger(level: LogLevel, prefix: string): Logger {
-    const threshold = LEVELS[level];
+    const logger: Logger = {
+        level,
+        debug: () => undefined,
+        info: () => undefined,
+        warn: () => undefined,
+        error: () => undefined,
+    };
     const format = (args: unknown[]): string => {
         if (!args.length) {
             return "";
@@ -32,7 +39,7 @@ export function makeLogger(level: LogLevel, prefix: string): Logger {
         return " " + args.map(a => (typeof a === "string" ? a : JSON.stringify(a))).join(" ");
     };
     const write = (lv: LogLevel, message: string, args: unknown[]): void => {
-        if (LEVELS[lv] < threshold) {
+        if (LEVELS[lv] < LEVELS[logger.level]) {
             return;
         }
         const line = `[${new Date().toISOString()}] [${prefix}] ${message}${format(args)}`;
@@ -46,10 +53,9 @@ export function makeLogger(level: LogLevel, prefix: string): Logger {
             console.log(line);
         }
     };
-    return {
-        debug: (message, ...args) => write("debug", message, args),
-        info: (message, ...args) => write("info", message, args),
-        warn: (message, ...args) => write("warn", message, args),
-        error: (message, ...args) => write("error", message, args),
-    };
+    logger.debug = (message, ...args) => write("debug", message, args);
+    logger.info = (message, ...args) => write("info", message, args);
+    logger.warn = (message, ...args) => write("warn", message, args);
+    logger.error = (message, ...args) => write("error", message, args);
+    return logger;
 }

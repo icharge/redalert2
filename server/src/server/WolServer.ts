@@ -76,6 +76,14 @@ export class WolServer {
         }
     }
 
+    // Re-create the ping interval with the current config value (used after a
+    // config reload). Pending pings are unaffected: the next tick simply uses
+    // the new interval.
+    refreshPingLoop(): void {
+        this.stopPingLoop();
+        this.startPingLoop();
+    }
+
     private pingAll(): void {
         const now = Date.now();
         const timeoutMs = this.config.pingIntervalSeconds * 3 * 1000;
