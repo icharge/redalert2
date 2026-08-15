@@ -1,4 +1,5 @@
 import { loadConfig, ServerConfig } from "./config";
+import { createStorage } from "./storage";
 import { AccountStore } from "./auth/accountStore";
 import { SessionManager } from "./auth/session";
 import { WolServer } from "./server/WolServer";
@@ -15,8 +16,9 @@ interface WsData {
 }
 
 const config = loadConfig();
-const accounts = new AccountStore(config);
-const sessions = new SessionManager(config.sessionTtlSeconds);
+const storage = createStorage(config);
+const accounts = new AccountStore(storage, config);
+const sessions = new SessionManager(storage, config.sessionTtlSeconds);
 const gservManager = new GservManager({ id: config.gservId, url: config.externalUrl + config.gservUrlPath });
 const wol = new WolServer(config, sessions, accounts, gservManager);
 const gserv = new GservServer(config, gservManager);

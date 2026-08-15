@@ -1,3 +1,4 @@
+import { Storage } from "../storage/Storage";
 import { randomHex } from "../util/random";
 
 export interface Session {
@@ -7,15 +8,16 @@ export interface Session {
 }
 
 export class SessionManager {
-    private sessions = new Map<string, Session>();
-
-    constructor(private ttlSeconds: number) {
+    constructor(
+        private storage: Storage,
+        private ttlSeconds: number,
+    ) {
     }
 
     create(username: string): string {
-        this.revokeByUser(username);
+        this.storage.deleteSessionsByUser(username);
         const token = randomHex(32);
-        this.sessions.set(token, { token, username, createdAt: Date.now() });
+        this.storage.insertSession(token, username, Date.now());
         return token;
     }
 
@@ -23,30 +25,26 @@ export class SessionManager {
         if (!token) {
             return undefined;
         }
-        const session = this.sessions.get(token);
+        const session = this.storage.getSession(token);
         if (!session) {
             return undefined;
         }
         if (Date.now() - session.createdAt > this.ttlSeconds * 1000) {
-            this.sessions.delete(token);
+            this.storage.deleteSession(token);
             return undefined;
         }
         return session;
     }
 
     revoke(token: string): void {
-        this.sessions.delete(token);
+        this.storage.deleteSession(token);
     }
 
     revokeByUser(username: string): void {
-        for (const [token, session] of this.sessions) {
-            if (session.username === username) {
-                this.sessions.delete(token);
-            }
-        }
+        this.storage.deleteSessionsByUser(username);
     }
 
     size(): number {
-        return this.sessions.size;
+        return this.storage.countSessions();
     }
 }

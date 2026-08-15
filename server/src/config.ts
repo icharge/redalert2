@@ -1,3 +1,6 @@
+import path from "node:path";
+import { StorageEngine } from "./storage/Storage";
+
 export interface ServerConfig {
     host: string;
     port: number;
@@ -17,6 +20,8 @@ export interface ServerConfig {
     expectedModHash?: string;
     pingIntervalSeconds: number;
     corsAllowedOrigins: string[];
+    storageEngine: StorageEngine;
+    dbPath: string;
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env as Record<string, string | undefined>): ServerConfig {
@@ -44,5 +49,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
         corsAllowedOrigins: env.CORS_ALLOWED_ORIGINS
             ? env.CORS_ALLOWED_ORIGINS.split(",").map(s => s.trim()).filter(Boolean)
             : ["*"],
+        storageEngine: (env.STORAGE ?? "sqlite") === "memory" ? "memory" : "sqlite",
+        dbPath: env.DB_PATH ?? path.join(import.meta.dir, "..", "data", "ra2web.sqlite"),
     };
 }

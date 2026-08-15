@@ -3,11 +3,13 @@ import { handleHttp } from "../src/http/routes";
 import { AccountStore } from "../src/auth/accountStore";
 import { SessionManager } from "../src/auth/session";
 import { loadConfig } from "../src/config";
+import { makeTestStorage } from "./helpers";
 
 function make() {
     const config = loadConfig({});
-    const accounts = new AccountStore(config);
-    const sessions = new SessionManager(config.sessionTtlSeconds);
+    const storage = makeTestStorage();
+    const accounts = new AccountStore(storage, config);
+    const sessions = new SessionManager(storage, config.sessionTtlSeconds);
     return { config, accounts, sessions };
 }
 

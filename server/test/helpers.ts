@@ -1,4 +1,10 @@
 import { SocketLike } from "../src/server/SocketLike";
+import { createStorage } from "../src/storage";
+import { Storage } from "../src/storage/Storage";
+
+export function makeTestStorage(): Storage {
+    return createStorage({ storageEngine: "memory", dbPath: ":memory:" });
+}
 
 export class FakeSocket implements SocketLike {
     readyState = 1;

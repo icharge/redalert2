@@ -1,51 +1,37 @@
-export interface Account {
-    username: string;
-    passwordHash: string;
-    createdAt: number;
-    banned: boolean;
-}
+import { AccountLimits, Account } from "./types";
+import { Storage } from "../storage/Storage";
 
-export interface AccountLimits {
-    minUsernameLength: number;
-    maxUsernameLength: number;
-    minPasswordLength: number;
-    maxPasswordLength: number;
-    freshAccountAgeSeconds: number;
-}
+export type { Account, AccountLimits } from "./types";
 
 export class AccountStore {
-    private accounts = new Map<string, Account>();
-
-    constructor(private limits: AccountLimits) {
+    constructor(
+        private storage: Storage,
+        private limits: AccountLimits,
+    ) {
     }
 
     has(username: string): boolean {
-        return this.accounts.has(username.toLowerCase());
+        return this.storage.accountExists(username);
     }
 
     async register(username: string, password: string): Promise<Account> {
-        const key = username.toLowerCase();
-        if (key.length < this.limits.minUsernameLength || key.length > this.limits.maxUsernameLength) {
+        if (username.toLowerCase().length < this.limits.minUsernameLength || username.toLowerCase().length > this.limits.maxUsernameLength) {
             throw new Error("bad_username");
         }
         if (password.length < this.limits.minPasswordLength || password.length > this.limits.maxPasswordLength) {
             throw new Error("bad_password");
         }
-        if (this.accounts.has(key)) {
+        if (this.storage.accountExists(username)) {
             throw new Error("username_taken");
         }
-        const account: Account = {
-            username,
-            passwordHash: await Bun.password.hash(password),
-            createdAt: Date.now(),
-            banned: false,
-        };
-        this.accounts.set(key, account);
-        return account;
+        const passwordHash = await Bun.password.hash(password);
+        const createdAt = Date.now();
+        this.storage.createAccount(username, passwordHash, createdAt);
+        return { username, passwordHash, createdAt, banned: false };
     }
 
     async verify(username: string, password: string): Promise<Account | undefined> {
-        const account = this.accounts.get(username.toLowerCase());
+        const account = this.storage.getAccount(username);
         if (!account) {
             return undefined;
         }
@@ -56,7 +42,7 @@ export class AccountStore {
     }
 
     get(username: string): Account | undefined {
-        return this.accounts.get(username.toLowerCase());
+        return this.storage.getAccount(username);
     }
 
     isFresh(account: Account): boolean {
@@ -64,6 +50,6 @@ export class AccountStore {
     }
 
     size(): number {
-        return this.accounts.size;
+        return this.storage.countAccounts();
     }
 }

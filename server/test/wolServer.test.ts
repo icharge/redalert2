@@ -6,12 +6,12 @@ import { SessionManager } from "../src/auth/session";
 import { GservManager } from "../src/gserv/GservManager";
 import { loadConfig } from "../src/config";
 import { escapeChannelName } from "../src/protocol/lineCodec";
-import { FakeSocket, hasLine } from "./helpers";
+import { FakeSocket, hasLine, makeTestStorage } from "./helpers";
 
 function makeServer() {
     const config = loadConfig({});
-    const accounts = new AccountStore(config);
-    const sessions = new SessionManager(config.sessionTtlSeconds);
+    const accounts = new AccountStore(makeTestStorage(), config);
+    const sessions = new SessionManager(makeTestStorage(), config.sessionTtlSeconds);
     const gservs = new GservManager({ id: "gs1", url: "ws://test.local/gserv" });
     const server = new WolServer(config, sessions, accounts, gservs);
     return { config, accounts, sessions, gservs, server };

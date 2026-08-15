@@ -68,6 +68,8 @@ bun run smoke        # smoke + two-player + gserv tests over real WebSockets
 | `GSERV_URL_PATH` | `/gserv` | Path of the match-relay endpoint. |
 | `GSERV_ID` | `gs1` | gserv id reported in `GSERV` messages. |
 | `PING_INTERVAL_SECONDS` | `30` | Server→client `PING` interval (measures player pings). |
+| `STORAGE` | `sqlite` | Storage backend for accounts/sessions: `sqlite` or `memory`. |
+| `DB_PATH` | `server/data/ra2web.sqlite` | SQLite database file; `:memory:` uses an in-memory SQLite DB. |
 | `CORS_ALLOWED_ORIGINS` | `*` | Comma-separated allowed browser origins for the HTTP endpoints **and** WebSocket upgrades. With a specific list, matching origins are echoed back with `Access-Control-Allow-Credentials: true` and other origins (including WebSocket handshakes) are rejected with `403`. |
 
 ## Pointing the game client at it
@@ -166,10 +168,23 @@ server/
 └── tsconfig.json
 ```
 
+## Storage
+
+Accounts and sessions are persisted through a pluggable `Storage` backend
+(`server/src/storage/`). Implement the `Storage` interface and register it in
+`createStorage` to add a backend.
+
+| Backend | `STORAGE` | Notes |
+|---------|-----------|-------|
+| SQLite | `sqlite` (default) | File-backed (`DB_PATH`), survives restarts; `bun:sqlite` + WAL. |
+| In-memory | `memory` | Resets on restart; useful for tests / ephemeral dev. |
+
+Passwords are hashed with `Bun.password.hash` (never stored in plaintext).
+
 ## Known limitations / roadmap
 
-- Accounts and sessions are **in-memory** — restarting the server loses them. Swap
-  `AccountStore`/`SessionManager` for a database when needed.
+- Accounts/sessions are persisted via SQLite; lobby state (channels, games, parties)
+  is still in-memory and resets on restart.
 - Quick-match builds a **default gameopts** (no map selection or real map transfer) and
   pairs 2 units per queue type; ranked/ladder integration is not implemented.
 - The gserv relays turn actions but performs no simulation or validation (as the client
