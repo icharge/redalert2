@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { MeshLine, MeshLineMaterial } from 'three.meshline';
 import { Coords } from '@/game/Coords';
-import { getMeshLineResolution } from '@/engine/renderable/fx/MeshLineResolution';
+import { getMeshLineResolution, getMeshLineWidth } from '@/engine/renderable/fx/MeshLineResolution';
 interface WaypointVertex {
     enabled: boolean;
     position: THREE.Vector3;
@@ -30,6 +30,7 @@ export class WaypointLine {
     private fgLineMesh?: THREE.Mesh;
     private bgLineMesh?: THREE.Mesh;
     private lineHeadMeshes?: THREE.Points[];
+    private meshLineWidths: [number, number] = [2, 4];
     private lastUpdateMillis?: number;
     private cameraHash?: string;
     constructor(linePath: LinePath, camera: Camera) {
@@ -82,8 +83,10 @@ export class WaypointLine {
         const cameraHash = this.camera.top + "_" + this.camera.right;
         if (cameraHash !== this.cameraHash) {
             this.cameraHash = cameraHash;
-            [this.fgLineMesh!, this.bgLineMesh!].forEach((mesh) => {
-                (mesh.material as any).uniforms.resolution.value.copy(this.computeResolution(this.camera));
+            [this.fgLineMesh!, this.bgLineMesh!].forEach((mesh, index) => {
+                const material = mesh.material as any;
+                material.uniforms.resolution.value.copy(this.computeResolution(this.camera));
+                material.uniforms.lineWidth.value = getMeshLineWidth(this.camera, this.meshLineWidths[index]);
             });
         }
         if (this.linePath.verticesNeedUpdate) {
@@ -166,7 +169,7 @@ export class WaypointLine {
     private createFgLineMaterial(color: THREE.Color, lineLength: number): MeshLineMaterial {
         return new MeshLineMaterial({
             color: color,
-            lineWidth: 2,
+            lineWidth: getMeshLineWidth(this.camera, this.meshLineWidths[0]),
             resolution: this.computeResolution(this.camera),
             transparent: true,
             sizeAttenuation: 0,
@@ -177,7 +180,7 @@ export class WaypointLine {
     private createBgLineMaterial(color: THREE.Color): MeshLineMaterial {
         return new MeshLineMaterial({
             color: color,
-            lineWidth: 4,
+            lineWidth: getMeshLineWidth(this.camera, this.meshLineWidths[1]),
             resolution: this.computeResolution(this.camera),
             transparent: true,
             sizeAttenuation: 0,

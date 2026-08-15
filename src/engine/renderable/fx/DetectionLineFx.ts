@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { MeshLine, MeshLineMaterial } from 'three.meshline';
 import { Coords } from '@/game/Coords';
-import { getMeshLineResolution } from '@/engine/renderable/fx/MeshLineResolution';
+import { getMeshLineResolution, getMeshLineWidth } from '@/engine/renderable/fx/MeshLineResolution';
 interface Camera {
     top: number;
     right: number;
@@ -73,6 +73,7 @@ export class DetectionLineFx {
         if (currentCameraHash !== this.cameraHash) {
             this.cameraHash = currentCameraHash;
             (this.lineMesh!.material as MeshLineMaterial).uniforms.resolution.value.copy(this.computeResolution(this.camera));
+            (this.lineMesh!.material as MeshLineMaterial).uniforms.lineWidth.value = getMeshLineWidth(this.camera as unknown as THREE.Camera, 1);
         }
         const material = this.lineMesh!.material as MeshLineMaterial;
         if (this.needsUpdate) {
@@ -109,7 +110,7 @@ export class DetectionLineFx {
     private createLineMaterial(color: THREE.Color, distance: number): MeshLineMaterial {
         return new MeshLineMaterial({
             color: color,
-            lineWidth: 1,
+            lineWidth: getMeshLineWidth(this.camera as unknown as THREE.Camera, 1),
             resolution: this.computeResolution(this.camera),
             transparent: true,
             sizeAttenuation: 0,

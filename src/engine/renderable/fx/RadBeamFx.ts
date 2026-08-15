@@ -2,7 +2,7 @@ import { Coords } from '@/game/Coords';
 import * as THREE from 'three';
 import { MeshLine, MeshLineMaterial } from 'three.meshline';
 import { truncToDecimals } from '@/util/math';
-import { getMeshLineResolution } from '@/engine/renderable/fx/MeshLineResolution';
+import { getMeshLineResolution, getMeshLineWidth } from '@/engine/renderable/fx/MeshLineResolution';
 export class RadBeamFx {
     private camera: THREE.Camera;
     private sourcePos: THREE.Vector3;
@@ -57,7 +57,7 @@ export class RadBeamFx {
         const geometry = this.createLineGeometry(sourcePos, targetPos, this.amplitude);
         const material = new MeshLineMaterial({
             color: this.color.clone(),
-            lineWidth: this.width,
+            lineWidth: getMeshLineWidth(this.camera, this.width),
             resolution: getMeshLineResolution(this.camera),
             transparent: true,
             sizeAttenuation: 0,

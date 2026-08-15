@@ -1,7 +1,7 @@
 import { Coords } from '@/game/Coords';
 import * as THREE from 'three';
 import { MeshLine, MeshLineMaterial } from 'three.meshline';
-import { getMeshLineResolution } from '@/engine/renderable/fx/MeshLineResolution';
+import { getMeshLineResolution, getMeshLineWidth } from '@/engine/renderable/fx/MeshLineResolution';
 interface Container {
     remove(item: LaserFx): void;
 }
@@ -59,7 +59,7 @@ export class LaserFx {
         meshLine.setPoints(points);
         const material = new MeshLineMaterial({
             color: this.color.clone(),
-            lineWidth: this.width,
+            lineWidth: getMeshLineWidth(this.camera, this.width),
             resolution: getMeshLineResolution(this.camera),
             transparent: true,
             sizeAttenuation: 0,

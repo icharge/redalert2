@@ -26,3 +26,16 @@ export function getMeshLineResolution(camera: MeshLineCamera): THREE.Vector2 {
     return new THREE.Vector2(height * aspectRatio, height)
         .multiplyScalar((top * Math.cos(camera.rotation.x)) / Coords.ISO_WORLD_SCALE);
 }
+
+// The production game bundles an older three.meshline whose sizeAttenuation:0
+// shader renders lines at 0.9 * (viewport aspect / cos(ISO_CAMERA_ALPHA)) *
+// lineWidth pixels, while three.meshline@1.4 renders exactly lineWidth pixels.
+// Scale the line width by that factor so this port matches the game's
+// line thickness on screen.
+export function getMeshLineWidth(camera: MeshLineCamera, lineWidth: number): number {
+    const viewportResolution = camera.userData.meshLineResolution;
+    const aspect = viewportResolution?.width && viewportResolution?.height
+        ? viewportResolution.width / viewportResolution.height
+        : (camera.right ?? camera.top ?? 1) / (camera.top ?? 1);
+    return (0.9 * aspect / Math.cos(Coords.ISO_CAMERA_ALPHA)) * lineWidth;
+}

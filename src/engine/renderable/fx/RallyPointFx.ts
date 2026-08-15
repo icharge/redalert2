@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { MeshLine, MeshLineMaterial } from 'three.meshline';
 import { Coords } from '@/game/Coords';
-import { getMeshLineResolution } from '@/engine/renderable/fx/MeshLineResolution';
+import { getMeshLineResolution, getMeshLineWidth } from '@/engine/renderable/fx/MeshLineResolution';
 interface Camera extends THREE.Camera {
     top: number;
     right: number;
@@ -68,6 +68,7 @@ export class RallyPointFx {
                 const material = mesh?.material as MeshLineMaterial | undefined;
                 if (material && (material as any).isMeshLineMaterial) {
                     material.uniforms.resolution.value.copy(this.computeResolution(this.camera));
+                    material.uniforms.lineWidth.value = getMeshLineWidth(this.camera, 2);
                 }
             });
         }
@@ -138,7 +139,7 @@ export class RallyPointFx {
     private createLineMaterial(color: THREE.Color, distance: number): MeshLineMaterial {
         return new MeshLineMaterial({
             color: color,
-            lineWidth: 2,
+            lineWidth: getMeshLineWidth(this.camera, 2),
             resolution: this.computeResolution(this.camera),
             transparent: true,
             sizeAttenuation: 0,
