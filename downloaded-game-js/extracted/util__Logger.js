@@ -1,0 +1,1 @@
+System.register("util/Logger",["js-logger"],function(e,t){"use strict";var i;t&&t.id;return{setters:[function(e){i=e}],execute:function(){e("AppLogger",i)}}}),

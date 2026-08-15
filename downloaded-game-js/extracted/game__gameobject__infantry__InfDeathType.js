@@ -1,0 +1,1 @@
+System.register("game/gameobject/infantry/InfDeathType",[],function(t,e){"use strict";var i;e&&e.id;return{setters:[],execute:function(){var e;(e=i||t("InfDeathType",i={}))[e.None=0]="None",e[e.Gunfire=1]="Gunfire",e[e.Explode=2]="Explode",e[e.ExplodeAlt=3]="ExplodeAlt",e[e.Fire=4]="Fire",e[e.Electro=5]="Electro",e[e.HeadExplode=6]="HeadExplode",e[e.Nuke=7]="Nuke"}}}),

@@ -1,0 +1,1 @@
+System.register("game/trigger/TriggerTarget",[],function(e,t){"use strict";t&&t.id;return{setters:[],execute:function(){}}}),

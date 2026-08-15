@@ -1,0 +1,1 @@
+System.register("game/event/CheerEvent",["game/event/EventType"],function(e,t){"use strict";var i,r;t&&t.id;return{setters:[function(e){i=e}],execute:function(){e("CheerEvent",r=class{constructor(e){this.player=e,this.type=i.EventType.Cheer}})}}}),

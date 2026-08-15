@@ -1,0 +1,1 @@
+System.register("network/gameres/wgameResConfig",[],function(e,t){"use strict";t&&t.id;return{setters:[],execute:function(){e("GAME_RES_RETRY_DURATION_MILLIS",3e5)}}}),

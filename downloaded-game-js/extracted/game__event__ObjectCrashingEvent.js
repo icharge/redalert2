@@ -1,0 +1,1 @@
+System.register("game/event/ObjectCrashingEvent",["game/event/EventType"],function(e,t){"use strict";var i,r;t&&t.id;return{setters:[function(e){i=e}],execute:function(){e("ObjectCrashingEvent",r=class{constructor(e){this.gameObject=e,this.type=i.EventType.ObjectCrashing}})}}}),

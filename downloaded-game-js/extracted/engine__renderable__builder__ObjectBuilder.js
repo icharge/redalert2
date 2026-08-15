@@ -1,0 +1,1 @@
+System.register("engine/renderable/builder/ObjectBuilder",[],function(e,t){"use strict";t&&t.id;return{setters:[],execute:function(){}}}),

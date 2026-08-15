@@ -1,0 +1,1 @@
+System.register("network/WolGameStartAbortReason",[],function(t,e){"use strict";var i;e&&e.id;return{setters:[],execute:function(){var e;(e=i||t("WolGameStartAbortReason",i={}))[e.Failed=0]="Failed",e[e.ServiceUnavailable=1]="ServiceUnavailable",e[e.PlayerLeft=2]="PlayerLeft"}}}),

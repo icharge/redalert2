@@ -1,0 +1,1 @@
+System.register("game/event/InflictDamageEvent",["game/event/EventType"],function(e,t){"use strict";var n,i;t&&t.id;return{setters:[function(e){n=e}],execute:function(){e("InflictDamageEvent",i=class{constructor(e,t,i,r,s){this.target=e,this.attacker=t,this.damageHitPoints=i,this.currentHealth=r,this.prevHealth=s,this.type=n.EventType.InflictDamage}})}}}),

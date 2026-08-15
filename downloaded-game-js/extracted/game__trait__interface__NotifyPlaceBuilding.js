@@ -1,0 +1,1 @@
+System.register("game/trait/interface/NotifyPlaceBuilding",[],function(e,t){"use strict";var i;t&&t.id;return{setters:[],execute:function(){(i||e("NotifyPlaceBuilding",i={})).onPlace=Symbol()}}}),

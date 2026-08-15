@@ -1,0 +1,1 @@
+System.register("data/map/trigger/TriggerAction",[],function(e,t){"use strict";t&&t.id;return{setters:[],execute:function(){}}}),

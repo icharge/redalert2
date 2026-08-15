@@ -1,0 +1,1 @@
+System.register("network/authConfig",[],function(e,t){"use strict";t&&t.id;return{setters:[],execute:function(){e("AUTH_POPUP_COMPLETE_MESSAGE_TYPE","chronodivide.auth.complete"),e("AUTH_CSRF_HEADER_NAME","X-CSRF-Token")}}}),

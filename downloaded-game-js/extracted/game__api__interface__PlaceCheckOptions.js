@@ -1,0 +1,1 @@
+System.register("game/api/interface/PlaceCheckOptions",[],function(e,t){"use strict";t&&t.id;return{setters:[],execute:function(){}}}),

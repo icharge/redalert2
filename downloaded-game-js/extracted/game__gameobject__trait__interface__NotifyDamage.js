@@ -1,0 +1,1 @@
+System.register("game/gameobject/trait/interface/NotifyDamage",[],function(e,t){"use strict";var i;t&&t.id;return{setters:[],execute:function(){(i||e("NotifyDamage",i={})).onDamage=Symbol()}}}),

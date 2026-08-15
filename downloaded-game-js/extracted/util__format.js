@@ -1,0 +1,1 @@
+System.register("util/format",["util/string"],function(e,t){"use strict";var n;t&&t.id;return e("formatTimeDuration",function(e,t=!1){var i=Math.floor(e/3600);e-=3600*i;var r=Math.floor(e/60),s=e-=60*r;return[...i||!t?[i]:[],n.pad(r,"00"),n.pad(s,"00")].join(":")}),{setters:[function(e){n=e}],execute:function(){}}}),

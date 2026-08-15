@@ -1,0 +1,1 @@
+System.register("network/ladder/PlayerProfile",[],function(e,t){"use strict";t&&t.id;return{setters:[],execute:function(){}}}),

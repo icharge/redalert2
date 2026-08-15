@@ -1,0 +1,1 @@
+System.register("engine/EngineType",[],function(t,e){"use strict";var i;e&&e.id;return{setters:[],execute:function(){var e;(e=i||t("EngineType",i={}))[e.AutoDetect=0]="AutoDetect",e[e.TiberianSun=1]="TiberianSun",e[e.Firestorm=2]="Firestorm",e[e.RedAlert2=3]="RedAlert2",e[e.YurisRevenge=4]="YurisRevenge"}}}),

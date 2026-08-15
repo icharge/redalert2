@@ -1,0 +1,1 @@
+System.register("data/map/tag/Tag",[],function(e,t){"use strict";var i;t&&t.id;return{setters:[],execute:function(){e("Tag",i=class{})}}}),

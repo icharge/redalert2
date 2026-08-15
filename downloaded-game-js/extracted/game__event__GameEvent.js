@@ -1,0 +1,1 @@
+System.register("game/event/GameEvent",[],function(e,t){"use strict";t&&t.id;return{setters:[],execute:function(){}}}),

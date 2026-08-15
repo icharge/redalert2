@@ -1,0 +1,1 @@
+System.register("game/gameobject/locomotor/Locomotor",[],function(e,t){"use strict";t&&t.id;return{setters:[],execute:function(){}}}),

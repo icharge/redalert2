@@ -1,0 +1,1 @@
+System.register("game/event/SuperWeaponActivateEvent",["game/event/EventType"],function(e,t){"use strict";var n,i;t&&t.id;return{setters:[function(e){n=e}],execute:function(){e("SuperWeaponActivateEvent",i=class{constructor(e,t,i,r,s){this.target=e,this.owner=t,this.atTile=i,this.atTile2=r,this.noSfxWarning=s,this.type=n.EventType.SuperWeaponActivate}})}}}),

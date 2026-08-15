@@ -1,0 +1,1 @@
+System.register("gui/screen/mainMenu/login/MultiplayerLoginParams",[],function(e,t){"use strict";t&&t.id;return{setters:[],execute:function(){}}}),

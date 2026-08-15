@@ -1,0 +1,1 @@
+System.register("ClientApi",["BattleControlApi"],function(e,t){"use strict";var i,r;t&&t.id;return{setters:[function(e){i=e}],execute:function(){e("ClientApi",r=class{constructor(){this.battleControl=new i.BattleControlApi}})}}}),

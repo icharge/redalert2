@@ -1,0 +1,1 @@
+System.register("game/action/factories/DropPlayerActionFactory",["game/action/DropPlayerAction"],function(e,t){"use strict";var i,r;t&&t.id;return{setters:[function(e){i=e}],execute:function(){e("DropPlayerActionFactory",r=class{constructor(e,t){this.game=e,this.localPlayerName=t}create(){return new i.DropPlayerAction(this.game,this.localPlayerName)}})}}}),

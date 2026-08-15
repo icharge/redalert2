@@ -1,0 +1,1 @@
+System.register("game/api/interface/PlayerData",[],function(e,t){"use strict";t&&t.id;return{setters:[],execute:function(){}}}),

@@ -1,0 +1,1 @@
+System.register("game/event/ObjectMorphEvent",["game/event/EventType"],function(e,t){"use strict";var i,r;t&&t.id;return{setters:[function(e){i=e}],execute:function(){e("ObjectMorphEvent",r=class{constructor(e,t){this.from=e,this.to=t,this.type=i.EventType.ObjectMorph}})}}}),

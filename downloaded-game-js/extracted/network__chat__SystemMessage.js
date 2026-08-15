@@ -1,0 +1,1 @@
+System.register("network/chat/SystemMessage",[],function(e,t){"use strict";t&&t.id;return{setters:[],execute:function(){}}}),

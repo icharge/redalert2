@@ -1,0 +1,1 @@
+System.register("gui/screen/mainMenu/MainMenuScreen",[],function(e,t){"use strict";var i;t&&t.id;return{setters:[],execute:function(){e("MainMenuScreen",i=class{setController(e){this.controller=e}})}}}),

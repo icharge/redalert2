@@ -1,0 +1,1 @@
+System.register("network/AccountLoginFormData",[],function(t,e){"use strict";var i;e&&e.id;return{setters:[],execute:function(){var e;(e=i||t("AccountLoginErrorCode",i={})).BannedFromServer="banned_from_server",e.TurnstileVerificationFailed="turnstile_verification_failed"}}}),

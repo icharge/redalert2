@@ -1,0 +1,1 @@
+System.register("network/xwol/ApiGameListResponse",[],function(t,e){"use strict";var i;e&&e.id;return{setters:[],execute:function(){var e;(e=i||t("ApiGameParticipantType",i={})).Player="player",e.Computer="computer"}}}),

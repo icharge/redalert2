@@ -1,0 +1,1 @@
+System.register("game/action/factories/ObserveGameActionFactory",["game/action/ObserveGameAction"],function(e,t){"use strict";var i,r;t&&t.id;return{setters:[function(e){i=e}],execute:function(){e("ObserveGameActionFactory",r=class{constructor(e){this.game=e}create(){return new i.ObserveGameAction(this.game)}})}}}),

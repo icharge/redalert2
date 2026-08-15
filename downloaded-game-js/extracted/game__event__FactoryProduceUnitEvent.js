@@ -1,0 +1,1 @@
+System.register("game/event/FactoryProduceUnitEvent",["game/event/EventType"],function(e,t){"use strict";var i,r;t&&t.id;return{setters:[function(e){i=e}],execute:function(){e("FactoryProduceUnitEvent",r=class{constructor(e){this.target=e,this.type=i.EventType.FactoryProduceUnit}})}}}),

@@ -1,0 +1,135 @@
+﻿[
+    {
+        "Path":  "lib/system.js",
+        "Url":  "https://game.chronodivide.com/lib/system.js",
+        "Status":  "downloaded",
+        "Bytes":  61045,
+        "SHA256":  "5dc52a36ff23c8c10d444231f6aaa84703964d8e51f974bf590e670d71b51ac2"
+    },
+    {
+        "Path":  "lib/three.min.js",
+        "Url":  "https://game.chronodivide.com/lib/three.min.js?v0.94",
+        "Status":  "downloaded",
+        "Bytes":  545457,
+        "SHA256":  "3460bd244b9358de068538f4f75c1cb608f37edafef163439b0d07f09e583d81"
+    },
+    {
+        "Path":  "lib/three/three.shader-patch.js",
+        "Url":  "https://game.chronodivide.com/lib/three/three.shader-patch.js?v=2",
+        "Status":  "downloaded",
+        "Bytes":  3278,
+        "SHA256":  "4b5f41a6437e48da2aa86f7e445b2efb6aeba9533fc81dac10849e875901ec58"
+    },
+    {
+        "Path":  "lib/three/three.octree.js",
+        "Url":  "https://game.chronodivide.com/lib/three/three.octree.js?v=2",
+        "Status":  "downloaded",
+        "Bytes":  8526,
+        "SHA256":  "d0b626d2c7cea0c95d7980f968e01155d976c62ccec2828a8eee288e8b5fd232"
+    },
+    {
+        "Path":  "lib/three/SimplexNoise.js",
+        "Url":  "https://game.chronodivide.com/lib/three/SimplexNoise.js",
+        "Status":  "downloaded",
+        "Bytes":  14175,
+        "SHA256":  "26e70893b072d1a383bc266a401fc7edbe2e5977c06ec63156c3e6c41134590e"
+    },
+    {
+        "Path":  "lib/three/LightningStrike.js",
+        "Url":  "https://game.chronodivide.com/lib/three/LightningStrike.js",
+        "Status":  "downloaded",
+        "Bytes":  33024,
+        "SHA256":  "3b5a2fb27c9c5d57089d08aa0f7350309aabde898f6e10e10aebc175b309d048"
+    },
+    {
+        "Path":  "lib/three/TrailRenderer.js",
+        "Url":  "https://game.chronodivide.com/lib/three/TrailRenderer.js",
+        "Status":  "downloaded",
+        "Bytes":  22669,
+        "SHA256":  "cd777f2b02c01a09098fae65371cc0987d1693339ed619d197bd11a4e878c6d3"
+    },
+    {
+        "Path":  "lib/three/SPE.min.js",
+        "Url":  "https://game.chronodivide.com/lib/three/SPE.min.js",
+        "Status":  "downloaded",
+        "Bytes":  44032,
+        "SHA256":  "fbfa66f60ca699b148511892196b4544e6165cc52074cb3f4f7941fbc4fd6ba2"
+    },
+    {
+        "Path":  "lib/three/SPE.patch.js",
+        "Url":  "https://game.chronodivide.com/lib/three/SPE.patch.js",
+        "Status":  "downloaded",
+        "Bytes":  1499,
+        "SHA256":  "85ebad81bc333e155365b7c65e5c801dddc00e6448d3f7fa0b3c754106f37381"
+    },
+    {
+        "Path":  "lib/growingpacker.js",
+        "Url":  "https://game.chronodivide.com/lib/growingpacker.js",
+        "Status":  "downloaded",
+        "Bytes":  4658,
+        "SHA256":  "0726d8fcbc09dfa197746f6115f91ecfd29b2ca58840b1cfcbfb275a8f4c35b2"
+    },
+    {
+        "Path":  "lib/lzo1x.js",
+        "Url":  "https://game.chronodivide.com/lib/lzo1x.js",
+        "Status":  "downloaded",
+        "Bytes":  20655,
+        "SHA256":  "c0208a1dd81a204226a76ff09dde2e84082b217a4ed0951d8f61c9027743c06f"
+    },
+    {
+        "Path":  "lib/fullscreen-api-polyfill.min.js",
+        "Url":  "https://game.chronodivide.com/lib/fullscreen-api-polyfill.min.js",
+        "Status":  "downloaded",
+        "Bytes":  1870,
+        "SHA256":  "61b8ddac48e9aa0a59e9feaaef821495ed8968f2d894fecccf82d9a052625926"
+    },
+    {
+        "Path":  "dist/ra2web.min.js",
+        "Url":  "https://game.chronodivide.com/dist/ra2web.min.js?v=0.83.3",
+        "Status":  "downloaded",
+        "Bytes":  2430085,
+        "SHA256":  "ee8233214375553b12d88168c5241995a90d9a85217af2171b15a2dfa976c09c"
+    },
+    {
+        "Path":  "dist/vendor.bundle.min.js",
+        "Url":  "https://game.chronodivide.com/dist/vendor.bundle.min.js?v=0.83.3",
+        "Status":  "downloaded",
+        "Bytes":  413162,
+        "SHA256":  "8b69b248aec09728b0bc90cb6fe44ae924e606df14ce6c4b4287cc753636620c"
+    },
+    {
+        "Path":  "lib/poll.js",
+        "Url":  "https://game.chronodivide.com/lib/poll.js?v=2",
+        "Status":  "downloaded",
+        "Bytes":  2481,
+        "SHA256":  "37210b16bd1e4aebfc21f68b3c003d399fb88f3bba21c411075b53065c28fa71"
+    },
+    {
+        "Path":  "dist/web-audio-polyfill.min.js",
+        "Url":  "https://game.chronodivide.com/dist/web-audio-polyfill.min.js?v=2",
+        "Status":  "downloaded",
+        "Bytes":  95233,
+        "SHA256":  "c1a942ffa9e5400b499a93424b8cbbddc10d7ef1f366b0b0b84a1284a7c83689"
+    },
+    {
+        "Path":  "dist/7zz.js",
+        "Url":  "https://game.chronodivide.com/dist/7zz.js",
+        "Status":  "downloaded",
+        "Bytes":  288331,
+        "SHA256":  "1eb69264cfd6bcbddebd87c9dcd7bda7b60e2304b4d93b4214f6c0f207dadb06"
+    },
+    {
+        "Path":  "dist/ffmpeg.min.js",
+        "Url":  "https://game.chronodivide.com/dist/ffmpeg.min.js",
+        "Status":  "downloaded",
+        "Bytes":  20139,
+        "SHA256":  "8bc49b3d660d66dec24d79dad7814dee32b03b03dcc89e465b9a1ebd96576c8f"
+    },
+    {
+        "Path":  "dist/spbots.min.js",
+        "Url":  "https://game.chronodivide.com/dist/spbots.min.js?v=0.83.3",
+        "Status":  "downloaded",
+        "Bytes":  55993,
+        "SHA256":  "a1a9be24a3900ec411cb5ca5a77102c9642e15430abf3a8fe1afa814046dfe99"
+    }
+]

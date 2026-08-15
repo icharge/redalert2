@@ -1,0 +1,1 @@
+System.register("gui/screen/game/PlayerUi",[],function(e,t){"use strict";t&&t.id;return{setters:[],execute:function(){}}}),

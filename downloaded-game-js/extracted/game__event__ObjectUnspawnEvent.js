@@ -1,0 +1,1 @@
+System.register("game/event/ObjectUnspawnEvent",["game/event/EventType"],function(e,t){"use strict";var i,r;t&&t.id;return{setters:[function(e){i=e}],execute:function(){e("ObjectUnspawnEvent",r=class{constructor(e){this.gameObject=e,this.type=i.EventType.ObjectUnspawn}})}}}),

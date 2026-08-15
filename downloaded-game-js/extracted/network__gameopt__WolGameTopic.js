@@ -1,0 +1,1 @@
+System.register("network/gameopt/WolGameTopic",[],function(e,t){"use strict";t&&t.id;return{setters:[],execute:function(){}}}),

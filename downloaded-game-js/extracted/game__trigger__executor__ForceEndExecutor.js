@@ -1,0 +1,1 @@
+System.register("game/trigger/executor/ForceEndExecutor",["game/trigger/TriggerExecutor"],function(e,t){"use strict";var i,r;t&&t.id;return{setters:[function(e){i=e}],execute:function(){r=class extends i.TriggerExecutor{execute(e){e.end()}},e("ForceEndExecutor",r)}}}),

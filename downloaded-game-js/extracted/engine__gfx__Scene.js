@@ -1,0 +1,1 @@
+System.register("engine/gfx/Scene",[],function(e,t){"use strict";t&&t.id;return{setters:[],execute:function(){}}}),

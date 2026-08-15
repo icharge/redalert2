@@ -1,0 +1,1 @@
+System.register("gui/screen/game/gameMenu/ScreenParamsMap",["gui/screen/game/gameMenu/ScreenType"],function(e,t){"use strict";t&&t.id;return{setters:[function(e){0}],execute:function(){}}}),

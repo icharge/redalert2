@@ -1,0 +1,1 @@
+System.register("game/math/Box2",[],function(e,t){"use strict";var i;t&&t.id;return{setters:[],execute:function(){i=class extends THREE.Box2{},e("Box2",i)}}}),

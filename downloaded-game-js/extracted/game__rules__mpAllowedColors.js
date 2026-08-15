@@ -1,0 +1,1 @@
+System.register("game/rules/mpAllowedColors",[],function(e,t){"use strict";t&&t.id;return{setters:[],execute:function(){e("mpAllowedColors",["Gold","DarkRed","DarkBlue","DarkGreen","Orange","DarkSky","Purple","Magenta"])}}}),

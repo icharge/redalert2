@@ -1,0 +1,1 @@
+System.register("game/trigger/executor/TimerExtendExecutor",["game/trigger/TriggerExecutor"],function(e,t){"use strict";var i,r;t&&t.id;return{setters:[function(e){i=e}],execute:function(){r=class extends i.TriggerExecutor{execute(e){e.countdownTimer.addSeconds(Number(this.action.params[1]))}},e("TimerExtendExecutor",r)}}}),

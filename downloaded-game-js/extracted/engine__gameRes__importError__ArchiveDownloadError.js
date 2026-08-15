@@ -1,0 +1,1 @@
+System.register("engine/gameRes/importError/ArchiveDownloadError",[],function(e,t){"use strict";var i;t&&t.id;return{setters:[],execute:function(){i=class extends Error{constructor(e,t,i){super(t,i),this.url=e}},e("ArchiveDownloadError",i)}}}),

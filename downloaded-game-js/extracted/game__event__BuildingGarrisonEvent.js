@@ -1,0 +1,1 @@
+System.register("game/event/BuildingGarrisonEvent",["game/event/EventType"],function(e,t){"use strict";var i,r;t&&t.id;return{setters:[function(e){i=e}],execute:function(){e("BuildingGarrisonEvent",r=class{constructor(e){this.target=e,this.type=i.EventType.BuildingGarrison}})}}}),

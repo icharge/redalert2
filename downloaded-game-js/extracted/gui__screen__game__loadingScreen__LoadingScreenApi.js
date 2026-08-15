@@ -1,0 +1,1 @@
+System.register("gui/screen/game/loadingScreen/LoadingScreenApi",[],function(e,t){"use strict";t&&t.id;return{setters:[],execute:function(){}}}),
