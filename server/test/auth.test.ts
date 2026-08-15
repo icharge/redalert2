@@ -130,3 +130,9 @@ test("loadConfig applies defaults", () => {
     expect(config.matchBotName).toBe("matchbot");
     expect(config.storageEngine).toBe("sqlite");
 });
+
+test("loadConfig splits SERVER_MOTD on newlines", () => {
+    const config = loadConfig({ SERVER_MOTD: "line one\\nline two" });
+    expect(config.motd).toEqual(["line one", "line two"]);
+    expect(config.motd.length).toBe(2);
+});

@@ -76,7 +76,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
         gameVersion: env.GAME_VERSION ?? "0.83.2",
         globalChannelPass: env.GLOBAL_CHANNEL_PASS ?? "zotclot9",
         matchBotName: env.MATCH_BOT_NAME ?? "matchbot",
-        motd: (env.SERVER_MOTD ?? "Welcome to RA2Web\ngood luck and have fun").split("\n"),
+        motd: (env.SERVER_MOTD ?? "Welcome to RA2Web\ngood luck and have fun").replace(/\\n/g, "\n").split("\n"),
         sessionTtlSeconds: Number(env.SESSION_TTL_SECONDS ?? 24 * 60 * 60),
         minUsernameLength: Number(env.MIN_USERNAME_LENGTH ?? 2),
         maxUsernameLength: Number(env.MAX_USERNAME_LENGTH ?? 15),
