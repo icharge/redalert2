@@ -104,7 +104,7 @@ bundle with `bun run build:prod`):
 cd server && SERVER_HOST=127.0.0.1 \
   EXTERNAL_URL=wss://service.thaira2.com \
   WOL_URL_PATH=/wol \
-  CORS_ALLOWED_ORIGINS=https://service.thaira2.com \
+  CORS_ALLOWED_ORIGINS=https://play.thaira2.com \
   bun run dev
 ```
 
@@ -112,6 +112,10 @@ cd server && SERVER_HOST=127.0.0.1 \
   `STARTG` and to generate `/servers.ini`.
 - `WOL_URL_PATH=/wol` places the WOL WebSocket at `wss://service.thaira2.com/wol`, so the
   static root can serve the client without conflicting with the `/` location.
+- `CORS_ALLOWED_ORIGINS` must list the **page** origin that connects to this server
+  (here `https://play.thaira2.com`). WebSocket upgrades are rejected with `403` unless
+  the handshake's `Origin` is in this list, and HTTP responses only echo the
+  `Access-Control-Allow-Origin` header for listed origins.
 - Point the client's `config.ini` `serversUrl` at `https://service.thaira2.com/servers.ini`.
 
 `/cdn/*` paths in the client config are **not** served by this server or the sample
@@ -127,9 +131,11 @@ a different origin (e.g. the Vite dev server on `http://localhost:5173`).
   use `credentials: "include"`, which browsers reject with a wildcard
   `Access-Control-Allow-Origin`, so echoing the origin is required. The server never
   sets cookies, so no ambient credentials are exposed.
-- Restricted (e.g. `CORS_ALLOWED_ORIGINS=https://service.thaira2.com`): only listed origins
+- Restricted (e.g. `CORS_ALLOWED_ORIGINS=https://play.thaira2.com`): only listed origins
   are echoed with credentials; unknown origins get no `Access-Control-Allow-Origin` on
-  HTTP and are rejected with `403` on WebSocket upgrades. Use this in production.
+  HTTP and are rejected with `403` on WebSocket upgrades. Use this in production —
+  set it to the page origin that connects to this server (here `play.thaira2.com`),
+  not to the server's own hostname.
 
 Preflight (`OPTIONS`) is handled for `Content-Type` and `X-CSRF-Token` request headers
 (the CSRF header the client's realm auth flow uses). Responses include `Vary: Origin`.
