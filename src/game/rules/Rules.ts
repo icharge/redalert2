@@ -21,6 +21,8 @@ import { PowerupsRules } from "@/game/rules/PowerupsRules";
 import { mpAllowedColors } from "@/game/rules/mpAllowedColors";
 import { isNotNullOrUndefined } from "@/util/typeGuard";
 import { Weapon } from "@/game/Weapon";
+import { OverlayTibType } from "@/engine/type/OverlayTibType";
+import { TiberiumType } from "@/engine/type/TiberiumType";
 interface IniFile {
     getSection(name: string): IniSection | undefined;
     getOrCreateSection(name: string): IniSection;
@@ -245,12 +247,56 @@ export class Rules {
         return rules;
     }
     getTiberium(id: number): TiberiumRules {
+        const canonicalName = Rules.overlayTibTypeNameById.get(id as OverlayTibType);
+        if (canonicalName !== undefined) {
+            return this.getTiberiumByName(canonicalName);
+        }
         const typeName = this.tiberiumTypes.get(id);
         if (!typeName) {
             throw new Error("Unknown tiberium type " + id);
         }
         return this.tiberiumRules.get(typeName)!;
     }
+    getTiberiumForType(tiberiumType: TiberiumType): TiberiumRules {
+        const canonicalName = Rules.tiberiumTypeNameById.get(tiberiumType);
+        if (canonicalName !== undefined) {
+            return this.getTiberiumByName(canonicalName);
+        }
+        const typeName = this.tiberiumTypes.get(tiberiumType);
+        if (!typeName) {
+            throw new Error("Unknown tiberium type " + tiberiumType);
+        }
+        return this.tiberiumRules.get(typeName)!;
+    }
+    getTiberiumByName(typeName: string): TiberiumRules {
+        const rules = this.tiberiumRules.get(typeName);
+        if (!rules) {
+            throw new Error(`Unknown tiberium type "${typeName}"`);
+        }
+        return rules;
+    }
+    /**
+     * Maps the OverlayTibType bit flags (derived from overlay tile ranges:
+     * green 102-127, blue 27-38, yellow 127-146, red 147-166) to the
+     * canonical tiberium type names, so lookups are independent of the
+     * ordering of the [Tiberiums] rules list.
+     */
+    private static readonly overlayTibTypeNameById = new Map<number, string>([
+        [OverlayTibType.Riparius, "Riparius"],
+        [OverlayTibType.Cruentus, "Cruentus"],
+        [OverlayTibType.Vinifera, "Vinifera"],
+        [OverlayTibType.Aboreus, "Aboreus"],
+    ]);
+    /**
+     * Maps the sequential TiberiumType ids used by harvester bails to the
+     * canonical tiberium type names.
+     */
+    private static readonly tiberiumTypeNameById = new Map<number, string>([
+        [TiberiumType.Riparius, "Riparius"],
+        [TiberiumType.Cruentus, "Cruentus"],
+        [TiberiumType.Vinifera, "Vinifera"],
+        [TiberiumType.Aboreus, "Aboreus"],
+    ]);
     getSuperWeapon(name: string): SuperWeaponRules {
         if (!this.superWeaponRules.has(name)) {
             throw new Error(`Unknown superweapon type "${name}"`);

@@ -147,7 +147,7 @@ export class ReturnOreTask extends Task {
         if (harvesterTrait.status !== HarvesterStatus.Unloading)
             return false;
         const oreValue = harvesterTrait.getBails().reduce((total, [type, count]) =>
-            total + count * this.game.rules.getTiberium(type).value, 0);
+            total + count * this.game.rules.getTiberiumForType(type).value, 0);
         let creditsGained = oreValue;
         const purifierCount = [...this.target.owner.buildings].filter((building: any) => building.rules.orePurifier &&
             (!building.poweredTrait || !this.target.owner.powerTrait?.isLowPower())).length;
