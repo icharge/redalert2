@@ -35,9 +35,6 @@ const REQUIRED_MIX_SIZES = new Map<string, number>()
     .set("language.mix", 53116040)
     .set("multi.mix", 25856283)
     .set("theme.mix", 76862662);
-function formatBytes(bytes: number): string {
-    return (bytes / 1024 / 1024).toFixed(2) + " MB";
-}
 function wrapFsOpen(originalFsOpen: any, prefilledContents: Map<string, Uint8Array>) {
     return function (this: any, path: string, flags: string, mode?: any, unknown1?: any, unknown2?: any) {
         let stream = originalFsOpen.call(this, path, flags, mode, unknown1, unknown2);
@@ -142,8 +139,8 @@ export class GameResImporter {
                         onProgress: (delta, total) => {
                             downloadedBytes += delta;
                             const progressText = total
-                                ? S.get("ts:downloadingpgsize", formatBytes(downloadedBytes), formatBytes(total), (downloadedBytes / total) * 100)
-                                : S.get("ts:downloadingpgunkn", formatBytes(downloadedBytes));
+                                ? S.get("ts:downloadingpgsize", downloadedBytes / 1024 / 1024, total / 1024 / 1024, (downloadedBytes / total) * 100)
+                                : S.get("ts:downloadingpgunkn", downloadedBytes / 1024 / 1024);
                             onProgress(progressText);
                         },
                     });
