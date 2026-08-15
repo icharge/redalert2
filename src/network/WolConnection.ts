@@ -33,7 +33,7 @@ export interface WolGameInfo {
     hostMuted: boolean;
     name: string;
     description: string;
-    modHash: number;
+    modHash: string;
     modName: string | undefined;
     tournament: boolean;
     humanPlayers: number;

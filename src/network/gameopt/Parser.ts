@@ -88,7 +88,7 @@ export class Parser {
             return undefined;
         }
         const gameId = parts[0];
-        const modHash = Number(parts[1]);
+        const modHash = parts[1];
         const maxPlayers = gameId.charAt(2);
         const aiPlayers = parts[2];
         const observers = parts[3];
