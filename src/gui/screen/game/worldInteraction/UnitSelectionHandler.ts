@@ -4,7 +4,7 @@ import { rectContainsPoint } from '@/util/geometry';
 import { clamp } from '@/util/math';
 import { EventDispatcher } from '@/util/event';
 import { HealthLevel } from '@/game/gameobject/unit/HealthLevel';
-enum QueryType {
+export enum QueryType {
     None = 0,
     OnScreen = 1,
     OnMap = 2,

@@ -6,7 +6,7 @@ import { NotifyPlaceBuilding } from './interface/NotifyPlaceBuilding';
 import { NotifyProduceUnit } from './interface/NotifyProduceUnit';
 import { NotifyTick } from './interface/NotifyTick';
 export class StalemateDetectTrait {
-    private static graceMinutes = 10;
+    static graceMinutes = 10;
     private stale: boolean = false;
     private allPlayersCredits: Map<any, number> = new Map();
     private countdownTicks: number;
