@@ -6,13 +6,14 @@ const devPort = 4000;
 const manualHttpsConfig = fs.existsSync('./certs/server.key') && fs.existsSync('./certs/server.crt')
     ? { key: fs.readFileSync('./certs/server.key'), cert: fs.readFileSync('./certs/server.crt') }
     : undefined;
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
     plugins: [react(), ...(manualHttpsConfig ? [] : [basicSsl()])],
     build: {
         chunkSizeWarningLimit: 4096,
+        minify: mode === 'single' ? 'oxc' : false,
         rolldownOptions: {
             output: {
-                inlineDynamicImports: true,
+                inlineDynamicImports: mode === 'single',
             },
         },
     },
@@ -47,4 +48,4 @@ export default defineConfig({
         format: 'es'
     },
     assetsInclude: ['**/*.wasm']
-});
+}));

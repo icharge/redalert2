@@ -7,9 +7,9 @@
   "scripts": {
     "dev": "node ./node_modules/vite/bin/vite.js",
     "dev:bun": "bun --bun vite",
-    "build": "bun --bun vite build --minify false",
-    "build:dist": "bun --bun vite build --minify false",
-    "build:prod": "bun --bun vite build && bun --bun tsc -p tsconfig.build.json --noEmit",
+    "build": "bun --bun vite build",
+    "build:dist": "bun --bun vite build",
+    "build:prod": "bun --bun vite build --mode single && bun --bun tsc -p tsconfig.build.json --noEmit",
     "test": "bun test",
     "typecheck:entry": "bun --bun tsc -p tsconfig.build.json",
     "preview": "bun --bun vite preview",
