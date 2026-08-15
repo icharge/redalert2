@@ -4,17 +4,12 @@ This document describes the networking layer: what protocols and transports are 
 
 ## 1. Overview
 
-RA2WEB React uses a **peer-to-peer (P2P)** networking model for multiplayer. There is no dedicated game server in the LAN/P2P path. Instead:
+RA2WEB React has **two online multiplayer paths**:
 
-- Rooms are formed directly between browsers using **WebRTC data channels**.
-- Signaling is done out-of-band via **QR codes** scanned by another device.
-- Within a match, the game runs a **deterministic lockstep** simulation. All peers submit commands for each tick; the match resolves a turn only after receiving commands from every active peer.
+- **LAN / ad-hoc (P2P)** — rooms are formed directly between browsers using **WebRTC data channels**, signaled out-of-band via QR codes, and resolved with a deterministic **lockstep** simulation. No server is involved.
+- **Internet lobby + match (WOL server)** — a server hosts the lobby, channels, chat, game listing, party, and quick-match queue, speaking the IRC-style Westwood Online protocol that the client implements in `src/network/WolConnection.ts`. Game setup data flows over that connection; in-match lockstep actions are relayed by a **gserv** match server (`src/network/GservConnection.ts`).
 
-This design means:
-
-- No server infrastructure is required for LAN or local ad-hoc play.
-- NAT traversal relies on local network connectivity (the current implementation uses host candidates only; see below).
-- All game state stays on the clients.
+This document focuses on the LAN/P2P path. The WOL lobby/channel server is documented in [`../server/README.md`](../server/README.md) and summarized in [section 9](#9-wol-lobby-and-channel-server).
 
 ## 2. Transport: WebRTC Mesh
 
@@ -156,17 +151,76 @@ Because the simulation is deterministic, replaying the exact action stream repro
 - `SdpCandidateDiagnostics.ts` summarizes ICE candidates in local descriptions.
 - The mesh UI logs connection steps and warnings (e.g., "no host candidates found") to help users diagnose why two devices cannot connect.
 
+## 9. WOL Lobby and Channel Server
+
+The internet lobby path uses a server that reimplements the Westwood Online protocol the
+client already speaks (`src/network/WolConnection.ts` + `IrcConnection.ts`). The
+reference implementation lives in [`../server/`](../server/README.md).
+
+### Roles
+
+| Component | Client side | Server side |
+|-----------|-------------|-------------|
+| WOL meta server (lobby + channels) | `src/network/WolConnection.ts`, `IrcConnection.ts` | `server/src/server/WolServer.ts` |
+| Account / session HTTP | `src/network/WolService.ts` (`apiLoginUrl`/`apiRegUrl`) | `server/src/http/routes.ts`, `server/src/auth/` |
+| Match relay | `src/network/GservConnection.ts` | `server/src/gserv/GservServer.ts` |
+| Party engine | `QuickGameScreen` party state | `server/src/server/PartyManager.ts` |
+| Quick-match queue | `QuickGameScreen` + `matchbot` | `server/src/matchmaking/MatchmakingBot.ts` |
+
+### Wire protocol
+
+- Transport is line-based text over a `WebSocket` (`mode: "text"`), one command per
+  line, `\r\n` terminated. Channel names are escaped with `IrcProtocol` on the wire.
+- Session lifecycle: `cvers` → `setlocale`/`getlocale` → `session <token>` → MOTD block
+  (`375`/`372`/`376`), or `378` (bad session) / `721` (server full). The login queue
+  heartbeat is `720`.
+- Lobby channels are `#Lob <channelType> 0` with the global password `zotclot9`
+  (`WolConfig.GLOBAL_CHANNEL_PASS`). Joining yields a `JOIN` broadcast and `353`/`366`
+  (`NAMES`) so the UI can render members immediately.
+- Game channels are created with `joingame <name> <mode> <slots> <type> <obs> 0 <tourn> 0 [pass]`
+  and listed via `LIST <type> <type>` (`321`/`322`/`323`); each listing carries the
+  serialized topic (`Serializer.serializeTopic`) so the client can render map, slots,
+  and mod info.
+- Lobby state synchronizes through `GAMEOPT` messages (`A` ready, `K` has-map, `G` start
+  request, `L` slots, `P` pings, `O` observer slot, `R` player options, or the full
+  serialized options). The server relays them to every member except the sender (the
+  client echoes its own locally).
+- Game start: the host sends `startg <chan> <players>`; the server allocates a gserv
+  instance + per-player ticket and sends `STARTG` to each player with
+  `<gservUrl> <gameId> <timestamp> <ticket>`, or `STARTG_ABORT` with a reason.
+- Party state is pushed to clients as `731` updates (`PARTY_UPDATE <id> <m1,m2>
+  <idle|queued> <r1> <r2>`, plus `PARTY_INVITE`, `PARTY_FORMED`, `PARTY_LEFT`, …).
+
+### gserv match relay
+
+`GservConnection` connects to the `gservUrl` from `STARTG` and runs a small binary/text
+protocol: `ticket`, `join <gameId> <timestamp> <ticket>`, `gameopts` (`500`), `loaded`,
+`loadinfo` (`600`), `taunt` (`803`), `privmsg`, and binary turn-action frames (prefixed
+`0x02`). The server relays each player's action frame to the other players in the
+instance and signals `GAME_START` (`700`) once everyone has loaded.
+
+### Protocol compatibility notes
+
+The server must match the client's exact wire expectations, including:
+
+- The leading `:` on every user-prefixed message (`JOIN`, `PRIVMSG`, `PART`, `KICK`,
+  `GAMEOPT`, `MODE`, `TOPIC`, `JOINGAME`), which the client regexes require.
+- `NAMES` entries shaped `[@]<nick>,<flag>,<ping>,<fresh>`; the game host is `@`.
+- `LIST` replies with exactly 9 params so `reply.params[8]` is `<mode>::<topic>`.
+- `PART` is echoed back to the leaving client; the client uses it to clean up its
+  `currentChannels` set.
+
 ## Summary
 
-| Concern | Implementation |
-|---------|----------------|
-| Transport | WebRTC data channels, full mesh |
-| Signaling | QR-code SDP exchange |
-| Topology | Peer-to-peer, no server |
-| State sync | Deterministic lockstep (see `online-play.md`) |
-| Lobby messages | JSON control envelopes |
-| Game actions | Binary `Serializer` / `Parser` |
-| Offline replay | Recorded action stream + `ReplayTurnManager` |
-| HTTP services | CDN resources, ladder, game report |
+| Concern | LAN/P2P path | Internet path (WOL server) |
+|---------|--------------|-----------------------------|
+| Transport | WebRTC data channels, full mesh | WebSocket, line-based IRC-style text |
+| Signaling | QR-code SDP exchange | Server connection itself |
+| Topology | Peer-to-peer, no server | Server-authoritative lobby + channel, gserv-relayed match |
+| State sync | Deterministic lockstep | `GAMEOPT` relay / server state |
+| Lobby messages | JSON control envelopes | IRC-style commands + numerics |
+| Game actions | Binary `Serializer` / `Parser` | Binary turn-action relay via gserv |
+| Auth | None | HTTP login/register + `session` token |
+| Server | None | `server/` package (see `server/README.md`) |
 
 For how rooms are formed, game options are synchronized, and the lockstep match is executed, see [`online-play.md`](online-play.md).

@@ -28,6 +28,7 @@ redalert2/
 │   ├── types/              # Shared TypeScript declarations
 │   ├── util/               # Utilities: math, events, routing, strings, etc.
 │   └── version.ts          # Application version
+├── server/                 # WOL lobby/channel + gserv match server (Bun)
 ├── vite.config.ts          # Vite build config
 ├── tsconfig.json           # TypeScript base config
 └── package.json            # Dependencies and scripts
@@ -120,9 +121,23 @@ Multiplayer transport, lobby state, match synchronization, and replays.
 | `network/gamestate/` | Replay recording and playback (`Replay`, `ReplayRecorder`, `ReplayTurnManager`, `SoloPlayTurnManager`). |
 | `network/ladder/` | Ladder service client and ranking types. |
 | `network/HttpRequest.ts` | HTTP fetch wrapper with progress and cancellation. |
-| `network/IrcConnection.ts`, `WolConnection.ts` | Legacy-style server connection stubs (WOL/IRC). |
+| `network/IrcConnection.ts`, `WolConnection.ts`, `GservConnection.ts` | IRC-style WOL client, transport, and gserv match-relay client. |
 
 See [`networking.md`](networking.md) and [`online-play.md`](online-play.md) for details.
+
+### 5b. WOL Server (`server/`)
+
+A standalone Bun package that reimplements the Westwood Online protocol so the client's
+WOL screens (login, custom-game browser, lobby, party, quick match) run without client
+changes. See [`server/README.md`](../server/README.md).
+
+| Component | Role |
+|-----------|------|
+| `server/src/server/WolServer.ts` | Lobby + channel command table |
+| `server/src/http/routes.ts` + `server/src/auth/` | HTTP login/register + sessions |
+| `server/src/server/PartyManager.ts` | Party engine |
+| `server/src/matchmaking/MatchmakingBot.ts` | Quick-match queue |
+| `server/src/gserv/GservServer.ts` | Match relay |
 
 ### 6. Tools Layer (`src/tools/`)
 

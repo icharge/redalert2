@@ -145,6 +145,7 @@ redalert2/
 │   ├── network/     Networking and multiplayer infrastructure
 │   ├── tools/       Standalone tester pages
 │   └── util/        Common utilities
+├── server/          WOL lobby/channel + gserv match server (see server/README.md)
 ├── docs/            Alignment records and engineering notes
 └── vite.config.ts   Development and build configuration
 ```

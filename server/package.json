@@ -1,0 +1,19 @@
+{
+  "name": "ra2web-server",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "WOL-compatible lobby and channel server for RA2Web, matching the protocol spoken by src/network/WolConnection.ts",
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "start": "bun run src/index.ts",
+    "dev:bg": "start /b bun run src/index.ts > server.log 2>&1",
+    "test": "bun test",
+    "typecheck": "bun --bun tsc -p tsconfig.json",
+    "smoke": "bun run scripts/wol-smoke-client.ts && bun run scripts/wol-two-player.ts && bun run scripts/wol-gserv-test.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "5.9.3"
+  }
+}

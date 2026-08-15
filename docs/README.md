@@ -11,7 +11,8 @@ This folder contains architectural and technical documentation for the RA2WEB Re
 - [`engine.md`](engine.md) — Game engine: rendering, audio, asset loading, simulation loop, and VFS.
 - [`networking.md`](networking.md) — Network architecture, protocols, and transport layer.
 - [`online-play.md`](online-play.md) — LAN / online multiplayer room flow, lockstep sync, and map transfer.
-- [`wol-irc-and-modernization.md`](wol-irc-and-modernization.md) — Legacy WOL/IRC status, the login screen, and options for modernizing online play.
+- [`wol-irc-and-modernization.md`](wol-irc-and-modernization.md) — WOL/IRC client stack, the server, and options for modernizing online play.
+- [`../server/README.md`](../server/README.md) — The WOL lobby/channel + gserv match server.
 
 ## Quick Facts
 
@@ -23,7 +24,7 @@ This folder contains architectural and technical documentation for the RA2WEB Re
 | Renderer | Three.js 0.183.2 (WebGL) |
 | Automation | Playwright 1.58.2 |
 | Asset source | Local game files (File System Access API) or CDN |
-| Multiplayer transport | WebRTC data channels (P2P), QR-code handshakes |
+| Multiplayer transport | WebRTC data channels (P2P, LAN) + WOL WebSocket server (internet lobby/match) |
 | Lockstep model | Deterministic turn-based, command broadcast, host control peer |
 
 ## How to Keep These Docs Current
@@ -33,6 +34,7 @@ The docs are written against the current source tree. If you move, rename, or si
 - `src/engine/*` → `engine.md`
 - `src/network/*` → `networking.md`, `online-play.md`, and `wol-irc-and-modernization.md`
 - WOL/IRC login, lobby, or modernization changes → `wol-irc-and-modernization.md`
+- `server/*` → `server/README.md`, `networking.md`, and `wol-irc-and-modernization.md`
 - `src/game/*`, `src/gui/*`, `src/data/*` → `architecture.md` and `engine.md`
 - Build / entry flow changes → `overview.md`
 
