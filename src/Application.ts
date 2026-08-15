@@ -114,6 +114,12 @@ export class Application {
     public routing: Routing;
     private sentry: typeof mockSentry | undefined = mockSentry;
     private currentLocale: string = 'en-US';
+    private bundledCsfData: {
+        [key: string]: string;
+    } | undefined;
+    private jsonLocaleData: {
+        [key: string]: string;
+    } | undefined;
     private fsAccessLib: any;
     private gameResConfig: GameResConfig | undefined;
     private cdnResourceLoader: any;
@@ -189,7 +195,7 @@ export class Application {
         }
         let csfFileValue = currentConfig.getGeneralData().get('csfFile') || 'ra2/general.csf';
         const csfFileName = Array.isArray(csfFileValue) ? csfFileValue[0] : csfFileValue;
-        console.log(`[Application] Attempting to load CSF file: ${csfFileName}`);
+        console.log(`[Application] Attempting to load bundled CSF file: ${csfFileName}`);
         try {
             const csfResponse = await fetch(`/${csfFileName}`);
             if (!csfResponse.ok) {
@@ -200,11 +206,12 @@ export class Application {
             dataStream.dynamicSize = false;
             const virtualFile = new VirtualFile(dataStream, csfFileName);
             const csfFileInstance = new CsfFile(virtualFile);
+            this.bundledCsfData = csfFileInstance.data;
             this.strings = new Strings(csfFileInstance);
             // Prefer the configured default language so the JSON locale matches the intended UI
             // language even when the bundled CSF file is for a different region.
             this.currentLocale = currentConfig.defaultLocale || csfFileInstance.getIsoLocale();
-            console.log(`[Application] CSF file "${csfFileName}" loaded. Detected/Set Locale: ${this.currentLocale}. Loaded ${Object.keys(this.strings.getKeys()).length} keys from CSF.`);
+            console.log(`[Application] Bundled CSF file "${csfFileName}" loaded. Detected/Set Locale: ${this.currentLocale}. Loaded ${Object.keys(this.strings.getKeys()).length} keys from CSF.`);
         }
         catch (error) {
             console.error(`[Application] Failed to load or parse CSF file "${csfFileName}":`, error);
@@ -212,7 +219,15 @@ export class Application {
             this.strings = new Strings();
             this.currentLocale = currentConfig.defaultLocale;
         }
-        const jsonLocaleFile = `res/locale/${this.currentLocale}.json?v=${this.getVersion()}`;
+        await this.loadJsonLocale(this.currentLocale);
+        console.log('[Application] Translations loading finished. Final locale: ', this.currentLocale);
+        console.log('[Application] Sample string GUI:OKAY ->', this.strings.get('GUI:OKAY'));
+        console.log('[Application] Sample string GUI:Cancel ->', this.strings.get('GUI:Cancel'));
+        console.log('[Application] Sample string GUI:LoadingEx ->', this.strings.get('GUI:LoadingEx'));
+        console.log('[Application] First 20 keys in Strings:', this.strings.getKeys().slice(0, 20));
+    }
+    private async loadJsonLocale(locale: string): Promise<void> {
+        const jsonLocaleFile = `res/locale/${locale}.json?v=${this.getVersion()}`;
         console.log(`[Application] Attempting to load JSON locale file: ${jsonLocaleFile}`);
         try {
             const jsonResponse = await fetch(`/${jsonLocaleFile}`);
@@ -221,6 +236,7 @@ export class Application {
             }
             const jsonData = await jsonResponse.json();
             if (jsonData) {
+                this.jsonLocaleData = jsonData;
                 this.strings.fromJson(jsonData);
                 console.log(`[Application] JSON locale file "${jsonLocaleFile}" loaded and merged. Total keys now: ${Object.keys(this.strings.getKeys()).length}.`);
             }
@@ -232,11 +248,43 @@ export class Application {
             console.error(`[Application] Failed to load or parse JSON locale file "${jsonLocaleFile}":`, error);
             console.warn(`[Application] Continuing without strings from ${jsonLocaleFile}.`);
         }
-        console.log('[Application] Translations loading finished. Final locale: ', this.currentLocale);
-        console.log('[Application] Sample string GUI:OKAY ->', this.strings.get('GUI:OKAY'));
-        console.log('[Application] Sample string GUI:Cancel ->', this.strings.get('GUI:Cancel'));
-        console.log('[Application] Sample string GUI:LoadingEx ->', this.strings.get('GUI:LoadingEx'));
-        console.log('[Application] First 20 keys in Strings:', this.strings.getKeys().slice(0, 20));
+    }
+    /**
+     * Re-bases the string table on the original game's CSF once game resources
+     * are loaded. Mirrors the upstream client: the CSF is resolved through the
+     * VFS (ra2.csf / ra2md.csf inside language.mix / langmd.mix) and becomes the
+     * base layer, with the bundled custom CSF and the JSON locale merged on top.
+     */
+    private async applyGameCsfTranslations(): Promise<void> {
+        const vfs = Engine.vfs;
+        if (!vfs) {
+            console.warn('[Application] VFS not available; keeping bundled translations.');
+            return;
+        }
+        const csfFileName = Engine.getFileNameVariant('ra2.csf');
+        let gameCsf: CsfFile;
+        try {
+            gameCsf = new CsfFile(vfs.openFile(csfFileName));
+        }
+        catch (error) {
+            console.warn(`[Application] Game CSF "${csfFileName}" not found in VFS; keeping bundled translations.`, error);
+            return;
+        }
+        const detectedLocale = this.config.defaultLocale || gameCsf.getIsoLocale();
+        if (detectedLocale && detectedLocale !== this.currentLocale) {
+            console.log(`[Application] Game CSF locale "${detectedLocale}" differs from current locale "${this.currentLocale}". Reloading JSON locale.`);
+            await this.loadJsonLocale(detectedLocale);
+        }
+        const strings = new Strings(gameCsf);
+        if (this.bundledCsfData) {
+            strings.fromJson(this.bundledCsfData);
+        }
+        if (this.jsonLocaleData) {
+            strings.fromJson(this.jsonLocaleData);
+        }
+        this.strings = strings;
+        this.currentLocale = detectedLocale || this.currentLocale;
+        console.log(`[Application] Game CSF "${csfFileName}" applied as base + custom layers. Total keys: ${Object.keys(this.strings.getKeys()).length}. Final locale: ${this.currentLocale}`);
     }
     private checkGlobalLibs(): void {
         console.log('[MVP] Skipping Application.checkGlobalLibs().');
@@ -583,6 +631,7 @@ export class Application {
                 console.log("Engine.iniFiles.has('art.ini'):", Engine.iniFiles.has("art.ini"));
                 console.log("[Diag] Engine.iniFiles.has('rulescd.ini'):", Engine.iniFiles.has("rulescd.ini"));
                 console.log("[Diag] Engine.iniFiles.has('artcd.ini'):", Engine.iniFiles.has("artcd.ini"));
+                await this.applyGameCsfTranslations();
                 Engine.loadRules();
                 try {
                     const rulesIniUsed = Engine.getFileNameVariant('rules.ini');
