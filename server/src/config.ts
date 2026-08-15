@@ -94,7 +94,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
         wolUrlPath: env.WOL_URL_PATH ?? "",
         expectedModHash: env.EXPECTED_MOD_HASH || undefined,
         pingIntervalSeconds: Number(env.PING_INTERVAL_SECONDS ?? 30),
-        recordReplays: env.RECORD_REPLAYS !== "false",
+        recordReplays: env.RECORD_REPLAYS === "true",
         replaysDir: env.REPLAYS_DIR ?? path.join(import.meta.dir, "..", "replays"),
         corsAllowedOrigins: env.CORS_ALLOWED_ORIGINS
             ? env.CORS_ALLOWED_ORIGINS.split(",").map(s => s.trim()).filter(Boolean)

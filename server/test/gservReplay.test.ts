@@ -38,7 +38,7 @@ function binarySent(socket: FakeSocket): Uint8Array[] {
 }
 
 function setup(replaysDir: string) {
-    const config = loadConfig({ REPLAYS_DIR: replaysDir, GSERV_NET_RATE_MS: "33" });
+    const config = loadConfig({ REPLAYS_DIR: replaysDir, GSERV_NET_RATE_MS: "33", RECORD_REPLAYS: "true" });
     const manager = new GservManager({ id: "gs1", url: "ws://test.local/gserv" });
     const server = new GservServer(config, manager);
     return { config, manager, server };
@@ -181,11 +181,11 @@ describe("GservServer action relay", () => {
         expect(readDir(replaysDir).length).toBe(0);
     });
 
-    test("does not save a replay when RECORD_REPLAYS=false, but still relays actions", () => {
+    test("does not save a replay by default (recording is opt-in), but still relays actions", () => {
         const replaysDir = __dirname + "/tmp-replays";
         rmSync(replaysDir, { recursive: true, force: true });
         mkdirSync(replaysDir, { recursive: true });
-        const config = loadConfig({ REPLAYS_DIR: replaysDir, GSERV_NET_RATE_MS: "33", RECORD_REPLAYS: "false" });
+        const config = loadConfig({ REPLAYS_DIR: replaysDir, GSERV_NET_RATE_MS: "33" });
         const manager = new GservManager({ id: "gs1", url: "ws://test.local/gserv" });
         const server = new GservServer(config, manager);
         const instance = manager.create(["alice", "bob"], "ws://gserv");
