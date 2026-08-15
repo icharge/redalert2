@@ -42,6 +42,8 @@ import { WorkerHost } from './worker/workerHost.js';
 import { GameResConfig } from './engine/gameRes/GameResConfig.js';
 import { KeyBinds } from './gui/screen/game/worldInteraction/keyboard/KeyBinds.js';
 import { ClientApi } from './ClientApi.js';
+import { Parser } from './network/gameopt/Parser.js';
+import { Serializer } from './network/gameopt/Serializer.js';
 import type { ViewportRect } from './gui/Viewport.js';
 import { attachPerformanceOptions, installPerformanceDebugApi } from './performance/PerformanceRuntime.js';
 export class Gui {
@@ -364,6 +366,7 @@ export class Gui {
         const mainMenuRootScreen = new MainMenuRootScreen(subScreens, this.uiScene, this.strings, Engine.images, this.jsxRenderer, this.messageBoxApi, this.appVersion, this.config, videoSrc, this.sound, this.music, this.generalOptions, this.localPrefs, this.fullScreen, this.mixer, this.keyBinds, this.rootController, this.appLocale, this.cfTurnstile);
         (mainMenuRootScreen as any).replayManager = replayManager;
         this.rootController.addScreen(ScreenType.MainMenuRoot, mainMenuRootScreen);
+        const onlineServices = await mainMenuRootScreen.getOnlineServices();
         const { GameScreen } = await import('./gui/screen/game/GameScreen.js');
         const errorHandler = new ErrorHandler(this.messageBoxApi, this.strings);
         const gameResBaseUrl = this.config.gameresBaseUrl ?? '';
@@ -373,7 +376,7 @@ export class Gui {
         const mapResLoader = new ResourceLoader(mapsBaseUrl);
         const mapFileLoader = new MapFileLoader(mapResLoader, (Engine as any).vfs);
         const rules = new Rules(Engine.getRules(), undefined);
-        const loadingScreenApiFactory = new LoadingScreenApiFactory(rules, this.strings, this.uiScene, this.jsxRenderer!, this.gameResConfig!, undefined as any);
+        const loadingScreenApiFactory = new LoadingScreenApiFactory(rules, this.strings, this.uiScene, this.jsxRenderer!, this.gameResConfig!, onlineServices.gservCon);
         const gameModes = Engine.getMpModes();
         const speedCheat = new BoxedVar<boolean>(false);
         const mutedPlayers = new Set<string>();
@@ -395,7 +398,7 @@ export class Gui {
         const sharedVxlGeometryPool = new VxlGeometryPool(new VxlGeometryCache(null, Engine.getActiveMod?.() ?? null), this.generalOptions!.graphics.models.value);
         const buildingImageDataCache = new Map();
         const workerHost = new WorkerHost();
-        const gameScreen = new GameScreen(workerHost, undefined, undefined, undefined, undefined, Engine.getVersion(), '', errorHandler, gameMenuSubScreens, loadingScreenApiFactory, undefined, undefined, this.config, this.strings, this.renderer, this.uiScene, this.runtimeVars || {}, this.messageBoxApi, this.toastApi, this.uiAnimationLoop, this.viewport, this.jsxRenderer, this.pointer, this.sound, this.music, this.mixer, this.keyBinds, this.generalOptions, this.localPrefs, undefined, undefined, replayManager, this.fullScreen, mapFileLoader, undefined, Engine.getMapList?.(), new GameLoader(this.appVersion, workerHost, gameResLoader, gameResLoader, rules, gameModes, this.sound, (console as any), undefined, speedCheat, this.gameResConfig!, sharedVxlGeometryPool, buildingImageDataCache, (this as any).runtimeVars?.debugBotIndex, this.config.devMode ?? false), sharedVxlGeometryPool, buildingImageDataCache, mutedPlayers, tauntsEnabled, speedCheat, undefined, clientApi.battleControl);
+        const gameScreen = new GameScreen(workerHost, onlineServices.gservCon, onlineServices.wgameresService, onlineServices.wolService, onlineServices.mapTransferService, Engine.getVersion(), '', errorHandler, gameMenuSubScreens, loadingScreenApiFactory, new Parser(), new Serializer(), this.config, this.strings, this.renderer, this.uiScene, this.runtimeVars || {}, this.messageBoxApi, this.toastApi, this.uiAnimationLoop, this.viewport, this.jsxRenderer, this.pointer, this.sound, this.music, this.mixer, this.keyBinds, this.generalOptions, this.localPrefs, undefined, undefined, replayManager, this.fullScreen, mapFileLoader, undefined, Engine.getMapList?.(), new GameLoader(this.appVersion, workerHost, gameResLoader, gameResLoader, rules, gameModes, this.sound, (console as any), undefined, speedCheat, this.gameResConfig!, sharedVxlGeometryPool, buildingImageDataCache, (this as any).runtimeVars?.debugBotIndex, this.config.devMode ?? false), sharedVxlGeometryPool, buildingImageDataCache, mutedPlayers, tauntsEnabled, speedCheat, undefined, clientApi.battleControl);
         (gameScreen as any).setController?.(this.rootController);
         this.rootController.addScreen(ScreenType.Game, gameScreen as any);
         const { ReplayScreen } = await import('./gui/screen/replay/ReplayScreen.js');

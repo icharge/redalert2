@@ -131,7 +131,7 @@ export class MainMenuRootScreen extends RootScreen {
             }
         }, 0);
     }
-    private async getOnlineServices(): Promise<any> {
+    async getOnlineServices(): Promise<any> {
         if (this.onlineServices) {
             return this.onlineServices;
         }
