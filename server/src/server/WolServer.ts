@@ -1,4 +1,5 @@
 import { ServerConfig } from "../config";
+import { Logger, makeLogger } from "../logger";
 import { SessionManager } from "../auth/session";
 import { AccountStore } from "../auth/accountStore";
 import { ServerUser } from "./ServerUser";
@@ -46,6 +47,7 @@ export class WolServer {
     readonly parties = new PartyManager(this);
     readonly matchbot = new MatchmakingBot(this);
     readonly gservs: GservManager;
+    readonly log: Logger;
     private pingInterval?: ReturnType<typeof setInterval>;
     private localeCodes = LOCALE_CODE_BY_ID;
 
@@ -56,6 +58,7 @@ export class WolServer {
         gservs: GservManager,
     ) {
         this.gservs = gservs;
+        this.log = makeLogger(config.logLevel, "wol");
     }
 
     startPingLoop(): void {
@@ -103,6 +106,10 @@ export class WolServer {
             }
             this.matchbot.removeFromQueue(user);
             this.users.delete(user.nick);
+            this.log.info(`disconnect ${user.nick} (ping ${user.ping})`);
+        }
+        else {
+            this.log.debug(`disconnect (not authenticated)`);
         }
     }
 
@@ -197,12 +204,14 @@ export class WolServer {
     private handleSession(user: ServerUser, args: string[]): void {
         const session = this.sessions.validate(args[0]);
         if (!session) {
+            this.log.debug(`session rejected: invalid token`);
             this.sendNumeric(user, Code.RPL_BAD_SESSION, "*", [], "Invalid session token");
             return;
         }
         const nick = session.username;
         const existing = this.users.get(nick);
         if (existing && existing !== user) {
+            this.log.warn(`duplicate login for ${nick}; dropping previous connection`);
             this.users.delete(nick);
             existing.socket.close();
         }
@@ -211,7 +220,8 @@ export class WolServer {
         const account = this.accounts.get(nick);
         user.fresh = account ? this.accounts.isFresh(account) : false;
         this.users.set(nick, user);
-        this.sendNumeric(user, Code.RPL_MOTDSTART, nick, [], `- ${this.serverName} message of the day`);
+        this.log.info(`login ${nick}${user.fresh ? " (fresh account)" : ""}`);
+        this.sendNumeric(user, Code.RPL_MOTDSTART, nick, [], `- ${this.serverName} MOTD`);
         for (const line of this.config.motd) {
             this.sendNumeric(user, Code.RPL_MOTD, nick, [], `- ${line}`);
         }
@@ -350,6 +360,7 @@ export class WolServer {
                 continue;
             }
             const kicked = targetMember.user;
+            this.log.info(`kick ${target} from ${key} by ${user.nick}`);
             this.broadcastChannel(channel, userLine(userPrefix(user.nick, user.hostmask), "KICK", `${key} ${target}`));
             channel.removeMember(kicked);
             if (kicked.gameChannel === key) {
@@ -406,6 +417,7 @@ export class WolServer {
         this.games.set(key, game);
         game.addMember(user, true);
         user.gameChannel = key;
+        this.log.info(`game created ${key} by ${user.nick} (slots ${slots}, mode ${mode}, channelType ${channelType}, tournament ${tournament ? 1 : 0})`);
         const flags = `0 0 0 0 0 ${user.ping} 0`;
         this.broadcastChannel(game, userLine(userPrefix(user.nick, user.hostmask), "JOINGAME", `${flags} :${key}`));
         this.sendChannelNames(game);
@@ -430,6 +442,7 @@ export class WolServer {
         }
         game.addMember(user, false);
         user.gameChannel = key;
+        this.log.info(`join game ${key} as ${user.nick} (now ${game.members.size}/${game.slots} players)`);
         const flags = `0 0 0 0 0 ${user.ping} 0`;
         this.broadcastChannel(game, userLine(userPrefix(user.nick, user.hostmask), "JOINGAME", `${flags} :${key}`));
         this.sendChannelNames(game);
@@ -443,7 +456,13 @@ export class WolServer {
         }
         const key = line.slice(8, sep).trim();
         const opt = line.slice(sep + 2);
-        const game = this.games.get(key);
+        let game = this.games.get(key);
+        if (!game) {
+            const targetUser = this.users.get(key);
+            if (targetUser?.gameChannel) {
+                game = this.games.get(targetUser.gameChannel);
+            }
+        }
         if (!game || !game.has(user.nick)) {
             return;
         }
@@ -512,6 +531,7 @@ export class WolServer {
         }
         const instance = this.gservs.create(players, gserv.url);
         instance.gameopts = game.gameOpts;
+        this.log.info(`game start ${key} by ${user.nick}: instance ${instance.gameId} for ${players.join(", ")}`);
         for (const nick of players) {
             const member = game.members.get(nick);
             const ticket = instance.tickets.get(nick);
@@ -537,6 +557,7 @@ export class WolServer {
             return;
         }
         channel.addMember(user, operator);
+        this.log.debug(`join channel ${channel.key} as ${user.nick}`);
         const flags = `${0},${user.ping},${operator ? 1 : 0},${user.fresh ? 1 : 0}`;
         this.broadcastChannel(channel, userLine(userPrefix(user.nick, user.hostmask), "JOIN", `:${flags} ${channel.key}`));
         this.sendChannelNames(channel);
@@ -546,6 +567,7 @@ export class WolServer {
         if (!channel.has(user.nick)) {
             return;
         }
+        this.log.debug(`leave channel ${channel.key} as ${user.nick}`);
         this.broadcastChannel(channel, userLine(userPrefix(user.nick, user.hostmask), "PART", channel.key));
         channel.removeMember(user);
         if (user.gameChannel === channel.key) {
@@ -563,6 +585,7 @@ export class WolServer {
     private checkGameHostLeft(game: GameChannel): void {
         if (!game.members.has(game.hostName)) {
             this.games.delete(game.key);
+            this.log.info(`game ${game.key} closed (host left)`);
         }
     }
 

@@ -1,4 +1,5 @@
 import { ServerConfig } from "../config";
+import { Logger, makeLogger } from "../logger";
 import { GservInstance, GservManager } from "./GservManager";
 import { SocketLike } from "../server/SocketLike";
 import * as Code from "../protocol/gservCodes";
@@ -15,6 +16,7 @@ export interface GservClient {
 
 export class GservServer {
     readonly serverName = GSERV_SERVER_NAME;
+    readonly log: Logger;
     private clients = new Map<SocketLike, GservClient>();
     private instanceMembers = new Map<string, Map<string, GservClient>>();
 
@@ -22,6 +24,7 @@ export class GservServer {
         private config: ServerConfig,
         private manager: GservManager,
     ) {
+        this.log = makeLogger(config.logLevel, "gserv");
     }
 
     handleOpen(socket: SocketLike): GservClient {
@@ -33,13 +36,18 @@ export class GservServer {
             active: true,
         };
         this.clients.set(socket, client);
+        this.log.debug("gserv connection open");
         return client;
     }
 
     handleClose(client: GservClient): void {
         if (client.instance) {
+            this.log.info(`disconnect ${client.nick} from instance ${client.instance.gameId}`);
             this.broadcastLine(client, `:${this.serverName} ${Code.RPL_PLAYER_DISCONNECT} ${client.nick} :${client.nick}`);
             this.instanceMembers.get(client.instance.gameId)?.delete(client.nick);
+        }
+        else {
+            this.log.debug("gserv connection closed (not authenticated)");
         }
         this.clients.delete(client.socket);
     }
@@ -112,11 +120,13 @@ export class GservServer {
         }
         const info = this.manager.validateTicket(ticket);
         if (!info) {
+            this.log.warn("login rejected: invalid ticket");
             client.socket.send(`:${this.serverName} ${Code.RPL_BAD_LOGIN} ${client.nick} :invalid ticket\r\n`);
             return;
         }
         client.nick = info.nick;
         client.authenticated = true;
+        this.log.info(`login ${client.nick}`);
         client.socket.send(`:${this.serverName} ${Code.RPL_LOGGED_IN} ${client.nick} :logged in\r\n`);
     }
 
@@ -145,6 +155,7 @@ export class GservServer {
             this.instanceMembers.set(gameId, members);
         }
         members.set(client.nick, client);
+        this.log.info(`join instance ${gameId} as ${client.nick}`);
         client.socket.send(`:${this.serverName} ${Code.RPL_INSTANCE_CONNECTED} ${client.nick} :connected\r\n`);
     }
 
@@ -171,6 +182,7 @@ export class GservServer {
         }
         if ([...members.values()].every(member => member.loaded >= 100)) {
             instance.started = true;
+            this.log.info(`instance ${instance.gameId} started`);
             for (const member of members.values()) {
                 member.socket.send(`:${this.serverName} ${Code.RPL_GAME_START} ${member.nick} :start\r\n`);
             }

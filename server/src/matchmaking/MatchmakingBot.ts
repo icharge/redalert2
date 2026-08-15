@@ -1,6 +1,7 @@
 import { ServerUser } from "../server/ServerUser";
 import { WolServer } from "../server/WolServer";
 import { GameChannel } from "../server/GameChannel";
+import { Logger } from "../logger";
 import { escapeChannelName } from "../protocol/lineCodec";
 import {
     REQ_MATCH,
@@ -38,8 +39,10 @@ export class MatchmakingBot {
     private byNick = new Map<string, QueueEntry>();
     private gameCounter = 0;
     private timers = new Set<ReturnType<typeof setTimeout>>();
+    private log: Logger;
 
     constructor(private server: WolServer) {
+        this.log = server.log;
     }
 
     handleMessage(user: ServerUser, text: string): void {
@@ -65,6 +68,7 @@ export class MatchmakingBot {
         if (!entry) {
             return;
         }
+        this.log.info(`queue ${user.nick} left`);
         if (entry.matched) {
             this.cancelMatch(entry.matched);
         }
@@ -112,6 +116,7 @@ export class MatchmakingBot {
             this.reply(user, RPL_RATE_LIMITED);
             return;
         }
+        this.log.info(`queue ${user.nick} (channelType ${channelType}, ranked ${parsed.get(TAG_RANKED) === "1" ? 1 : 0})`);
 
         const party = this.server.parties.getParty(user);
         if (party) {
@@ -177,6 +182,7 @@ export class MatchmakingBot {
 
     private startMatch(a: QueueEntry, b: QueueEntry): void {
         const players = [...a.players, ...b.players];
+        this.log.info(`match found: ${players.join(", ")}`);
         for (const nick of players) {
             const user = this.server.users.get(nick);
             if (user) {
@@ -227,6 +233,7 @@ export class MatchmakingBot {
         }
         const timer = setTimeout(() => {
             this.timers.delete(timer);
+            this.log.info(`STARTG sent for match ${key} (${players.join(", ")})`);
             for (const nick of players) {
                 const user = this.server.users.get(nick);
                 const ticket = instance.tickets.get(nick);

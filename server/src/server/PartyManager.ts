@@ -105,6 +105,7 @@ export class PartyManager {
             to: targetName,
             expiresAt: Date.now() + this.inviteExpiryMs,
         });
+        this.server.log.info(`party invite ${user.nick} -> ${targetName}`);
         this.sendParty(target, `${RPL_PARTY_INVITE} ${user.nick}`);
         this.sendParty(user, `${RPL_PARTY_INVITE_SENT} ${targetName}`);
     }
@@ -144,6 +145,7 @@ export class PartyManager {
         this.byNick.set(user.nick, party);
         inviter.partyId = party.id;
         user.partyId = party.id;
+        this.server.log.info(`party formed ${party.id} (${party.members.join(", ")})`);
         this.sendParty(inviter, `${RPL_PARTY_FORMED} ${user.nick}`);
         this.sendParty(user, `${RPL_PARTY_FORMED} ${inviterName}`);
         this.sendPartyUpdate(party);
@@ -177,6 +179,7 @@ export class PartyManager {
         if (!party) {
             return;
         }
+        this.server.log.info(`party ${party.id} left by ${user.nick}`);
         this.sendToParty(party, `${RPL_PARTY_LEFT} ${user.nick}`);
         this.disband(party);
     }

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { StorageEngine } from "./storage/Storage";
+import { LogLevel, parseLogLevel } from "./logger";
 
 function loadEnvFile(env: Record<string, string | undefined>, file: string): void {
     let text: string;
@@ -54,6 +55,7 @@ export interface ServerConfig {
     expectedModHash?: string;
     pingIntervalSeconds: number;
     corsAllowedOrigins: string[];
+    logLevel: LogLevel;
     storageEngine: StorageEngine;
     dbPath: string;
 }
@@ -91,6 +93,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
         corsAllowedOrigins: env.CORS_ALLOWED_ORIGINS
             ? env.CORS_ALLOWED_ORIGINS.split(",").map(s => s.trim()).filter(Boolean)
             : ["*"],
+        logLevel: parseLogLevel(env.LOG_LEVEL),
         storageEngine: (env.STORAGE ?? "sqlite") === "memory" ? "memory" : "sqlite",
         dbPath: env.DB_PATH ?? path.join(import.meta.dir, "..", "data", "ra2web.sqlite"),
     };

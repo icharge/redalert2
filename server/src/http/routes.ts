@@ -1,6 +1,7 @@
 import { AccountStore } from "../auth/accountStore";
 import { SessionManager } from "../auth/session";
 import { ServerConfig } from "../config";
+import { Logger, makeLogger } from "../logger";
 import { randomHex } from "../util/random";
 import { corsHeaders, withCors } from "./cors";
 
@@ -15,8 +16,13 @@ function httpUrlOf(config: ServerConfig): string {
     return config.externalUrl.replace(/^wss/, "https").replace(/^ws/, "http");
 }
 
-export async function handleHttp(req: Request, accounts: AccountStore, sessions: SessionManager, config: ServerConfig): Promise<Response> {
+function remoteOf(req: Request): string {
+    return req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? req.headers.get("cf-connecting-ip") ?? "-";
+}
+
+export async function handleHttp(req: Request, accounts: AccountStore, sessions: SessionManager, config: ServerConfig, log: Logger = makeLogger("error", "http")): Promise<Response> {
     const url = new URL(req.url);
+    log.debug(`http ${req.method} ${url.pathname} from ${remoteOf(req)}`);
 
     if (req.method === "OPTIONS") {
         return new Response(null, { status: 204, headers: corsHeaders(config, req) });
@@ -28,18 +34,22 @@ export async function handleHttp(req: Request, accounts: AccountStore, sessions:
             body = await req.json();
         }
         catch {
+            log.warn(`login: invalid request body from ${remoteOf(req)}`);
             return withCors(json({ error: "Invalid request body", errorCode: "invalid_request" }), config, req);
         }
         const user = String(body.user ?? "");
         const pass = String(body.pass ?? "");
         const account = await accounts.verify(user, pass);
         if (!account) {
+            log.warn(`login failed for "${user}" from ${remoteOf(req)} (invalid credentials)`);
             return withCors(json({ error: "Invalid username or password", errorCode: "invalid_credentials" }), config, req);
         }
         if (account.banned) {
+            log.warn(`login blocked for banned account "${user}" from ${remoteOf(req)}`);
             return withCors(json({ error: "Account is banned", errorCode: "banned_from_server" }), config, req);
         }
         const sessionToken = sessions.create(account.username);
+        log.info(`login ok "${account.username}" from ${remoteOf(req)}`);
         return withCors(json({ user: account.username, sessionToken }), config, req);
     }
 
@@ -49,6 +59,7 @@ export async function handleHttp(req: Request, accounts: AccountStore, sessions:
             body = await req.json();
         }
         catch {
+            log.warn(`register: invalid request body from ${remoteOf(req)}`);
             return withCors(json({ error: "Invalid request body", errorCode: "invalid_request" }), config, req);
         }
         const user = String(body.user ?? "");
@@ -56,9 +67,11 @@ export async function handleHttp(req: Request, accounts: AccountStore, sessions:
         try {
             const account = await accounts.register(user, pass);
             const sessionToken = sessions.create(account.username);
+            log.info(`register ok "${account.username}" from ${remoteOf(req)}`);
             return withCors(json({ user: account.username, sessionToken }), config, req);
         }
         catch (error) {
+            log.warn(`register failed for "${user}" from ${remoteOf(req)}: ${String((error as Error).message)}`);
             return withCors(json({ error: String((error as Error).message), errorCode: "registration_failed" }), config, req);
         }
     }
