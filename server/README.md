@@ -41,6 +41,9 @@ bun run smoke        # smoke + two-player + gserv tests over real WebSockets
 |----------|------|---------|
 | `POST /login` | HTTP | `{ locale, user, pass, turnstileToken }` → `{ user, sessionToken }` or `{ error, errorCode }`. Used by `WolService.login`. |
 | `POST /register` | HTTP | Same body → creates account + session. Used by `WolService.createAccount`. |
+| `GET /auth/session` | HTTP | Gateway auth check; returns `401` (no account) so the client falls back to the legacy login flow without error. |
+| `GET /auth/csrf` | HTTP | `{ csrfToken }` for gateway-style POSTs. |
+| `POST /auth/logout` | HTTP | `204` no-op logout. |
 | `GET /servers.ini` | HTTP | Ready-to-use `servers.ini` pointing back at this server. |
 | `GET /health` | HTTP | `{ status, accounts, sessions }`. |
 | `/` (WebSocket) | WS | The WOL lobby/channel protocol (`wolUrl`). |

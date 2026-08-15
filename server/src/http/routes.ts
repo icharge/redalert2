@@ -1,6 +1,7 @@
 import { AccountStore } from "../auth/accountStore";
 import { SessionManager } from "../auth/session";
 import { ServerConfig } from "../config";
+import { randomHex } from "../util/random";
 import { corsHeaders, withCors } from "./cors";
 
 function json(body: unknown, status = 200): Response {
@@ -74,6 +75,18 @@ apiLoginUrl="${baseUrl}/login"
 apiRegUrl="${baseUrl}/register"
 `;
         return withCors(new Response(ini, { headers: { "Content-Type": "text/plain" } }), config, req);
+    }
+
+    if (req.method === "GET" && url.pathname === "/auth/session") {
+        return withCors(json({ error: "no session" }, 401), config, req);
+    }
+
+    if (req.method === "GET" && url.pathname === "/auth/csrf") {
+        return withCors(json({ csrfToken: randomHex(16) }), config, req);
+    }
+
+    if (req.method === "POST" && url.pathname === "/auth/logout") {
+        return withCors(new Response(null, { status: 204 }), config, req);
     }
 
     if (req.method === "GET" && url.pathname === "/health") {
