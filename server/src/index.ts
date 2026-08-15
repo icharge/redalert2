@@ -1,5 +1,5 @@
 import { loadConfig, ServerConfig } from "./config";
-import { makeLogger } from "./logger";
+import { makeLogger, fileLogOptionsOf } from "./logger";
 import { createStorage } from "./storage";
 import { AccountStore } from "./auth/accountStore";
 import { SessionManager } from "./auth/session";
@@ -18,7 +18,7 @@ interface WsData {
 }
 
 const config = loadConfig();
-const log = makeLogger(config.logLevel, "ra2web");
+const log = makeLogger(config.logLevel, "ra2web", fileLogOptionsOf(config));
 const storage = createStorage(config);
 const accounts = new AccountStore(storage, config);
 const sessions = new SessionManager(storage, config.sessionTtlSeconds);
@@ -84,6 +84,24 @@ log.info(`Wol server listening on ws://${server.hostname}:${server.port}`);
 log.info(`Http endpoints on ${httpProtocol}://${server.hostname}:${server.port} (/login /register /servers.ini /health)`);
 log.info(`Gserv endpoint at ${config.externalUrl}${config.gservUrlPath}`);
 log.info(`Log level: ${config.logLevel}`);
+if (config.logFilePath) {
+    const triggers = [`${config.logMaxBytes} bytes`];
+    if (config.logRotateDaily) {
+        triggers.push("daily");
+    }
+    log.info(`Log file: ${config.logFilePath} (rotate at ${triggers.join(" or ")}, keep ${config.logMaxFiles} backup(s))`);
+}
+else {
+    log.info("Log file: disabled (set LOG_FILE to enable)");
+}
+if (config.storageEngine === "sqlite") {
+    log.info(`Storage: sqlite db at ${config.dbPath}`);
+}
+else {
+    log.info("Storage: memory (no persistence)");
+}
+log.info(`Replays: ${config.recordReplays ? `recording to ${config.replaysDir}` : "disabled"}`);
+log.info(`Session TTL: ${config.sessionTtlSeconds}s | ping interval: ${config.pingIntervalSeconds}s | max payload: ${config.maxPayloadBytes} bytes`);
 
 let shuttingDown = false;
 function shutdown(signal: string): void {
@@ -109,6 +127,10 @@ const RESTART_ONLY_KEYS = [
     "maxPayloadBytes",
     "storageEngine",
     "dbPath",
+    "logFilePath",
+    "logMaxBytes",
+    "logMaxFiles",
+    "logRotateDaily",
 ] as const;
 
 // Hot reload for `systemctl reload` / `kill -HUP`: re-reads env + .env files

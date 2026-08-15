@@ -57,12 +57,19 @@ export interface ServerConfig {
     pingIntervalSeconds: number;
     maxPayloadBytes: number;
     instanceTtlSeconds: number;
+    startTimeoutSeconds: number;
+    gservRateLimitEnabled: boolean;
+    gservStatsIntervalSeconds: number;
     loginMaxPerMin: number;
     registerMaxPerHour: number;
     recordReplays: boolean;
     replaysDir: string;
     corsAllowedOrigins: string[];
     logLevel: LogLevel;
+    logFilePath: string;
+    logMaxBytes: number;
+    logMaxFiles: number;
+    logRotateDaily: boolean;
     storageEngine: StorageEngine;
     dbPath: string;
 }
@@ -100,6 +107,14 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
         pingIntervalSeconds: Number(env.PING_INTERVAL_SECONDS ?? 30),
         maxPayloadBytes: Number(env.MAX_PAYLOAD_BYTES ?? 256 * 1024),
         instanceTtlSeconds: Number(env.GSERV_INSTANCE_TTL_SECONDS ?? 600),
+        startTimeoutSeconds: Number(env.GSERV_START_TIMEOUT_SECONDS ?? 180),
+        // Disable per-connection flood limiting on the match relay (testing
+        // only): set GSERV_RATE_LIMIT=disabled to turn it off.
+        gservRateLimitEnabled: env.GSERV_RATE_LIMIT !== "disabled",
+        // Every N seconds, active games log received frames/s and relayed
+        // ticks/s per player (0 disables). Lets you watch real packet rates
+        // during play instead of guessing.
+        gservStatsIntervalSeconds: Number(env.GSERV_STATS_INTERVAL_SECONDS ?? 5),
         loginMaxPerMin: Number(env.LOGIN_MAX_PER_MIN ?? 30),
         registerMaxPerHour: Number(env.REGISTER_MAX_PER_HOUR ?? 20),
         recordReplays: env.RECORD_REPLAYS === "true",
@@ -108,7 +123,17 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
             ? env.CORS_ALLOWED_ORIGINS.split(",").map(s => s.trim()).filter(Boolean)
             : ["*"],
         logLevel: parseLogLevel(env.LOG_LEVEL),
+        // Rotating log file written by the server itself ("" disables file
+        // logging; relative paths are resolved against the working directory,
+        // like DB_PATH).
+        logFilePath: env.LOG_FILE ?? "data/server.log",
+        logMaxBytes: Number(env.LOG_MAX_BYTES ?? 100 * 1024 * 1024),
+        logMaxFiles: Number(env.LOG_MAX_FILES ?? 5),
+        logRotateDaily: env.LOG_ROTATE_DAILY !== "false",
         storageEngine: (env.STORAGE ?? "sqlite") === "memory" ? "memory" : "sqlite",
-        dbPath: env.DB_PATH ?? path.join(import.meta.dir, "..", "data", "ra2web.sqlite"),
+        // Relative to the working directory the server was started from
+        // (systemctl WorkingDirectory or wherever `bun run` was invoked),
+        // so the database travels with the install location.
+        dbPath: env.DB_PATH ?? path.join(process.cwd(), "data", "ra2web.sqlite"),
     };
 }

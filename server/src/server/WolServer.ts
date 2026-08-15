@@ -1,5 +1,5 @@
 import { ServerConfig } from "../config";
-import { Logger, makeLogger } from "../logger";
+import { Logger, makeLogger, fileLogOptionsOf } from "../logger";
 import { SessionManager } from "../auth/session";
 import { AccountStore } from "../auth/accountStore";
 import { ServerUser } from "./ServerUser";
@@ -59,7 +59,7 @@ export class WolServer {
         gservs: GservManager,
     ) {
         this.gservs = gservs;
-        this.log = makeLogger(config.logLevel, "wol");
+        this.log = makeLogger(config.logLevel, "wol", fileLogOptionsOf(config));
     }
 
     startPingLoop(): void {
