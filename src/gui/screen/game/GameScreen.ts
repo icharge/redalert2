@@ -4,7 +4,6 @@ import { MedianPing } from './MedianPing';
 import { ScreenType, MainMenuScreenType } from '@/gui/screen/ScreenType';
 import { sleep } from '@puzzl/core/lib/async/sleep';
 import { GameStatus } from '@/game/Game';
-import { GameTurnManager } from '@/game/GameTurnManager';
 import { ActionFactory } from '@/game/action/ActionFactory';
 import { ActionQueue } from '@/game/action/ActionQueue';
 import { DevToolsApi } from '@/tools/DevToolsApi';
@@ -25,6 +24,8 @@ import { Minimap } from '@/gui/screen/game/component/Minimap';
 import { Replay } from '@/network/gamestate/Replay';
 import { ReplayRecorder } from '@/network/gamestate/ReplayRecorder';
 import { SoloPlayTurnManager } from '@/network/gamestate/SoloPlayTurnManager';
+import { LockstepManager } from '@/network/gamestate/LockstepManager';
+import { ActionSerializer } from '@/network/gamestate/ActionSerializer';
 import { LanLockstepTurnManager } from '@/network/lan/LanLockstepTurnManager';
 import { LanMatchSession } from '@/network/lan/LanMatchSession';
 import { CombatantSidebarModel } from '@/gui/screen/game/component/hud/viewmodel/CombatantSidebarModel';
@@ -33,6 +34,10 @@ import { MessageList } from '@/gui/screen/game/component/hud/viewmodel/MessageLi
 import { ChannelType } from '@/engine/sound/ChannelType';
 import { ChatNetHandler } from '@/gui/screen/game/ChatNetHandler';
 import { ChatTypingHandler } from '@/gui/screen/game/ChatTypingHandler';
+import { ConnectionInfoScreen } from '@/gui/screen/game/gameMenu/ConnectionInfoScreen';
+import { DataStream } from '@/data/DataStream';
+import { CON_INFO_THRESH_MILLIS } from '@/network/gservConfig';
+import { Task } from '@puzzl/core/lib/async/Task';
 import { IrcConnection } from '@/network/IrcConnection';
 import { CancellationTokenSource, OperationCanceledError } from '@puzzl/core/lib/async/cancellation';
 import { MusicType } from '@/engine/sound/Music';
@@ -266,10 +271,11 @@ export class GameScreen extends RootScreen {
             this.lagState = false;
         }
         else {
-            this.gameTurnMgr = new GameTurnManager(game, actionQueue);
+            this.gameTurnMgr = this.initOnlineLockstep(game, localPlayer, actionFactory, actionQueue, replayRecorder);
             this.lagState = false;
             if (localPlayer.isObserver) {
                 try {
+                    this.gameTurnMgr.setPassiveMode(true);
                 }
                 catch (error) {
                     if (error instanceof IrcConnection.SocketError) {
@@ -281,6 +287,7 @@ export class GameScreen extends RootScreen {
             else {
                 this.disposables.add(game.events.subscribe(EventType.PlayerDefeated, (event: any) => {
                     if (event.target === localPlayer && localPlayer.isObserver) {
+                        this.gameTurnMgr.setPassiveMode?.(true);
                     }
                 }));
             }
@@ -643,6 +650,95 @@ export class GameScreen extends RootScreen {
         };
         lockstepManager.onLagStateChange.subscribe(onLagStateChange);
         this.disposables.add(() => lockstepManager.onLagStateChange.unsubscribe(onLagStateChange));
+        return lockstepManager;
+    }
+    private initOnlineLockstep(game: any, localPlayer: any, actionFactory: any, actionQueue: any, replayRecorder: any): any {
+        const debugGameState = this.runtimeVars.debugGameState?.value ?? false;
+        let stateDumpBuffer: DataStream | undefined;
+        const debugLogger = debugGameState
+            ? (message: string) => {
+                if (!stateDumpBuffer) {
+                    stateDumpBuffer = new DataStream();
+                }
+                if (stateDumpBuffer.byteLength < 10 * 1024 * 1024) {
+                    stateDumpBuffer.writeString(message + "\n");
+                }
+            }
+            : undefined;
+        let lockstepManager: LockstepManager;
+        lockstepManager = new LockstepManager(
+            game,
+            this.gservCon,
+            this.gameOptsParser,
+            this.gameOptsSerializer,
+            new ActionSerializer(),
+            actionFactory,
+            actionQueue,
+            () => {
+                this.gservCon.onClose.unsubscribe(this.onGservClose);
+                this.gservCon.close();
+                this.handleGameError(
+                    "desync_error",
+                    this.strings.get("TS:DesyncDetected"),
+                    game,
+                    debugGameState
+                        ? async () => {
+                            let stateDump: any;
+                            let debugLog: any;
+                            try {
+                                const stateDumpJson = JSON.stringify(lockstepManager.debugGameStateHistory, undefined, 2);
+                                this.workerHostApi.queueTask(async (worker: any) => {
+                                    stateDump = await worker.compressFile(stateDumpJson, "statedump.json");
+                                });
+                                this.workerHostApi.queueTask(async (worker: any) => {
+                                    debugLog = await worker.compressFile(
+                                        new Uint8Array(stateDumpBuffer!.buffer, 0, stateDumpBuffer!.byteLength),
+                                        "lockstep.log");
+                                });
+                                await this.workerHostApi.waitForTasks();
+                            }
+                            catch (error) {
+                                console.error("Failed to export debug data", error);
+                            }
+                            finally {
+                                this.workerHostApi.dispose();
+                            }
+                            return { stateDump, debugLog };
+                        }
+                        : undefined,
+                );
+            },
+            this.actionLogger,
+            this.lockstepLogger,
+            debugLogger,
+            replayRecorder,
+            debugGameState,
+        );
+        let connectionInfoTimer: any;
+        lockstepManager.onLagStateChange.subscribe((lagState: boolean) => {
+            this.lagState = lagState;
+            connectionInfoTimer?.cancel?.();
+            connectionInfoTimer = undefined;
+            if (lagState) {
+                connectionInfoTimer = new Task(async (token: any) => {
+                    await sleep(CON_INFO_THRESH_MILLIS, token);
+                    if (!token.isCancelled()) {
+                        this.menu?.openConnectionInfo(game.getCombatants(), this.gservCon, this.chatNetHandler);
+                    }
+                });
+                connectionInfoTimer.start().catch((error: any) => {
+                    if (!(error instanceof OperationCanceledError)) {
+                        throw error;
+                    }
+                });
+                this.disposables.add(() => connectionInfoTimer?.cancel?.());
+            }
+            else {
+                if (this.menu?.getCurrentScreen() instanceof ConnectionInfoScreen) {
+                    this.menu.close();
+                }
+            }
+        });
         return lockstepManager;
     }
     private onGameStart(localPlayer: any, game: any, uiInitResult: any, actionQueue: any, actionFactory: any, replay: any): void {
