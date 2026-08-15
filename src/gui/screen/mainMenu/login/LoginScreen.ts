@@ -29,6 +29,7 @@ import { RealmService } from "@/network/RealmService";
 import { SessionService } from "@/network/SessionService";
 import { RealmSession } from "@/network/CreateRealmSessionResponse";
 import { NicknameClaim } from "@/network/ClaimNicknameResponse";
+import { MusicType } from "@/engine/sound/Music";
 
 interface LoginScreenParams {
     afterLogin: (messages: { text: string }[]) => MainMenuRoute | {
@@ -110,6 +111,7 @@ export class LoginScreen extends MainMenuScreen {
         this.realmService = realmService;
         this.sessionService = sessionService;
         this.title = this.strings.get("GUI:Login");
+        this.musicType = MusicType.NormalShuffle;
         this.handleLoginSubmit = async (username: string, password: string, turnstileToken?: string) => {
             if (!this.isBusy && this.loginBoxApi && this.controller && (!this.cfTurnstile.isEnabledForLogin() || turnstileToken)) {
                 const region = this.selectedRegion;
@@ -250,7 +252,8 @@ export class LoginScreen extends MainMenuScreen {
                 }
                 catch (error) {
                     if (!(error instanceof DownloadError && error.statusCode === 401)) {
-                        this.errorHandler.handle(error, this.strings.get("TS:ConnectFailed"), () => {});
+                        this.handleWolError(error, this.strings.get("TS:ConnectFailed"), { fatal: true });
+                        return;
                     }
                 }
             }
