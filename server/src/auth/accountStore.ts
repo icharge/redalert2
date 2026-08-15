@@ -1,5 +1,6 @@
 import { AccountLimits, Account } from "./types";
 import { Storage } from "../storage/Storage";
+import { isValidNickChars } from "../protocol/validate";
 
 export type { Account, AccountLimits } from "./types";
 
@@ -16,6 +17,9 @@ export class AccountStore {
 
     async register(username: string, password: string): Promise<Account> {
         if (username.toLowerCase().length < this.limits.minUsernameLength || username.toLowerCase().length > this.limits.maxUsernameLength) {
+            throw new Error("bad_username");
+        }
+        if (!isValidNickChars(username)) {
             throw new Error("bad_username");
         }
         if (password.length < this.limits.minPasswordLength || password.length > this.limits.maxPasswordLength) {

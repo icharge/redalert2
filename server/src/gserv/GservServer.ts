@@ -2,6 +2,8 @@ import { ServerConfig } from "../config";
 import { Logger, makeLogger } from "../logger";
 import { GservInstance, GservManager } from "./GservManager";
 import { SocketLike } from "../server/SocketLike";
+import { isValidNickChars, stripCrlf } from "../protocol/validate";
+import { TokenBucket } from "../util/rateLimit";
 import * as Code from "../protocol/gservCodes";
 import { GSERV_SERVER_NAME } from "../protocol/replies";
 import { GservReplayRecorder } from "./replay/GservReplayRecorder";
@@ -18,7 +20,20 @@ export interface GservClient {
     instance?: GservInstance;
     loaded: number;
     active: boolean;
+    rateBucket: TokenBucket;
 }
+
+// Gameplay sends at most one binary frame per network turn (~30/s at the
+// default 33ms net rate, ~60/s at the fastest practical 16ms rate). The bucket
+// leaves 3x+ headroom so only floods are dropped.
+const GSERV_RATE_CAPACITY = 600;
+const GSERV_RATE_REFILL_PER_SEC = 200;
+const MAX_LINES_PER_FRAME = 32;
+const MAX_LINE_LENGTH = 16 * 1024;
+const MAX_BINARY_FRAME_BYTES = 64 * 1024;
+const TURN_WINDOW = 8;
+const MAX_PENDING_TURNS = 16;
+const SWEEP_INTERVAL_MS = 30_000;
 
 const NO_ACTION_BLOB = serializePlayerActions([{ id: NO_ACTION_ID, params: new Uint8Array() }]);
 
@@ -41,12 +56,32 @@ export class GservServer {
     private clients = new Map<SocketLike, GservClient>();
     private instanceMembers = new Map<string, Map<string, GservClient>>();
     private instanceStates = new Map<string, InstanceState>();
+    private sweepInterval?: ReturnType<typeof setInterval>;
 
     constructor(
         private config: ServerConfig,
         private manager: GservManager,
     ) {
         this.log = makeLogger(config.logLevel, "gserv");
+    }
+
+    startSweepLoop(): void {
+        if (this.sweepInterval) {
+            return;
+        }
+        this.sweepInterval = setInterval(() => {
+            const removed = this.manager.sweepExpired(this.config.instanceTtlSeconds);
+            if (removed > 0) {
+                this.log.info(`swept ${removed} expired gserv instance(s)`);
+            }
+        }, SWEEP_INTERVAL_MS);
+    }
+
+    dispose(): void {
+        if (this.sweepInterval) {
+            clearInterval(this.sweepInterval);
+            this.sweepInterval = undefined;
+        }
     }
 
     handleOpen(socket: SocketLike): GservClient {
@@ -56,6 +91,7 @@ export class GservServer {
             authenticated: false,
             loaded: 0,
             active: true,
+            rateBucket: new TokenBucket(GSERV_RATE_CAPACITY, GSERV_RATE_REFILL_PER_SEC),
         };
         this.clients.set(socket, client);
         this.log.debug("gserv connection open");
@@ -99,9 +135,24 @@ export class GservServer {
             this.handleBinary(client, message);
             return;
         }
+        let processed = 0;
         for (const line of message.split(/\r?\n/)) {
+            if (processed >= MAX_LINES_PER_FRAME) {
+                this.log.warn(`dropping frame: too many lines from ${client.nick}`);
+                break;
+            }
+            processed += 1;
+            if (line.length > MAX_LINE_LENGTH) {
+                this.log.warn(`dropping frame: line too long from ${client.nick}`);
+                break;
+            }
+            if (line.length && !client.rateBucket.tryTake()) {
+                this.log.warn(`rate limit exceeded for ${client.nick}; dropping connection`);
+                client.socket.close(4008, "Rate limit exceeded");
+                break;
+            }
             if (line.length) {
-                this.handleLine(client, line);
+                this.handleLine(client, stripCrlf(line));
             }
         }
     }
@@ -202,6 +253,7 @@ export class GservServer {
             return;
         }
         client.instance = instance;
+        this.manager.consumeTicketByNick(client.nick);
         let members = this.instanceMembers.get(gameId);
         if (!members) {
             members = new Map();
@@ -237,6 +289,7 @@ export class GservServer {
             return;
         }
         instance.started = true;
+        this.manager.clearTickets(instance.gameId);
         this.log.info(`instance ${instance.gameId} started`);
         const recorder = new GservReplayRecorder(instance, {
             gameVersion: this.config.gameVersion,
@@ -291,13 +344,13 @@ export class GservServer {
             return;
         }
         const target = line.slice(8, sep).trim();
-        const text = line.slice(sep + 2);
+        const text = stripCrlf(line.slice(sep + 2));
         if (target === "#all" || target === "#team") {
             this.broadcastLine(client, `:${client.nick} PRIVMSG ${target} :${text}`);
             const state = client.instance ? this.instanceStates.get(client.instance.gameId) : undefined;
             state?.recorder.recordChat(client.nick, text);
         }
-        else if (target !== client.nick) {
+        else if (target !== client.nick && isValidNickChars(target)) {
             const member = this.findMember(client, target);
             if (member) {
                 member.socket.send(`:${client.nick} PRIVMSG ${target} :${text}\r\n`);
@@ -315,6 +368,15 @@ export class GservServer {
         if (data[1] !== Code.REQ_BIN_GAME_ACTIONS || !client.instance) {
             return;
         }
+        if (data.length > MAX_BINARY_FRAME_BYTES) {
+            this.log.warn(`dropping oversized action frame from ${client.nick}`);
+            return;
+        }
+        if (!client.rateBucket.tryTake()) {
+            this.log.warn(`rate limit exceeded for ${client.nick}; dropping connection`);
+            client.socket.close(4008, "Rate limit exceeded");
+            return;
+        }
         const state = this.instanceStates.get(client.instance.gameId);
         if (!state) {
             return;
@@ -325,6 +387,18 @@ export class GservServer {
             return;
         }
         const turnNo = new DataView(data.buffer, data.byteOffset, data.byteLength).getUint32(2, true);
+        if (turnNo <= state.lastTurnNo) {
+            this.log.debug(`ignoring stale turn ${turnNo} from ${client.nick}`);
+            return;
+        }
+        if (turnNo > state.lastTurnNo + TURN_WINDOW) {
+            this.log.warn(`ignoring out-of-window turn ${turnNo} from ${client.nick}`);
+            return;
+        }
+        if (state.pending.size >= MAX_PENDING_TURNS && !state.pending.has(turnNo)) {
+            this.log.warn(`too many pending turns; ignoring turn ${turnNo} from ${client.nick}`);
+            return;
+        }
         let submissions = state.pending.get(turnNo);
         if (!submissions) {
             submissions = new Map();
@@ -369,6 +443,7 @@ export class GservServer {
 
     private finalizeInstance(gameId: string, state: InstanceState): void {
         this.instanceStates.delete(gameId);
+        this.manager.deleteInstance(gameId);
         if (!state.recorder.hasEvents) {
             this.log.debug(`instance ${gameId} ended with no events; skipping replay`);
             return;

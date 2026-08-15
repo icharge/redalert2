@@ -26,10 +26,12 @@ const wol = new WolServer(config, sessions, accounts, gservManager);
 const gserv = new GservServer(config, gservManager);
 
 wol.startPingLoop();
+gserv.startSweepLoop();
 
 const server = Bun.serve<WsData>({
     hostname: config.host,
     port: config.port,
+    maxRequestBodySize: config.maxPayloadBytes,
     fetch(req, srv) {
         if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
             if (!isOriginAllowed(config, req)) {
@@ -44,6 +46,7 @@ const server = Bun.serve<WsData>({
         return handleHttp(req, accounts, sessions, config, log);
     },
     websocket: {
+        maxPayloadLength: config.maxPayloadBytes,
         open(ws) {
             if (ws.data.target === "gserv") {
                 ws.data.client = gserv.handleOpen(ws);
@@ -80,4 +83,20 @@ log.info(`Wol server listening on ws://${server.hostname}:${server.port}`);
 log.info(`Http endpoints on ${httpProtocol}://${server.hostname}:${server.port} (/login /register /servers.ini /health)`);
 log.info(`Gserv endpoint at ${config.externalUrl}${config.gservUrlPath}`);
 log.info(`Log level: ${config.logLevel}`);
+
+let shuttingDown = false;
+function shutdown(signal: string): void {
+    if (shuttingDown) {
+        return;
+    }
+    shuttingDown = true;
+    log.info(`received ${signal}; shutting down`);
+    wol.dispose();
+    gserv.dispose();
+    server.stop(true);
+    storage.close();
+    process.exit(0);
+}
+process.once("SIGINT", () => shutdown("SIGINT"));
+process.once("SIGTERM", () => shutdown("SIGTERM"));
 

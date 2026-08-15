@@ -9,6 +9,7 @@ import { PartyManager } from "./PartyManager";
 import { MatchmakingBot } from "../matchmaking/MatchmakingBot";
 import { GservManager } from "../gserv/GservManager";
 import { escapeChannelName, unescapeChannelName } from "../protocol/lineCodec";
+import { isValidChannelKey, isValidNickChars, stripCrlf } from "../protocol/validate";
 import { numeric, userLine, userPrefix, WOL_SERVER_NAME } from "../protocol/replies";
 import { SocketLike } from "./SocketLike";
 import * as Code from "../protocol/wolCodes";
@@ -77,12 +78,24 @@ export class WolServer {
 
     private pingAll(): void {
         const now = Date.now();
+        const timeoutMs = this.config.pingIntervalSeconds * 3 * 1000;
         for (const user of this.users.values()) {
-            if (user.authenticated && user.socket.readyState === 1) {
-                user.lastPingSent = now;
-                user.send(`PING ${now}\r\n`);
+            if (!user.authenticated || user.socket.readyState !== 1) {
+                continue;
             }
+            if (user.lastPingSent > 0 && now - user.lastPongAt > timeoutMs) {
+                this.log.info(`closing ${user.nick}: no PONG for ${Math.round((now - user.lastPongAt) / 1000)}s`);
+                user.socket.close(4009, "Ping timeout");
+                continue;
+            }
+            user.lastPingSent = now;
+            user.send(`PING ${now}\r\n`);
         }
+    }
+
+    dispose(): void {
+        this.stopPingLoop();
+        this.matchbot.dispose();
     }
 
     handleOpen(socket: SocketLike): ServerUser {
@@ -113,11 +126,29 @@ export class WolServer {
         }
     }
 
+    private static readonly MAX_LINES_PER_FRAME = 32;
+    private static readonly MAX_LINE_LENGTH = 16 * 1024;
+
     handleMessage(user: ServerUser, message: string | Uint8Array): void {
         if (typeof message !== "string") {
             return;
         }
+        let processed = 0;
         for (const line of message.split(/\r?\n/)) {
+            if (processed >= WolServer.MAX_LINES_PER_FRAME) {
+                this.log.warn(`dropping frame: too many lines from ${user.nick || "<anon>"}`);
+                break;
+            }
+            processed += 1;
+            if (line.length > WolServer.MAX_LINE_LENGTH) {
+                this.log.warn(`dropping frame: line too long from ${user.nick || "<anon>"}`);
+                break;
+            }
+            if (line.length && !user.rateBucket.tryTake()) {
+                this.log.warn(`rate limit exceeded for ${user.nick || "<anon>"}; dropping connection`);
+                user.socket.close(4008, "Rate limit exceeded");
+                break;
+            }
             if (line.length) {
                 this.handleLine(user, line);
             }
@@ -125,6 +156,7 @@ export class WolServer {
     }
 
     private handleLine(user: ServerUser, line: string): void {
+        line = stripCrlf(line);
         const parts = line.split(" ");
         const cmd = parts[0].toLowerCase();
         const args = parts.slice(1);
@@ -209,6 +241,18 @@ export class WolServer {
             return;
         }
         const nick = session.username;
+        if (!isValidNickChars(nick)) {
+            this.sessions.revoke(session.token);
+            this.log.warn(`session rejected: username has invalid characters`);
+            this.sendNumeric(user, Code.RPL_BAD_SESSION, "*", [], "Invalid session token");
+            return;
+        }
+        if (this.accounts.get(nick)?.banned) {
+            this.sessions.revoke(session.token);
+            this.log.warn(`session rejected: ${nick} is banned`);
+            this.sendNumeric(user, Code.RPL_BAD_SESSION, "*", [], "Account is banned");
+            return;
+        }
         const existing = this.users.get(nick);
         if (existing && existing !== user) {
             this.log.warn(`duplicate login for ${nick}; dropping previous connection`);
@@ -233,6 +277,9 @@ export class WolServer {
         const password = args[1];
         if (!key) {
             this.sendNumeric(user, Code.ERR_NEEDMOREPARAMS, user.nick, [key ?? ""], "Not enough parameters");
+            return;
+        }
+        if (!isValidChannelKey(key)) {
             return;
         }
         let channel = this.channels.get(key);
@@ -318,9 +365,12 @@ export class WolServer {
             return;
         }
         const targets = line.slice(7, sep).trim().split(",").map(t => t.trim()).filter(Boolean);
-        const text = line.slice(sep + 2);
+        const text = stripCrlf(line.slice(sep + 2));
         for (const target of targets) {
             if (target.startsWith("#")) {
+                if (!isValidChannelKey(target)) {
+                    continue;
+                }
                 const channel = this.channels.get(target) ?? this.games.get(target);
                 if (!channel) {
                     continue;
@@ -331,6 +381,9 @@ export class WolServer {
                 this.matchbot.handleMessage(user, text);
             }
             else {
+                if (!isValidNickChars(target)) {
+                    continue;
+                }
                 const targetUser = this.users.get(target);
                 if (!targetUser) {
                     this.sendNumeric(user, Code.ERR_NOSUCHNICK, user.nick, [target], "No such nick");
@@ -346,7 +399,7 @@ export class WolServer {
         const key = args[0];
         const targets = (args[1] ?? "").split(",").filter(Boolean);
         const channel = this.channels.get(key) ?? this.games.get(key);
-        if (!channel) {
+        if (!channel || !isValidChannelKey(key)) {
             return;
         }
         const member = channel.members.get(user.nick);
@@ -355,6 +408,9 @@ export class WolServer {
             return;
         }
         for (const target of targets) {
+            if (!isValidNickChars(target)) {
+                continue;
+            }
             const targetMember = channel.members.get(target);
             if (!targetMember) {
                 continue;
@@ -388,6 +444,9 @@ export class WolServer {
 
     private createGame(user: ServerUser, args: string[]): void {
         const key = args[0];
+        if (!isValidChannelKey(key)) {
+            return;
+        }
         if (this.games.has(key)) {
             this.sendNumeric(user, Code.ERR_RATE_LIMIT_EXCEEDED, user.nick, [key], "You have created too many games");
             return;
@@ -427,6 +486,9 @@ export class WolServer {
     private joinGame(user: ServerUser, args: string[]): void {
         const key = args[0];
         const password = args[2];
+        if (!isValidChannelKey(key)) {
+            return;
+        }
         const game = this.games.get(key);
         if (!game) {
             this.sendNumeric(user, Code.ERR_GAMEHASCLOSED, user.nick, [key], "Game has closed");
@@ -455,7 +517,7 @@ export class WolServer {
             return;
         }
         const key = line.slice(8, sep).trim();
-        const opt = line.slice(sep + 2);
+        const opt = stripCrlf(line.slice(sep + 2));
         let game = this.games.get(key);
         if (!game) {
             const targetUser = this.users.get(key);
@@ -482,10 +544,10 @@ export class WolServer {
         if (!member || !member.operator) {
             return;
         }
-        const modeArgs = args.slice(1).join(" ");
+        const modeArgs = args.slice(1).join(" ").trim();
         const match = args[1]?.match(/^\+l(\d+)$/);
         if (match) {
-            channel.limit = Number(match[1]);
+            channel.limit = Math.min(Number(match[1]), 128);
         }
         this.broadcastChannel(channel, userLine(userPrefix(user.nick, user.hostmask), "MODE", `${key} ${modeArgs}`));
     }
@@ -493,7 +555,7 @@ export class WolServer {
     private handleTopic(user: ServerUser, line: string, args: string[]): void {
         const sep = line.indexOf(" :");
         const key = args[0];
-        const topic = sep !== -1 ? line.slice(sep + 2) : "";
+        const topic = sep !== -1 ? stripCrlf(line.slice(sep + 2)) : "";
         const game = this.games.get(key);
         if (!game || !game.has(user.nick)) {
             return;
@@ -504,7 +566,7 @@ export class WolServer {
 
     private handleGping(user: ServerUser, args: string[]): void {
         const game = this.games.get(args[0]);
-        if (game) {
+        if (game && isValidNickChars(args[1]) && game.pings.size < 128) {
             game.pings.set(args[1], Number(args[2]));
         }
     }
@@ -520,7 +582,7 @@ export class WolServer {
             return;
         }
         const players = (args[1] ?? "").split(",").filter(Boolean);
-        if (players.some(player => !game.has(player))) {
+        if (players.some(player => !isValidNickChars(player) || !game.has(player))) {
             this.sendStartgAbort(user, key, 2);
             return;
         }

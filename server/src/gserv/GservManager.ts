@@ -62,4 +62,51 @@ export class GservManager {
     validateTicket(ticket: string): TicketInfo | undefined {
         return this.tickets.get(ticket);
     }
+
+    // A ticket is only needed to log into gserv; once the player has joined the
+    // instance the ticket is spent and can be dropped.
+    consumeTicketByNick(nick: string): void {
+        for (const [ticket, info] of this.tickets) {
+            if (info.nick === nick) {
+                this.tickets.delete(ticket);
+            }
+        }
+    }
+
+    deleteInstance(gameId: string): void {
+        if (!this.instances.delete(gameId)) {
+            return;
+        }
+        this.clearTickets(gameId);
+    }
+
+    // Tickets for an instance are no longer needed once the game started.
+    clearTickets(gameId: string): void {
+        for (const [ticket, info] of this.tickets) {
+            if (info.gameId === gameId) {
+                this.tickets.delete(ticket);
+            }
+        }
+    }
+
+    // Drop instances that never started within the TTL (abandoned starts) and
+    // their tickets. Started instances are deleted by GservServer on game end.
+    sweepExpired(ttlSeconds: number, nowSeconds: number = Math.floor(Date.now() / 1000)): number {
+        let removed = 0;
+        for (const [gameId, instance] of this.instances) {
+            if (!instance.started && nowSeconds - instance.timestamp > ttlSeconds) {
+                this.instances.delete(gameId);
+                removed += 1;
+            }
+        }
+        if (this.tickets.size > 0) {
+            for (const [ticket, info] of this.tickets) {
+                const instance = this.instances.get(info.gameId);
+                if (!instance) {
+                    this.tickets.delete(ticket);
+                }
+            }
+        }
+        return removed;
+    }
 }

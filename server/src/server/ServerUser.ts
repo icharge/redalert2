@@ -1,4 +1,9 @@
 import { OPEN_STATE, SocketLike } from "./SocketLike";
+import { TokenBucket } from "../util/rateLimit";
+
+// WOL commands: legitimate chat is a few messages per second.
+export const WOL_RATE_CAPACITY = 120;
+export const WOL_RATE_REFILL_PER_SEC = 40;
 
 export class ServerUser {
     nick = "";
@@ -18,6 +23,7 @@ export class ServerUser {
     noInvites = false;
     preventInvites = new Set<string>();
     inQueue = false;
+    readonly rateBucket = new TokenBucket(WOL_RATE_CAPACITY, WOL_RATE_REFILL_PER_SEC);
 
     constructor(public socket: SocketLike) {
     }

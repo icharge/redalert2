@@ -84,6 +84,13 @@ export class MatchmakingBot {
         this.clearEntry(entry);
     }
 
+    dispose(): void {
+        for (const timer of this.timers) {
+            clearTimeout(timer);
+        }
+        this.timers.clear();
+    }
+
     private handleMatch(user: ServerUser, tags: string[]): void {
         if (this.byNick.has(user.nick)) {
             this.reply(user, RPL_ALREADY_QUEUED);

@@ -136,6 +136,48 @@ describe("http routes", () => {
         expect(res.headers.get("Access-Control-Allow-Headers")).toContain("X-CSRF-Token");
     });
 
+    test("logout with a session token revokes it", async () => {
+        const { config, accounts, sessions } = make();
+        const reg = await handleHttp(
+            new Request("http://localhost/register", {
+                method: "POST",
+                body: JSON.stringify({ user: "routeuser", pass: "password123" }),
+            }),
+            accounts,
+            sessions,
+            config,
+        );
+        const data: any = await reg.json();
+        expect(data.sessionToken).toBeTruthy();
+
+        const out = await handleHttp(
+            new Request("http://localhost/auth/logout", {
+                method: "POST",
+                body: JSON.stringify({ sessionToken: data.sessionToken }),
+            }),
+            accounts,
+            sessions,
+            config,
+        );
+        expect(out.status).toBe(204);
+        expect(sessions.validate(data.sessionToken)).toBeUndefined();
+    });
+
+    test("login is rate limited per IP", async () => {
+        const { config, accounts, sessions } = make();
+        const body = JSON.stringify({ user: "routeuser", pass: "password123" });
+        let last: Response | undefined;
+        for (let i = 0; i < config.loginMaxPerMin + 5; i++) {
+            last = await handleHttp(
+                new Request("http://localhost/login", { method: "POST", body }),
+                accounts,
+                sessions,
+                config,
+            );
+        }
+        expect(last!.status).toBe(429);
+    });
+
     test("servers.ini respects EXTERNAL_URL and WOL_URL_PATH", async () => {
         const config = loadConfig({ EXTERNAL_URL: "wss://game.example.com", WOL_URL_PATH: "/wol" });
         const storage = makeTestStorage();

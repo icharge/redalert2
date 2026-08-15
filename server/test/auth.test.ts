@@ -57,8 +57,7 @@ describe("AccountStore", () => {
     test("registers and verifies", async () => {
         const store = new AccountStore(memStorage(), limits);
         await store.register("alice", "password123");
-        const account = await store.verify("alice", "password123");
-        expect(account?.username).toBe("alice");
+        const account = await store.verify("alice", "password123");        expect(account?.username).toBe("alice");
         expect(await store.verify("alice", "wrong")).toBeUndefined();
         expect(await store.verify("bob", "password123")).toBeUndefined();
     });
@@ -116,6 +115,15 @@ describe("storage engines", () => {
                 // best-effort cleanup (Windows may briefly hold the file)
             }
         }
+    });
+
+    test("rejects usernames with injection characters", async () => {
+        const store = new AccountStore(memStorage(), limits);
+        await expect(store.register("a b", "password123")).rejects.toThrow("bad_username");
+        await expect(store.register("a\r\nPRIVMSG", "password123")).rejects.toThrow("bad_username");
+        await expect(store.register("a:b", "password123")).rejects.toThrow("bad_username");
+        await expect(store.register("a,b", "password123")).rejects.toThrow("bad_username");
+        await expect(store.register("a#b", "password123")).rejects.toThrow("bad_username");
     });
 
     test("createStorage rejects unknown engines", () => {

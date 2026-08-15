@@ -8,6 +8,8 @@ export function openDatabase(dbPath: string): Database {
     }
     const db = new Database(dbPath);
     db.exec("PRAGMA journal_mode = WAL");
-    db.exec("PRAGMA synchronous = FULL");
+    // NORMAL (with WAL) avoids the per-commit fsync stall; only the last commit
+    // may be lost on OS crash. Sessions are revocable, so this is acceptable.
+    db.exec("PRAGMA synchronous = NORMAL");
     return db;
 }

@@ -55,6 +55,10 @@ export interface ServerConfig {
     wolUrlPath: string;
     expectedModHash?: string;
     pingIntervalSeconds: number;
+    maxPayloadBytes: number;
+    instanceTtlSeconds: number;
+    loginMaxPerMin: number;
+    registerMaxPerHour: number;
     recordReplays: boolean;
     replaysDir: string;
     corsAllowedOrigins: string[];
@@ -94,6 +98,10 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
         wolUrlPath: env.WOL_URL_PATH ?? "",
         expectedModHash: env.EXPECTED_MOD_HASH || undefined,
         pingIntervalSeconds: Number(env.PING_INTERVAL_SECONDS ?? 30),
+        maxPayloadBytes: Number(env.MAX_PAYLOAD_BYTES ?? 256 * 1024),
+        instanceTtlSeconds: Number(env.GSERV_INSTANCE_TTL_SECONDS ?? 600),
+        loginMaxPerMin: Number(env.LOGIN_MAX_PER_MIN ?? 30),
+        registerMaxPerHour: Number(env.REGISTER_MAX_PER_HOUR ?? 20),
         recordReplays: env.RECORD_REPLAYS === "true",
         replaysDir: env.REPLAYS_DIR ?? path.join(import.meta.dir, "..", "replays"),
         corsAllowedOrigins: env.CORS_ALLOWED_ORIGINS
