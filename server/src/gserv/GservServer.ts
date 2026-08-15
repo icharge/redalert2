@@ -4,6 +4,13 @@ import { GservInstance, GservManager } from "./GservManager";
 import { SocketLike } from "../server/SocketLike";
 import * as Code from "../protocol/gservCodes";
 import { GSERV_SERVER_NAME } from "../protocol/replies";
+import { GservReplayRecorder } from "./replay/GservReplayRecorder";
+import {
+    ActionData,
+    NO_ACTION_ID,
+    parsePlayerActions,
+    serializeAllPlayerActions,
+} from "./replay/gameoptCodec";
 
 export interface GservClient {
     socket: SocketLike;
@@ -14,11 +21,25 @@ export interface GservClient {
     active: boolean;
 }
 
+interface PendingSubmission {
+    playerId: number;
+    actions: ActionData[];
+}
+
+interface InstanceState {
+    recorder: GservReplayRecorder;
+    members: Map<string, GservClient>;
+    requiredNicks: Set<string>;
+    pending: Map<number, Map<string, PendingSubmission>>;
+    lastTurnNo: number;
+}
+
 export class GservServer {
     readonly serverName = GSERV_SERVER_NAME;
     readonly log: Logger;
     private clients = new Map<SocketLike, GservClient>();
     private instanceMembers = new Map<string, Map<string, GservClient>>();
+    private instanceStates = new Map<string, InstanceState>();
 
     constructor(
         private config: ServerConfig,
@@ -42,9 +63,32 @@ export class GservServer {
 
     handleClose(client: GservClient): void {
         if (client.instance) {
-            this.log.info(`disconnect ${client.nick} from instance ${client.instance.gameId}`);
+            const gameId = client.instance.gameId;
+            this.log.info(`disconnect ${client.nick} from instance ${gameId}`);
             this.broadcastLine(client, `:${this.serverName} ${Code.RPL_PLAYER_DISCONNECT} ${client.nick} :${client.nick}`);
-            this.instanceMembers.get(client.instance.gameId)?.delete(client.nick);
+            const members = this.instanceMembers.get(gameId);
+            members?.delete(client.nick);
+            const state = this.instanceStates.get(gameId);
+            if (state) {
+                state.requiredNicks.delete(client.nick);
+                // If a member dropped without submitting a pending turn, treat their
+                // missing submissions as NoAction so the game can keep advancing.
+                const playerId = state.recorder.playerIdFor(client.nick);
+                if (playerId !== undefined) {
+                    for (const submissions of state.pending.values()) {
+                        if (!submissions.has(client.nick)) {
+                            submissions.set(client.nick, {
+                                playerId,
+                                actions: [{ id: NO_ACTION_ID, params: new Uint8Array() }],
+                            });
+                        }
+                    }
+                }
+                this.flushPendingTurns(state);
+                if (!members || members.size === 0) {
+                    this.finalizeInstance(gameId, state);
+                }
+            }
         }
         else {
             this.log.debug("gserv connection closed (not authenticated)");
@@ -191,13 +235,34 @@ export class GservServer {
         if (!members || members.size === 0) {
             return;
         }
-        if ([...members.values()].every(member => member.loaded >= 100)) {
-            instance.started = true;
-            this.log.info(`instance ${instance.gameId} started`);
-            for (const member of members.values()) {
-                member.socket.send(`:${this.serverName} ${Code.RPL_NET_RATE} ${member.nick} :${this.config.netRateMs},0\r\n`);
-                member.socket.send(`:${this.serverName} ${Code.RPL_GAME_START} ${member.nick} :start\r\n`);
+        if (![...members.values()].every(member => member.loaded >= 100)) {
+            return;
+        }
+        instance.started = true;
+        this.log.info(`instance ${instance.gameId} started`);
+        const recorder = new GservReplayRecorder(instance, {
+            gameVersion: this.config.gameVersion,
+            modHash: this.config.expectedModHash,
+            netRateMs: this.config.netRateMs,
+            replaysDir: this.config.replaysDir,
+            log: this.log,
+        });
+        const requiredNicks = new Set<string>();
+        for (const member of members.values()) {
+            if (recorder.playerIdFor(member.nick) !== undefined && !recorder.isObserver(member.nick)) {
+                requiredNicks.add(member.nick);
             }
+        }
+        this.instanceStates.set(instance.gameId, {
+            recorder,
+            members,
+            requiredNicks,
+            pending: new Map(),
+            lastTurnNo: -1,
+        });
+        for (const member of members.values()) {
+            member.socket.send(`:${this.serverName} ${Code.RPL_NET_RATE} ${member.nick} :${this.config.netRateMs},0\r\n`);
+            member.socket.send(`:${this.serverName} ${Code.RPL_GAME_START} ${member.nick} :start\r\n`);
         }
     }
 
@@ -217,6 +282,8 @@ export class GservServer {
 
     private handleTaunt(client: GservClient, parts: string[]): void {
         this.broadcastLine(client, `:${this.serverName} ${Code.RPL_TAUNT} ${client.nick} :${parts[1] ?? "0"}`);
+        const state = client.instance ? this.instanceStates.get(client.instance.gameId) : undefined;
+        state?.recorder.recordTaunt(client.nick, Number(parts[1] ?? 0));
     }
 
     private handlePrivmsg(client: GservClient, line: string): void {
@@ -228,6 +295,8 @@ export class GservServer {
         const text = line.slice(sep + 2);
         if (target === "#all" || target === "#team") {
             this.broadcastLine(client, `:${client.nick} PRIVMSG ${target} :${text}`);
+            const state = client.instance ? this.instanceStates.get(client.instance.gameId) : undefined;
+            state?.recorder.recordChat(client.nick, text);
         }
         else if (target !== client.nick) {
             const member = this.findMember(client, target);
@@ -241,12 +310,76 @@ export class GservServer {
     }
 
     private handleBinary(client: GservClient, data: Uint8Array): void {
-        if (data.length < 2 || data[0] !== Code.REQ_BIN_PREFIX) {
+        if (data.length < 6 || data[0] !== Code.REQ_BIN_PREFIX) {
             return;
         }
-        if (data[1] === Code.REQ_BIN_GAME_ACTIONS) {
-            const actions = data.subarray(6);
-            this.broadcastBinary(client, actions);
+        if (data[1] !== Code.REQ_BIN_GAME_ACTIONS || !client.instance) {
+            return;
+        }
+        const state = this.instanceStates.get(client.instance.gameId);
+        if (!state) {
+            return;
+        }
+        const playerId = state.recorder.playerIdFor(client.nick);
+        if (playerId === undefined) {
+            this.log.warn(`ignoring actions from ${client.nick}: no player slot in gameopts`);
+            return;
+        }
+        const turnNo = new DataView(data.buffer, data.byteOffset, data.byteLength).getUint32(2, true);
+        let submissions = state.pending.get(turnNo);
+        if (!submissions) {
+            submissions = new Map();
+            state.pending.set(turnNo, submissions);
+        }
+        submissions.set(client.nick, { playerId, actions: parsePlayerActions(data.subarray(6)) });
+        this.flushPendingTurns(state);
+    }
+
+    private flushPendingTurns(state: InstanceState): void {
+        for (const turnNo of [...state.pending.keys()].sort((a, b) => a - b)) {
+            const submissions = state.pending.get(turnNo);
+            if (submissions && [...state.requiredNicks].every(nick => submissions.has(nick))) {
+                this.broadcastTurn(state, turnNo);
+            }
+        }
+    }
+
+    private broadcastTurn(state: InstanceState, turnNo: number): void {
+        const submissions = state.pending.get(turnNo);
+        if (!submissions) {
+            return;
+        }
+        const allActions = new Map<number, ActionData[]>();
+        for (const submission of submissions.values()) {
+            allActions.set(submission.playerId, submission.actions);
+        }
+        state.recorder.recordTurn(turnNo, allActions);
+        const payload = serializeAllPlayerActions(allActions);
+        const frame = new Uint8Array(6 + payload.length);
+        frame[0] = Code.RPL_BIN_PREFIX;
+        frame[1] = Code.RPL_BIN_GAME_ACTIONS;
+        new DataView(frame.buffer).setUint32(2, turnNo, true);
+        frame.set(payload, 6);
+        for (const member of state.members.values()) {
+            member.socket.send(frame);
+        }
+        state.pending.delete(turnNo);
+        state.lastTurnNo = Math.max(state.lastTurnNo, turnNo);
+        this.log.debug(`relayed turn ${turnNo} (${allActions.size} player(s))`);
+    }
+
+    private finalizeInstance(gameId: string, state: InstanceState): void {
+        this.instanceStates.delete(gameId);
+        if (!state.recorder.hasEvents) {
+            this.log.debug(`instance ${gameId} ended with no events; skipping replay`);
+            return;
+        }
+        try {
+            const filePath = state.recorder.finalize();
+            this.log.info(`saved replay for instance ${gameId}: ${filePath}`);
+        }
+        catch (error) {
+            this.log.error(`failed to save replay for instance ${gameId}: ${(error as Error).message}`);
         }
     }
 
@@ -259,14 +392,6 @@ export class GservServer {
 
     private broadcastLine(sender: GservClient, line: string): void {
         this.forEachOtherMember(sender, other => other.socket.send(line));
-    }
-
-    private broadcastBinary(sender: GservClient, actions: Uint8Array): void {
-        const frame = new Uint8Array(2 + actions.length);
-        frame[0] = Code.RPL_BIN_PREFIX;
-        frame[1] = Code.RPL_BIN_GAME_ACTIONS;
-        frame.set(actions, 2);
-        this.forEachOtherMember(sender, other => other.socket.send(frame));
     }
 
     private forEachOtherMember(sender: GservClient, fn: (member: GservClient) => void): void {
