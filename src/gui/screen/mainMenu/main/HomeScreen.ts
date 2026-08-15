@@ -48,7 +48,7 @@ export class HomeScreen implements Screen {
                     console.log('[HomeScreen] Quick Match clicked');
                     if (this.controller) {
                         this.controller.goToScreen(MainMenuScreenType.Login, {
-                            afterLogin: () => new MainMenuRoute(MainMenuScreenType.QuickGame, {}),
+                            afterLogin: (messages: any[]) => new MainMenuRoute(MainMenuScreenType.QuickGame, { messages }),
                         });
                     }
                 }
@@ -61,7 +61,7 @@ export class HomeScreen implements Screen {
                 console.log('[HomeScreen] Custom Game clicked');
                 if (this.controller) {
                     this.controller.goToScreen(MainMenuScreenType.Login, {
-                        afterLogin: () => new MainMenuRoute(MainMenuScreenType.CustomGame, {}),
+                        afterLogin: (messages: any[]) => new MainMenuRoute(MainMenuScreenType.CustomGame, { messages }),
                     });
                 }
             }

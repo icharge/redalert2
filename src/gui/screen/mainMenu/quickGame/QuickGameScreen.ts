@@ -520,7 +520,7 @@ export class QuickGameScreen extends MainMenuScreen {
             this.disposables.add(() => this.resetPartyState());
             this.wolCon.partyStatus();
             this.wolCon.partyNoInvites(this.noInvites);
-            const messages = params.messages;
+            const messages = params.messages ?? [];
             this.chatUi = new ChatUi(messages, () => {
                 this.form?.applyOptions((options: any) => {
                     options.chatProps = this.chatUi.getChatProps();
