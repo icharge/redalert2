@@ -51,6 +51,11 @@ bun run smoke        # smoke + two-player + gserv tests over real WebSockets
 
 ## Configuration (environment variables)
 
+Settings come from environment variables. Create a `server/.env` file (copy
+[`.env.example`](.env.example)) to set them without exporting; a `server/.env.local`
+overrides it, and real environment variables always win. `.env`/`.env.local` are
+gitignored.
+
 | Variable | Default | Meaning |
 |----------|---------|---------|
 | `SERVER_HOST` | `0.0.0.0` | Bind address. |

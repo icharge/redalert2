@@ -1,5 +1,38 @@
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { StorageEngine } from "./storage/Storage";
+
+function loadEnvFile(env: Record<string, string | undefined>, file: string): void {
+    let text: string;
+    try {
+        text = readFileSync(file, "utf8");
+    }
+    catch {
+        return;
+    }
+    for (const raw of text.split(/\r?\n/)) {
+        const line = raw.trim();
+        if (!line || line.startsWith("#")) {
+            continue;
+        }
+        const eq = line.indexOf("=");
+        if (eq < 0) {
+            continue;
+        }
+        const key = line.slice(0, eq).trim();
+        let value = line.slice(eq + 1).trim();
+        if (
+            (value.startsWith('"') && value.endsWith('"')) ||
+            (value.startsWith("'") && value.endsWith("'"))
+        ) {
+            value = value.slice(1, -1);
+        }
+        // Real environment variables always win over .env files.
+        if (key && env[key] === undefined) {
+            env[key] = value;
+        }
+    }
+}
 
 export interface ServerConfig {
     host: string;
@@ -26,6 +59,13 @@ export interface ServerConfig {
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env as Record<string, string | undefined>): ServerConfig {
+    // .env support: load server/.env then server/.env.local (the latter wins).
+    // Only done when the real environment is used so tests that pass explicit
+    // env objects stay deterministic. Real environment variables take precedence.
+    if (env === process.env) {
+        loadEnvFile(env, path.join(import.meta.dir, "..", ".env"));
+        loadEnvFile(env, path.join(import.meta.dir, "..", ".env.local"));
+    }
     const port = Number(env.SERVER_PORT ?? 9090);
     const externalUrl = env.EXTERNAL_URL ?? `ws://127.0.0.1:${port}`;
     const gservUrlPath = env.GSERV_URL_PATH ?? "/gserv";
