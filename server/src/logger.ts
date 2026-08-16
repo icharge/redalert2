@@ -67,9 +67,10 @@ class RotatingFileLog {
         return instance;
     }
 
-    private maxBytes: number;
-    private maxFiles: number;
-    private rotateDaily: boolean;
+    // Assigned in configure(), which is always called by get() before write().
+    private maxBytes!: number;
+    private maxFiles!: number;
+    private rotateDaily!: boolean;
     private currentSize = 0;
     private currentDate = "";
 

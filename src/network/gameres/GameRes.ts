@@ -385,8 +385,10 @@ export class GameRes {
                 return;
             case FieldType.String: {
                 const length = value.length + 1;
+                const paddedLength = 4 * Math.ceil(length / 4);
                 stream.writeUint16(length, DataStream.BIG_ENDIAN);
-                stream.writeCString(value, 4 * Math.ceil(length / 4));
+                stream.writeCString(value);
+                stream.writeUint8Array(new Uint8Array(paddedLength - length));
                 return;
             }
             default:
