@@ -75,15 +75,23 @@ describe("GservManager lifecycle", () => {
         expect(manager.validateTicket(instance.tickets.get("bob")!)?.nick).toBe("bob");
     });
 
-    test("instances and tickets are removed once the game ends", () => {
+    test("instances are retired on game end and removed after the report window", () => {
         const { manager, server } = setup();
         const instance = manager.create(["alice"], "ws://gserv");
         instance.gameopts = buildGameOpts(["alice"]);
         const alice = join(server, manager, instance, "alice");
         server.handleMessage(alice.client, "loaded 100");
 
-        // Game ended: solo player disconnects.
+        // Game ended: solo player disconnects. The instance stays resolvable
+        // (with endedAt set) so the game-res report can still be validated,
+        // and is removed once the report window closes.
         server.handleClose(alice.client);
+        const retired = manager.get(instance.gameId);
+        expect(retired).toBeDefined();
+        expect(retired!.endedAt).toBeDefined();
+
+        const base = Math.floor(Date.now() / 1000);
+        expect(manager.sweepExpired(600, 600, base + 601)).toBe(1);
         expect(manager.get(instance.gameId)).toBeUndefined();
     });
 
@@ -153,7 +161,7 @@ describe("GservManager lifecycle", () => {
         const aliceTicket = abandoned.tickets.get("alice")!;
 
         const base = Math.floor(Date.now() / 1000);
-        const removed = manager.sweepExpired(600, base + 601);
+        const removed = manager.sweepExpired(600, 600, base + 601);
 
         expect(removed).toBe(1);
         expect(manager.get(abandoned.gameId)).toBeUndefined();

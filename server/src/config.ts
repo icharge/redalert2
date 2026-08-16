@@ -72,6 +72,10 @@ export interface ServerConfig {
     logRotateDaily: boolean;
     storageEngine: StorageEngine;
     dbPath: string;
+    startingRating: number;
+    placementMatches: number;
+    minReportDurationSeconds: number;
+    gservReportWindowSeconds: number;
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env as Record<string, string | undefined>): ServerConfig {
@@ -135,5 +139,16 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
         // (systemctl WorkingDirectory or wherever `bun run` was invoked),
         // so the database travels with the install location.
         dbPath: env.DB_PATH ?? path.join(process.cwd(), "data", "ra2web.sqlite"),
+        // Ranked ladder (see server/src/ladder/rating.ts for the model).
+        startingRating: Number(env.STARTING_RATING ?? 1000),
+        placementMatches: Number(env.PLACEMENT_MATCHES ?? 10),
+        // Game-res reports shorter than this are rejected (anti-farm): a real
+        // ranked game never ends in under two minutes.
+        minReportDurationSeconds: Number(env.MIN_REPORT_DURATION_SECONDS ?? 120),
+        // How long ended ranked instances keep their metadata after the last
+        // player disconnects, so late/retried game-res reports (client retries
+        // for up to 5 minutes) can still be validated. After this the gameId
+        // is forgotten and can never be re-reported.
+        gservReportWindowSeconds: Number(env.GSERV_REPORT_WINDOW_SECONDS ?? 600),
     };
 }

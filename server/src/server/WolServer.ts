@@ -46,7 +46,7 @@ export class WolServer {
     readonly channels = new Map<string, Channel>();
     readonly games = new Map<string, GameChannel>();
     readonly parties = new PartyManager(this);
-    readonly matchbot = new MatchmakingBot(this);
+    readonly matchbot: MatchmakingBot;
     readonly gservs: GservManager;
     readonly log: Logger;
     private pingInterval?: ReturnType<typeof setInterval>;
@@ -60,6 +60,9 @@ export class WolServer {
     ) {
         this.gservs = gservs;
         this.log = makeLogger(config.logLevel, "wol", fileLogOptionsOf(config));
+        // Created here (not as a field initializer): the bot captures the
+        // logger at construction, and `log` is only assigned in this body.
+        this.matchbot = new MatchmakingBot(this);
     }
 
     startPingLoop(): void {

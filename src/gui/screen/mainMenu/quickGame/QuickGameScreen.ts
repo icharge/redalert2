@@ -14,6 +14,7 @@ import { QuickGameForm } from "@/gui/screen/mainMenu/quickGame/component/QuickGa
 import { LocalPrefs, StorageKey } from "@/LocalPrefs";
 import { WLadderService } from "@/network/ladder/WLadderService";
 import { LadderQueueType, getLadderTypeForQueueType, teamSizes } from "@/network/ladder/wladderConfig";
+import { PlayerRankType } from "@/network/ladder/PlayerRankType";
 import { WolError } from "@/network/WolError";
 import { REQ_MATCH, REQ_STATS, REQ_LIST_QUEUES, RPL_WORKING, RPL_STATS, RPL_QUEUE_LIST, RPL_BAD_VERS, RPL_BAD_HASH, RPL_MODE_UNAVAIL, RPL_RATE_LIMITED, RPL_MATCHED, RPL_REQUEUE, RPL_REMOVED_FROM_QUEUE, TAG_COUNTRY, TAG_COLOR, TAG_RANKED, TAG_VERSION, TAG_MODHASH } from "@/network/qmCodes";
 import * as PartyCode from "@/network/partyCodes";
@@ -583,10 +584,30 @@ export class QuickGameScreen extends MainMenuScreen {
         }
         const ladderType = getLadderTypeForQueueType(queueType);
         const [profile] = await this.wladderService.listSearch([username], cancellationToken, ladderType, WLadderService.CURRENT_SEASON, this.clientLocale);
-        if (profile && !cancellationToken.isCancelled()) {
+        // Never render a rank on your name that is not yours: only accept the
+        // profile when it belongs to the current user and the rank fields are
+        // well-formed (upstream renders whatever listSearch returns, unchecked).
+        if (this.isOwnPlayerProfile(profile, username) && !cancellationToken.isCancelled()) {
             this.playerProfile = profile;
             this.form?.applyOptions((options: any) => (options.playerProfile = this.playerProfile));
         }
+    }
+    private isOwnPlayerProfile(profile: any, username: string): boolean {
+        if (!profile || typeof profile !== "object") {
+            return false;
+        }
+        if (typeof profile.name !== "string" || profile.name.toLowerCase() !== username.toLowerCase()) {
+            return false;
+        }
+        if (profile.rank === undefined) {
+            // Placement box: only placementMatchesLeft is shown.
+            return Number.isInteger(profile.placementMatchesLeft) && profile.placementMatchesLeft >= 0;
+        }
+        return Number.isInteger(profile.rank) &&
+            profile.rank > 0 &&
+            Number.isInteger(profile.rankType) &&
+            profile.rankType >= PlayerRankType.Private &&
+            profile.rankType <= PlayerRankType.CommanderInChief;
     }
     private refreshSidebarButtons(): void {
         const buttons: any[] = [

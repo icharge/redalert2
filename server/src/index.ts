@@ -7,7 +7,8 @@ import { WolServer } from "./server/WolServer";
 import { ServerUser } from "./server/ServerUser";
 import { GservServer, GservClient } from "./gserv/GservServer";
 import { GservManager } from "./gserv/GservManager";
-import { handleHttp } from "./http/routes";
+import { LadderService } from "./ladder/LadderService";
+import { handleHttp, HttpDeps } from "./http/routes";
 import { resetRateLimiters } from "./http/routes";
 import { isOriginAllowed } from "./http/cors";
 
@@ -25,6 +26,11 @@ const sessions = new SessionManager(storage, config.sessionTtlSeconds);
 const gservManager = new GservManager({ id: config.gservId, url: config.externalUrl + config.gservUrlPath });
 const wol = new WolServer(config, sessions, accounts, gservManager);
 const gserv = new GservServer(config, gservManager);
+const ladder = new LadderService(storage, makeLogger(config.logLevel, "ladder", fileLogOptionsOf(config)), {
+    startingRating: config.startingRating,
+    placementMatches: config.placementMatches,
+});
+const httpDeps: HttpDeps = { accounts, sessions, ladder, gservs: gservManager, wol };
 
 wol.startPingLoop();
 gserv.startSweepLoop();
@@ -44,7 +50,7 @@ const server = Bun.serve<WsData>({
             const upgraded = srv.upgrade(req, { data: { target } });
             return upgraded ? undefined : new Response("WebSocket upgrade failed", { status: 400 });
         }
-        return handleHttp(req, accounts, sessions, config, log);
+        return handleHttp(req, httpDeps, config, log);
     },
     websocket: {
         maxPayloadLength: config.maxPayloadBytes,
@@ -81,7 +87,7 @@ const server = Bun.serve<WsData>({
 
 const httpProtocol = config.externalUrl.startsWith("wss") ? "https" : "http";
 log.info(`Wol server listening on ws://${server.hostname}:${server.port}`);
-log.info(`Http endpoints on ${httpProtocol}://${server.hostname}:${server.port} (/login /register /servers.ini /health)`);
+log.info(`Http endpoints on ${httpProtocol}://${server.hostname}:${server.port} (/login /register /ladder /wgameres /servers.ini /health)`);
 log.info(`Gserv endpoint at ${config.externalUrl}${config.gservUrlPath}`);
 log.info(`Log level: ${config.logLevel}`);
 if (config.logFilePath) {
@@ -101,6 +107,7 @@ else {
     log.info("Storage: memory (no persistence)");
 }
 log.info(`Replays: ${config.recordReplays ? `recording to ${config.replaysDir}` : "disabled"}`);
+log.info(`Ladder: rating ${config.startingRating}, ${config.placementMatches} placement game(s), min report ${config.minReportDurationSeconds}s, report window ${config.gservReportWindowSeconds}s`);
 log.info(`Session TTL: ${config.sessionTtlSeconds}s | ping interval: ${config.pingIntervalSeconds}s | max payload: ${config.maxPayloadBytes} bytes`);
 
 let shuttingDown = false;

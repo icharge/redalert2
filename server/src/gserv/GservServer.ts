@@ -81,7 +81,7 @@ export class GservServer {
             return;
         }
         this.sweepInterval = setInterval(() => {
-            const removed = this.manager.sweepExpired(this.config.instanceTtlSeconds);
+            const removed = this.manager.sweepExpired(this.config.instanceTtlSeconds, this.config.gservReportWindowSeconds);
             if (removed > 0) {
                 this.log.info(`swept ${removed} expired gserv instance(s)`);
             }
@@ -568,7 +568,10 @@ export class GservServer {
 
     private finalizeInstance(gameId: string, state: InstanceState): void {
         this.instanceStates.delete(gameId);
-        this.manager.deleteInstance(gameId);
+        // Keep the instance metadata (roster, ranked flag) around until the
+        // report-window sweep so the game-res report arriving right after the
+        // last player disconnects can still be validated against it.
+        this.manager.retireInstance(gameId);
         if (!state.recorder.hasEvents) {
             this.log.debug(`instance ${gameId} ended with no events; skipping replay`);
             return;

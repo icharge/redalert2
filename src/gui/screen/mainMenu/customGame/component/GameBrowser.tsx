@@ -30,6 +30,7 @@ interface User {
 interface PlayerProfile {
     name: string;
     rankType: any;
+    rank?: number;
 }
 interface MapInfo {
     official: boolean;
@@ -148,7 +149,10 @@ const GameList: React.FC<GameListProps> = ({ games, selectedGame, onClickGame, o
             ...(game.modName ? [strings.get("GUI:GameMod", game.modName)] : []),
             strings.get("TXT_MAP", uiMapName),
             ping ? strings.get("WOL:GamePing", ping) : strings.get("TXT_UNKNOWN_PING"),
-            ...(hostProfile && hostProfile.rankType !== undefined ? [`${strings.get("TXT_HOST_RANK")} ${strings.get("GUI:Rank" + String(hostProfile.rankType))}`] : [])
+            // Upstream shows the numeric rank ("Host rank: 5"); there are no
+            // "GUI:Rank<N>" locale keys, so a rankType-derived label would
+            // render the raw key.
+            ...(hostProfile && hostProfile.rank !== undefined ? [`${strings.get("TXT_HOST_RANK")} ${hostProfile.rank}`] : [])
         ];
         return (<GameItem key={game.name} game={game} uiMapName={uiMapName} customMap={!mapInfo?.official} ping={ping} hostProfile={hostProfile} tooltip={tooltipParts.join(", ")} selected={game.name === selectedGame?.name} strings={strings} onClick={onClickGame} onDoubleClick={onDoubleClickGame}/>);
     })}

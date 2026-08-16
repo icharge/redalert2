@@ -6,6 +6,7 @@ import { SoundKey } from "@/engine/sound/SoundKey";
 import { ChannelType } from "@/engine/sound/ChannelType";
 import { Task } from "@puzzl/core/lib/async/Task";
 import { ChatHistory } from "@/gui/chat/ChatHistory";
+import { MAX_LIST_SEARCH_COUNT } from "@/network/ladder/wladderConfig";
 
 export class ChatUi {
     private messages: any[];
@@ -94,14 +95,19 @@ export class ChatUi {
         if (this.wladderService.getUrl()) {
             this.ranksUpdateTask?.cancel();
             const task = (this.ranksUpdateTask = new Task(async (cancellationToken: CancellationToken) => {
+                // Batch by the server's max list-search count, like upstream.
                 const playerNames = this.users.map((user) => user.name);
-                const profiles = await this.wladderService.listSearch(playerNames, cancellationToken);
-                if (!cancellationToken.isCancelled()) {
+                while (playerNames.length > 0) {
+                    const batch = playerNames.splice(0, MAX_LIST_SEARCH_COUNT);
+                    const profiles = await this.wladderService.listSearch(batch, cancellationToken);
+                    if (cancellationToken.isCancelled()) {
+                        return;
+                    }
                     for (const profile of profiles) {
                         this.playerProfiles.set(profile.name, profile);
                     }
-                    this.updateView();
                 }
+                this.updateView();
             }));
             task.start().catch((error) => {
                 if (!(error instanceof Error && error.name === "OperationCanceledError")) {

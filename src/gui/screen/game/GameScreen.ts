@@ -37,6 +37,7 @@ import { ChatTypingHandler } from '@/gui/screen/game/ChatTypingHandler';
 import { ConnectionInfoScreen } from '@/gui/screen/game/gameMenu/ConnectionInfoScreen';
 import { DataStream } from '@/data/DataStream';
 import { CON_INFO_THRESH_MILLIS } from '@/network/gservConfig';
+import { GameRes } from '@/network/gameres/GameRes';
 import { Task } from '@puzzl/core/lib/async/Task';
 import { IrcConnection } from '@/network/IrcConnection';
 import { CancellationTokenSource, OperationCanceledError } from '@puzzl/core/lib/async/cancellation';
@@ -1482,7 +1483,20 @@ export class GameScreen extends RootScreen {
         console.error('Game error:', error, { gameId, official });
     }
     private sendGameRes(game: any, result: any): void {
-        console.log('Game result:', { game: game.id, result });
+        if (!this.wgameresService?.getUrl?.()) {
+            return;
+        }
+        let packet: Uint8Array;
+        try {
+            packet = new GameRes().fromGame(game, this.isTournament, this.getGameResClientInfo(result)).toBinary();
+        }
+        catch (error) {
+            console.warn('Failed to build game res packet:', error);
+            return;
+        }
+        this.wgameresService.sendGameResPacket(packet).catch((error: any) => {
+            console.warn('Failed to send game res:', error);
+        });
     }
     private getGameResClientInfo(result: any): any {
         return {

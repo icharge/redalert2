@@ -26,7 +26,7 @@ export interface ParsedGameOpts {
     humanPlayers: HumanPlayerInfo[];
 }
 
-class DataStream {
+export class DataStream {
     private buffer: ArrayBuffer;
     private view: DataView;
     private offset = 0;
@@ -47,6 +47,10 @@ class DataStream {
 
     get byteLength(): number {
         return this.length;
+    }
+
+    get position(): number {
+        return this.offset;
     }
 
     private ensure(bytes: number): void {
@@ -114,6 +118,31 @@ class DataStream {
         const value = new Uint8Array(this.buffer, this.offset, count).slice();
         this.offset += count;
         return value;
+    }
+
+    // The GameRes packet field map is big-endian (see src/network/gameres/
+    // GameRes.ts on the client); the lockstep streams above are little-endian,
+    // so the BE variants live alongside them.
+    readUint16BE(): number {
+        const value = this.view.getUint16(this.offset, false);
+        this.offset += 2;
+        return value;
+    }
+
+    readUint32BE(): number {
+        const value = this.view.getUint32(this.offset, false);
+        this.offset += 4;
+        return value;
+    }
+
+    // NUL-terminated string inside a region padded up to `paddedLength`.
+    readCString(paddedLength: number): string {
+        const bytes = this.readBytes(paddedLength);
+        let end = bytes.indexOf(0);
+        if (end === -1) {
+            end = bytes.length;
+        }
+        return Buffer.from(bytes.slice(0, end)).toString("utf8");
     }
 
     toUint8Array(): Uint8Array {

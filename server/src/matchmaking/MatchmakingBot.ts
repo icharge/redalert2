@@ -34,6 +34,24 @@ interface QueueEntry {
 
 const MATCH_COUNTDOWN_SECONDS = 10;
 
+// Queue channel types map to ladder types: 50/60 are the RA2/Yuri 1v1 quick
+// match channels, 51/61 the 2v2 channels (see WolConfig.allClientSettings).
+function ladderTypeForChannelType(channelType: number): string | undefined {
+    if (channelType === 50 || channelType === 60) {
+        return "1v1";
+    }
+    if (channelType === 51 || channelType === 61) {
+        return "2v2-random";
+    }
+    return undefined;
+}
+
+// "0.83.4-abc123" -> "0.83.4" (the vite-injected git hash build suffix is
+// cosmetic and never part of the version contract).
+function stripBuildSuffix(version: string): string {
+    return version.split("-")[0];
+}
+
 export class MatchmakingBot {
     private queues = new Map<number, QueueEntry[]>();
     private byNick = new Map<string, QueueEntry>();
@@ -104,7 +122,8 @@ export class MatchmakingBot {
             }
         }
         const version = parsed.get(TAG_VERSION);
-        if (version && !this.versionOk(version)) {
+        const ranked = parsed.get(TAG_RANKED) === "1";
+        if (version && !this.versionOk(version, ranked)) {
             this.reply(user, RPL_BAD_VERS);
             return;
         }
@@ -123,7 +142,7 @@ export class MatchmakingBot {
             this.reply(user, RPL_RATE_LIMITED);
             return;
         }
-        this.log.info(`queue ${user.nick} (channelType ${channelType}, ranked ${parsed.get(TAG_RANKED) === "1" ? 1 : 0})`);
+        this.log.info(`queue ${user.nick} (channelType ${channelType}, ranked ${ranked ? 1 : 0})`);
 
         const party = this.server.parties.getParty(user);
         if (party) {
@@ -226,8 +245,12 @@ export class MatchmakingBot {
             }
             return;
         }
-        const instance = this.server.gservs.create(players, gserv.url);
+        const instance = this.server.gservs.create(players, gserv.url, {
+            ranked: a.ranked && b.ranked,
+            ladderType: ladderTypeForChannelType(a.channelType),
+        });
         instance.gameopts = this.buildDefaultGameOpts(players);
+        this.log.info(`instance ${instance.gameId} created${a.ranked && b.ranked ? ` (ranked ${instance.ladderType})` : ""} for ${players.join(", ")}`);
 
         const matched = { gameKey: key, players };
         for (const entry of [a, b]) {
@@ -287,9 +310,16 @@ export class MatchmakingBot {
         return undefined;
     }
 
-    private versionOk(version: string): boolean {
+    private versionOk(version: string, ranked: boolean): boolean {
         const expected = this.server.config.gameVersion;
-        return version.split(".").slice(0, 2).join(".") === expected.split(".").slice(0, 2).join(".");
+        if (!ranked) {
+            // Unranked games only require the same protocol family (major.minor).
+            return version.split(".").slice(0, 2).join(".") === expected.split(".").slice(0, 2).join(".");
+        }
+        // Ranked games pair clients on the exact same game version (major.minor
+        // .patch) so both sides play identical game logic; the git-hash build
+        // suffix is stripped ("0.83.4-abcde" == "0.83.4").
+        return stripBuildSuffix(version) === stripBuildSuffix(expected);
     }
 
     private buildDefaultGameOpts(players: string[]): string {
