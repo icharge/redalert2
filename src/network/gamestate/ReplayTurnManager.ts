@@ -64,14 +64,7 @@ export class ReplayTurnManager {
             return false;
         }
         if (this.game.status !== GameStatus.Ended) {
-            while (this.nextReplayEvent && this.nextReplayEvent.tickNo === this.game.currentTick) {
-                if (this.nextReplayEvent instanceof TurnActionsReplayEvent) {
-                    this.processActions(this.nextReplayEvent.payload);
-                    this._onActionsSent.dispatch(this);
-                }
-                this._onReplayEvent.dispatch(this, this.nextReplayEvent);
-                this.nextReplayEvent = this.replayIterator.next().value;
-            }
+            this.processEventsForCurrentTick(true);
             if (this.nextReplayEvent && this.nextReplayEvent.tickNo < this.game.currentTick) {
                 throw new Error('Replay event desync');
             }
@@ -94,6 +87,44 @@ export class ReplayTurnManager {
             this.game.speed.value = 0;
         }
         return true;
+    }
+
+    seekTo(targetTick: number, onProgress?: (percent: number) => void): void {
+        if (this.errorState) {
+            return;
+        }
+        this.finished = false;
+        const target = Math.min(targetTick, this.replay.endTick);
+        let lastReportedTick = 0;
+        while (this.game.currentTick < target && this.game.status !== GameStatus.Ended) {
+            this.processEventsForCurrentTick(false);
+            if (this.nextReplayEvent && this.nextReplayEvent.tickNo < this.game.currentTick) {
+                throw new Error('Replay event desync');
+            }
+            this.game.update();
+            if (onProgress && this.game.currentTick - lastReportedTick >= 300) {
+                lastReportedTick = this.game.currentTick;
+                onProgress(target > 0 ? this.game.currentTick / target : 1);
+            }
+        }
+        if (onProgress) {
+            onProgress(1);
+        }
+    }
+
+    private processEventsForCurrentTick(dispatch: boolean): void {
+        while (this.nextReplayEvent && this.nextReplayEvent.tickNo === this.game.currentTick) {
+            if (this.nextReplayEvent instanceof TurnActionsReplayEvent) {
+                this.processActions(this.nextReplayEvent.payload);
+                if (dispatch) {
+                    this._onActionsSent.dispatch(this);
+                }
+            }
+            if (dispatch) {
+                this._onReplayEvent.dispatch(this, this.nextReplayEvent);
+            }
+            this.nextReplayEvent = this.replayIterator.next().value;
+        }
     }
 
     processActions(actions: Array<[number, any[]]>): void {

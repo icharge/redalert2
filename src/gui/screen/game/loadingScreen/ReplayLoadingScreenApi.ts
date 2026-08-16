@@ -77,6 +77,10 @@ export class ReplayLoadingScreenApi implements LoadingScreenApi {
             this.handleLoadInfoUpdate(roundedPercent);
         }
     }
+    showSeekProgress(percent: number): void {
+        const roundedPercent = Math.max(0, Math.min(100, Math.floor(percent)));
+        this.handleLoadInfoUpdate(roundedPercent);
+    }
     private createExtendedLoadingInfos(loadPercent: number): ExtendedPlayerInfo[] {
         const colors = [...this.rules.getMultiplayerColors().values()];
         const countries = this.rules.getMultiplayerCountries();

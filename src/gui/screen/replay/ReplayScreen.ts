@@ -31,12 +31,17 @@ import { MapFile } from '@/data/MapFile';
 import { ResourceLoader } from '@/engine/ResourceLoader';
 import { MapDigest } from '@/engine/MapDigest';
 import { ChatHistory } from '@/gui/chat/ChatHistory';
+import { HtmlView } from '@/gui/jsx/HtmlView';
+import { jsx } from '@/gui/jsx/jsx';
+import { ReplayProgressBar } from '@/gui/screen/replay/ReplayProgressBar';
+const REPLAY_PROGRESS_BAR_HEIGHT = 36;
 interface Replay {
     gameId: string;
     gameTimestamp: number;
     gameOpts: GameOpts;
     engineVersion: string;
     modHash: string;
+    endTick?: number;
 }
 interface GameOpts {
     mapName: string;
@@ -111,7 +116,7 @@ interface MapFileLoader {
     load(mapName: string): Promise<any>;
 }
 interface GameLoader {
-    load(gameId: string, gameTimestamp: number, gameOpts: GameOpts, mapFile: MapFile, localPlayer?: any, isSinglePlayer?: boolean, loadingScreenApi?: any): Promise<{
+    load(gameId: string, gameTimestamp: number, gameOpts: GameOpts, mapFile: MapFile, localPlayer?: any, isSinglePlayer?: boolean, loadingScreenApi?: any, cancellationToken?: any, options?: { fastReload?: boolean }): Promise<{
         game: Game;
         theater: Theater;
         hudSide: any;
@@ -127,6 +132,7 @@ interface ErrorHandler {
     handle(error: any, message: string, onClose?: () => void): void;
 }
 interface Game {
+    currentTick: number;
     speed: {
         value: number;
     };
@@ -220,22 +226,35 @@ export class ReplayScreen extends RootScreen {
     private playerUi?: PlayerUi;
     private loadingScreenApi?: LoadingScreenApi;
     private replayEndHandled = false;
+    private pendingSeekTick?: number;
+    private pendingSeekSpeed?: number;
+    private gameSeeked = false;
+    private menuOpen = false;
+    private replaySeeking = false;
+    private replayProgressBar?: any;
+    private savedCameraPan?: { x: number; y: number };
+    private savedCameraZoom?: number;
     constructor(private engineVersion: string, private engineModHash: string, private errorHandler: ErrorHandler, private gameMenuSubScreens: any, private loadingScreenApiFactory: LoadingScreenApiFactory, private config: Config, private strings: Strings, private renderer: Renderer, private uiScene: UiScene, private runtimeVars: RuntimeVars, private messageBoxApi: MessageBoxApi, private uiAnimationLoop: UiAnimationLoop, private viewport: Viewport, private jsxRenderer: JsxRenderer, private pointer: Pointer, private sound: Sound, private music: Music, private keyBinds: KeyBinds, private generalOptions: GeneralOptions, private actionLogger: ActionLogger, private fullScreen: FullScreen, private mapFileLoader: MapFileLoader, private gameLoader: GameLoader, private vxlGeometryPool: VxlGeometryPool, private buildingImageDataCache: BuildingImageDataCache, private leaveAction: (params?: any) => void, private battleControlApi: any) {
         super();
     }
     async onEnter(params: ReplayParams): Promise<void> {
         this.replayEndHandled = false;
+        this.gameSeeked = false;
+        this.menuOpen = false;
         this.params = params;
         this.disposables.add(() => (this.params = undefined));
-        this.pointer.lock();
+        this.pointer.unlock();
         this.pointer.setVisible(false);
         await this.music?.play(MusicType.Loading);
         const { gameId, gameTimestamp, gameOpts, engineVersion, modHash } = params.replay;
         let errorMessage: string | undefined;
-        if (engineVersion !== this.engineVersion) {
+        if (engineVersion.split(".").slice(0, 2).join(".") !== this.engineVersion) {
             errorMessage = this.strings.get("GUI:ReplayVersionMismatch", engineVersion);
         }
-        else if (modHash !== this.engineModHash) {
+        // Only gate on the mod hash when the client itself runs a mod: server
+        // replays record "0" (or the expected mod hash) as the sentinel for
+        // an unmodded game, which never equals the client's empty mod hash.
+        else if (this.engineModHash && modHash !== this.engineModHash) {
             errorMessage = this.strings.get("GUI:ReplayModMismatch");
         }
         if (errorMessage) {
@@ -261,7 +280,7 @@ export class ReplayScreen extends RootScreen {
                 return;
             }
             const mapFile = new MapFile(mapFileData);
-            gameData = await this.gameLoader.load(gameId, gameTimestamp, gameOpts, mapFile, undefined, gameOpts.humanPlayers.length === 1, loadingScreenApi);
+            gameData = await this.gameLoader.load(gameId, gameTimestamp, gameOpts, mapFile, undefined, gameOpts.humanPlayers.length === 1, loadingScreenApi, undefined, { fastReload: this.pendingSeekTick !== undefined });
         }
         catch (error: any) {
             let message: string;
@@ -285,6 +304,9 @@ export class ReplayScreen extends RootScreen {
         this.baseSpeed = this.game.speed.value;
         this.disposables.add(() => (this.game = undefined));
         this.disposables.add(() => {
+            if (this.pendingSeekTick !== undefined) {
+                return;
+            }
             Engine.unloadTheater(theater.type);
             this.gameLoader.clearStaticCaches();
         });
@@ -320,6 +342,20 @@ export class ReplayScreen extends RootScreen {
         new ActionFactoryReg().register(actionFactory, game, undefined);
         const gameTurnMgr = this.gameTurnMgr = new ReplayTurnManager(game, params.replay, actionFactory, this.actionLogger as any);
         this.gameTurnMgr.init();
+        if (this.pendingSeekTick !== undefined && this.pendingSeekTick > 0) {
+            game.start();
+            this.gameSeeked = true;
+            const targetTick = this.pendingSeekTick;
+            const savedSpeed = this.pendingSeekSpeed;
+            this.gameTurnMgr.seekTo(targetTick, (percent) => {
+                (loadingScreenApi as any).showSeekProgress?.(Math.round(percent * 100));
+            });
+            if (savedSpeed !== undefined) {
+                game.desiredSpeed.value = savedSpeed;
+            }
+        }
+        this.pendingSeekTick = undefined;
+        this.pendingSeekSpeed = undefined;
         const tauntPlayback = new TauntPlayback(this.sound.audioSystem, Engine.getTaunts());
         const handleReplayEvent = (event: any) => {
             if (event instanceof ChatMessageReplayEvent) {
@@ -339,16 +375,124 @@ export class ReplayScreen extends RootScreen {
         gameTurnMgr.onReplayEvent.subscribe(handleReplayEvent);
         this.disposables.add(() => gameTurnMgr.onReplayEvent.unsubscribe(handleReplayEvent));
         this.onGameStart(game, minimap, messageList, worldScene, worldSound, renderableManager);
+        this.restoreCamera();
         DevToolsApi.registerCommand("reset", async () => {
             await this.onLeave();
             await this.onEnter(params);
         });
         DevToolsApi.registerVar("speed", game.desiredSpeed as any);
         this.disposables.add(() => DevToolsApi.unregisterCommand("reset"), () => DevToolsApi.unregisterVar("speed"));
+        document.addEventListener("keydown", this.handleReplaySeekKeyDown);
+        this.disposables.add(() => document.removeEventListener("keydown", this.handleReplaySeekKeyDown));
+        this.initReplayProgressBar();
+    }
+    private initReplayProgressBar(): void {
+        this.destroyReplayProgressBar();
+        const viewport = this.viewport.value;
+        if (!viewport) {
+            return;
+        }
+        const [component] = this.jsxRenderer.render(jsx(HtmlView, {
+            component: ReplayProgressBar,
+            width: viewport.width,
+            height: REPLAY_PROGRESS_BAR_HEIGHT,
+            x: viewport.x,
+            y: viewport.y + viewport.height - REPLAY_PROGRESS_BAR_HEIGHT,
+            props: {
+                viewport,
+                getTick: () => this.game?.currentTick ?? 0,
+                getEndTick: () => this.params?.replay.endTick ?? 0,
+                getBaseSpeed: () => this.baseSpeed,
+                onSeek: (targetTick: number) => this.seekTo(targetTick).catch((error: any) => console.error(error)),
+                isSeekEnabled: () => !this.menuOpen && !this.replaySeeking,
+            },
+        }));
+        this.replayProgressBar = component;
+        this.uiScene.add(component);
+        this.disposables.add(component, () => {
+            this.uiScene.remove(component);
+            this.replayProgressBar = undefined;
+        });
+    }
+    private destroyReplayProgressBar(): void {
+        if (this.replayProgressBar) {
+            this.uiScene.remove(this.replayProgressBar);
+            this.replayProgressBar.destroy?.();
+            this.replayProgressBar = undefined;
+        }
+    }
+    private readonly handleReplaySeekKeyDown = (event: KeyboardEvent): void => {
+        if (this.menuOpen || this.replaySeeking || !this.game || !this.gameTurnMgr) {
+            return;
+        }
+        const stepTicks = Math.max(1, Math.round(30 * this.baseSpeed));
+        let targetTick: number | undefined;
+        switch (event.key) {
+            case "[":
+                targetTick = this.game.currentTick - stepTicks;
+                break;
+            case "]":
+                targetTick = this.game.currentTick + stepTicks;
+                break;
+            case "Home":
+                targetTick = 0;
+                break;
+            case "End":
+                targetTick = this.params?.replay.endTick ?? 0;
+                break;
+            default:
+                return;
+        }
+        event.preventDefault();
+        void this.seekTo(targetTick);
+    };
+    private async seekTo(tick: number): Promise<void> {
+        if (this.replaySeeking || !this.params || !this.game || !this.gameTurnMgr) {
+            return;
+        }
+        const targetTick = Math.max(0, Math.min(tick, this.params.replay.endTick ?? 0));
+        if (targetTick === this.game.currentTick) {
+            return;
+        }
+        const params = this.params;
+        const savedSpeed = this.game.desiredSpeed.value;
+        this.captureCamera();
+        this.replaySeeking = true;
+        this.pendingSeekTick = targetTick;
+        this.pendingSeekSpeed = savedSpeed;
+        try {
+            await this.onLeave();
+            await this.onEnter(params);
+        }
+        finally {
+            this.replaySeeking = false;
+        }
+    }
+    private captureCamera(): void {
+        const worldScene = this.activeWorldScene;
+        if (!worldScene) {
+            return;
+        }
+        this.savedCameraPan = worldScene.cameraPan?.getPan?.();
+        this.savedCameraZoom = worldScene.cameraZoom?.getZoom?.();
+    }
+    private restoreCamera(): void {
+        const worldScene = this.activeWorldScene;
+        if (!worldScene || this.savedCameraPan === undefined) {
+            return;
+        }
+        worldScene.cameraPan?.setPan?.(this.savedCameraPan);
+        const savedZoom = this.savedCameraZoom;
+        if (savedZoom !== undefined && worldScene.cameraZoom?.getZoom?.() !== savedZoom) {
+            worldScene.cameraZoom?.setZoom?.(savedZoom);
+        }
+        this.savedCameraPan = undefined;
+        this.savedCameraZoom = undefined;
     }
     onViewportChange(): void {
         this.loadingScreenApi?.updateViewport();
         this.rerenderHud();
+        this.initReplayProgressBar();
     }
     private rerenderHud(): void {
         if (!this.hud)
@@ -390,7 +534,9 @@ export class ReplayScreen extends RootScreen {
         this.renderer.addScene(worldScene);
         this.renderer.addScene(this.uiScene);
         this.pointer.setVisible(true);
-        game.start();
+        if (!this.gameSeeked) {
+            game.start();
+        }
         this.gameAnimationLoop = new GameAnimationLoop(undefined, this.renderer as any, this.sound, this.gameTurnMgr!, {
             skipFrames: true,
             skipBudgetMillis: 8,
@@ -446,6 +592,7 @@ export class ReplayScreen extends RootScreen {
     }
     private initGameMenuEvents(menu: GameMenuType): void {
         menu.onOpen.subscribe(() => {
+            this.menuOpen = true;
             this.pointer.unlock();
             this.playerUi!.worldInteraction.setEnabled(false);
         });
@@ -455,7 +602,7 @@ export class ReplayScreen extends RootScreen {
             this.leaveAction();
         });
         menu.onCancel.subscribe(() => {
-            this.pointer.lock();
+            this.menuOpen = false;
             this.playerUi!.worldInteraction.setEnabled(true);
         });
     }
@@ -464,11 +611,7 @@ export class ReplayScreen extends RootScreen {
             this.sound.play(SoundKey.GenericClick, ChannelType.Ui);
             switch (buttonType) {
                 case CommandBarButtonType.ReplayRewind:
-                    (async () => {
-                        const params = this.params!;
-                        await this.onLeave();
-                        await this.onEnter(params);
-                    })().catch((error: any) => console.error(error));
+                    this.seekTo(0).catch((error: any) => console.error(error));
                     break;
                 case CommandBarButtonType.ReplayPlay:
                     this.game!.desiredSpeed.value = this.baseSpeed;
@@ -500,6 +643,7 @@ export class ReplayScreen extends RootScreen {
     }
     async onLeave(): Promise<void> {
         this.pointer.unlock();
+        this.menuOpen = false;
         if (this.gameAnimationLoop) {
             this.gameAnimationLoop.destroy();
             this.gameAnimationLoop = undefined;

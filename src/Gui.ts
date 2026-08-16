@@ -103,6 +103,7 @@ export class Gui {
         this.initPointer();
         this.initJsxRenderer();
         this.initRootController();
+        this.initUnloadGuard();
         this.startAnimationLoop();
         await this.routeToInitialScreen();
         createMobileTouchControls(this.rootEl);
@@ -174,6 +175,97 @@ export class Gui {
         console.log('[Gui] Initializing root controller');
         const serverRegions = { loaded: true } as any;
         this.rootController = new RootController(serverRegions);
+    }
+    private initUnloadGuard(): void {
+        if (this.config.devMode) {
+            return;
+        }
+        window.addEventListener("beforeunload", this.handleBeforeUnload);
+        document.addEventListener("keydown", this.handleUnloadShortcut);
+        window.addEventListener("popstate", this.handlePopState);
+        window.addEventListener("pageshow", this.handlePageShow);
+        this.rootController?.onScreenChange.subscribe(this.handleScreenChange);
+    }
+    private isUnloadGuarded(): boolean {
+        return Boolean(this.rootController?.getCurrentScreen()?.preventUnload);
+    }
+    private readonly handlePageShow = (event: PageTransitionEvent): void => {
+        if (!event.persisted) {
+            return;
+        }
+        const currentScreen = this.rootController?.getCurrentScreen() as {
+            preventUnload?: boolean;
+            handleBfcacheRestore?: () => void;
+        } | undefined;
+        if (!currentScreen?.preventUnload) {
+            return;
+        }
+        currentScreen.handleBfcacheRestore?.();
+    };
+    private readonly handleBeforeUnload = (event: BeforeUnloadEvent): void => {
+        if (!this.navigationConfirmed && !this.unloadDialogOpen && this.isUnloadGuarded()) {
+            event.preventDefault();
+            event.returnValue = "";
+        }
+    };
+    private readonly handleUnloadShortcut = (event: KeyboardEvent): void => {
+        if (!this.isUnloadGuarded() || this.unloadDialogOpen) {
+            return;
+        }
+        const isReloadShortcut = event.key === 'F5' ||
+            (event.key.toLowerCase() === 'r' && (event.ctrlKey || event.metaKey));
+        if (!isReloadShortcut) {
+            return;
+        }
+        event.preventDefault();
+        this.confirmLeave(false);
+    };
+    private readonly handlePopState = (): void => {
+        if (!this.isUnloadGuarded() || this.unloadDialogOpen) {
+            return;
+        }
+        this.confirmLeave(true);
+    };
+    private readonly handleScreenChange = (): void => {
+        if (this.isUnloadGuarded()) {
+            window.history.pushState({ unloadGuard: true }, "");
+        }
+    };
+    private unloadDialogOpen = false;
+    private navigationConfirmed = false;
+    private confirmLeave(viaHistoryBack: boolean): void {
+        this.unloadDialogOpen = true;
+        const wasPointerLocked = this.pointer?.getUserLockMode() ?? false;
+        if (wasPointerLocked) {
+            this.pointer?.unlock();
+        }
+        this.messageBoxApi.confirm(
+            this.strings.get('ts:leave_game_confirm'),
+            this.strings.get('ts:leave_game'),
+            this.strings.get('gui:cancel')
+        ).then((shouldLeave) => {
+            this.unloadDialogOpen = false;
+            if (shouldLeave) {
+                this.navigationConfirmed = true;
+                if (viaHistoryBack) {
+                    window.history.back();
+                }
+                else {
+                    window.location.reload();
+                }
+                setTimeout(() => {
+                    this.navigationConfirmed = false;
+                }, 1000);
+            }
+            else {
+                if (viaHistoryBack) {
+                    window.history.pushState({ unloadGuard: true }, "");
+                }
+                if (wasPointerLocked) {
+                    this.pointer?.lock();
+                }
+            }
+        });
     }
     private async loadGameResources(): Promise<void> {
         console.log('[Gui] Loading game resources');
@@ -383,7 +475,9 @@ export class Gui {
         const mapsBaseUrl = this.config.mapsBaseUrl ?? '';
         console.log('[Gui] Creating game loaders', { gameResBaseUrl, mapsBaseUrl });
         const gameResLoader = this.cdnResourceLoader ?? new ResourceLoader(gameResBaseUrl);
+        (gameResLoader as ResourceLoader).enableResponseCache?.();
         const mapResLoader = new ResourceLoader(mapsBaseUrl);
+        mapResLoader.enableResponseCache();
         const mapFileLoader = new MapFileLoader(mapResLoader, (Engine as any).vfs);
         const rules = new Rules(Engine.getRules(), undefined);
         const loadingScreenApiFactory = new LoadingScreenApiFactory(rules, this.strings, this.uiScene, this.jsxRenderer!, this.gameResConfig!, onlineServices.gservCon);

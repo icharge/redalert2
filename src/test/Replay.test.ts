@@ -67,4 +67,25 @@ describe('Replay text format', () => {
         expect(header.gameId).toBe('game-2');
         expect(header.engineVersion).toBe('0.83');
     });
+
+    it('tolerates an ENGINE line with a trailing space (legacy recordings)', async () => {
+        const optsLine = new Serializer().serializeOptions(makeGameOpts());
+        const legacyText = `RA2TSREPL_v6\nENGINE 0.83 \nmy-game 1700000002 ${optsLine}\n0=0|AAAA\nEND 5\n`;
+        const header = await new Replay().parseHeader(legacyText);
+        expect(header.engineVersion).toBe('0.83');
+        expect(header.modHash).toBeUndefined();
+
+        const replay = new Replay();
+        replay.unserialize(legacyText);
+        expect(replay.endTick).toBe(5);
+        expect(replay.engineVersion).toBe('0.83');
+    });
+
+    it('writes a valid ENGINE line even when the mod hash is empty', () => {
+        const replay = new Replay();
+        replay.init('game-3', 1700000003, makeGameOpts(), '0.83', '');
+        replay.finish(0);
+        const text = replay.serialize();
+        expect(text).toContain('ENGINE 0.83 0\n');
+    });
 });

@@ -20,7 +20,12 @@ export interface ReplayHeader {
 export class Replay {
     public static readonly extension = '.rpl';
     public static readonly maxNameLength = 128;
-    public static readonly engineLineRegex = /^ENGINE \d+\.\d+( \d+)?$/;
+    public static readonly engineLineRegex = /^ENGINE \d+(\.\d+)+(-\w+)?( \S+)?$/;
+
+    public static isCompatibleVersion(recorded: string | undefined, current: string): boolean {
+        const normalize = (value: string | undefined): string => value?.split(".").slice(0, 2).join(".") ?? "";
+        return normalize(recorded) === normalize(current);
+    }
 
     public name: string = '';
     public timestamp: number = 0;
@@ -72,7 +77,7 @@ export class Replay {
         if (this.modHash === undefined) throw new Error('Mod hash is not set');
         const serializer = new Serializer();
         let chunk = this.getHeaderTag() + '\n';
-        chunk += `ENGINE ${this.engineVersion} ${this.modHash}\n`;
+        chunk += `ENGINE ${this.engineVersion} ${this.modHash || '0'}\n`;
         chunk += [this.gameId, this.gameTimestamp, serializer.serializeOptions(this.gameOpts)].join(' ') + '\n';
         yield chunk;
         chunk = '';
@@ -117,10 +122,11 @@ export class Replay {
                 replayVersion = this.readReplayVersion(line);
             }
             else if (lineIndex === 1) {
-                if (!line.match(Replay.engineLineRegex)) {
+                const engineLine = line.trim();
+                if (!engineLine.match(Replay.engineLineRegex)) {
                     throw new Error('Missing or invalid game engine version line');
                 }
-                const parts = line.split(' ');
+                const parts = engineLine.split(' ');
                 engineVersion = parts[1];
                 modHash = replayVersion < 4 ? '0' : parts[2];
             }
@@ -156,7 +162,7 @@ export class Replay {
             throw new Error('Unsupported replay version ' + version);
         }
         const parser = new Parser();
-        const engineLine = lines.shift();
+        const engineLine = lines.shift()?.trim();
         if (!engineLine || !engineLine.match(Replay.engineLineRegex)) {
             throw new Error('Missing or invalid game engine version line');
         }
@@ -172,7 +178,7 @@ export class Replay {
         const [, gameId, timestamp, optsSerialized] = match;
         const opts = version < 6 ? Base64.decode(optsSerialized) : optsSerialized;
         const gameOpts = parser.parseOptions(opts);
-        this.init(gameId, Number(timestamp), gameOpts, engineVersion, modHash);
+        this.init(gameId, Number(timestamp), gameOpts, engineVersion, modHash ?? '0');
         this.name = meta?.name ?? this.name;
         this.timestamp = meta?.timestamp ?? this.timestamp;
         let foundEnd = false;

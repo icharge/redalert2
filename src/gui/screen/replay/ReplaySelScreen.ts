@@ -338,29 +338,31 @@ export class ReplaySelScreen extends MainMenuScreen {
                         ? `?${RouteHelper.modQueryStringName}=${this.activeMod}`
                         : "";
                     window.open(`${this.oldClientsBaseUrl}v${clientVersion}/${modQuery}#/replay/${replay.id}`, "_blank");
+                    return;
                 }
             }
-            else {
-                this.messageBoxApi!.show(this.strings!.get("GUI:ReplayVersionMismatch", replayHeader.engineVersion), this.strings!.get("GUI:Ok"));
-            }
-            return;
-        }
-        if (replayHeader.modHash === this.engineModHash) {
-            let loadedReplay: any;
-            try {
-                loadedReplay = await this.replayManager!.loadReplay(replay);
-            }
-            catch (error: any) {
-                this.errorHandler!.handle(error, this.strings!.get("GUI:ReplayError"), () => { });
+            const continueConfirmed = await this.messageBoxApi!.confirm(this.strings!.get("GUI:ReplayVersionMismatchConfirm", replayHeader.engineVersion), this.strings!.get("GUI:ModActionLoadAnyway"), this.strings!.get("GUI:Close"));
+            if (!continueConfirmed) {
                 return;
             }
-            this.rootController!.goToScreen(ScreenType.Replay, {
-                replay: loadedReplay
-            });
         }
-        else {
-            this.messageBoxApi!.show(this.strings!.get("GUI:ReplayModMismatch"), this.strings!.get("GUI:Ok"));
+        else if (this.engineModHash && replayHeader.modHash !== this.engineModHash) {
+            const continueConfirmed = await this.messageBoxApi!.confirm(this.strings!.get("GUI:ReplayModMismatchConfirm"), this.strings!.get("GUI:ModActionLoadAnyway"), this.strings!.get("GUI:Close"));
+            if (!continueConfirmed) {
+                return;
+            }
         }
+        let loadedReplay: any;
+        try {
+            loadedReplay = await this.replayManager!.loadReplay(replay);
+        }
+        catch (error: any) {
+            this.errorHandler!.handle(error, this.strings!.get("GUI:ReplayError"), () => { });
+            return;
+        }
+        this.rootController!.goToScreen(ScreenType.Replay, {
+            replay: loadedReplay
+        });
     }
     private showKeepReplayBox(defaultName: string, onSubmit: (name: string) => void): void {
         const [component] = this.jsxRenderer!.render(jsx(HtmlView, {
@@ -424,17 +426,20 @@ export class ReplaySelScreen extends MainMenuScreen {
             const serialized = await this.replayManager!.loadSerializedReplay(replay);
             const header = await new Replay().parseHeader(serialized);
             cancellationToken.throwIfCancelled();
+            const content = typeof serialized === "string"
+                ? serialized
+                : await serialized.text();
+            const endMatch = content.match(/^END (\d+)$/m);
+            const endTick = endMatch ? Number(endMatch[1]) : undefined;
+            const durationSeconds = endTick !== undefined
+                ? Math.floor(endTick / GameSpeed.BASE_TICKS_PER_SECOND)
+                : undefined;
             let gameOpts: GameOpts | undefined;
-            let durationSeconds: number | undefined;
-            if (header.engineVersion === this.engineVersion) {
+            if (Replay.isCompatibleVersion(header.engineVersion, this.engineVersion)) {
                 const replayInstance = new Replay();
-                const content = typeof serialized === "string"
-                    ? serialized
-                    : await serialized.text();
                 replayInstance.unserialize(content, replay);
                 cancellationToken.throwIfCancelled();
                 gameOpts = replayInstance.gameOpts;
-                durationSeconds = Math.floor(replayInstance.endTick / GameSpeed.BASE_TICKS_PER_SECOND);
             }
             else {
                 try {

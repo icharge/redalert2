@@ -179,7 +179,9 @@
     "gui:replaylisterror": "Unable to load replay list",
     "gui:replayerror": "Unable to load replay",
     "gui:replayversionmismatch": "The replay uses a different game version (%s) and cannot be loaded. Please follow the THAI RA2 Facebook for solutions!",
+    "gui:replayversionmismatchconfirm": "The replay uses a different game version (%s). It may not play correctly. Do you still want to load it?",
     "gui:replaymodmismatch": "The replay was recorded with a different game client mod and cannot be loaded. Please follow the THAI RA2 Facebook for solutions!",
+    "gui:replaymodmismatchconfirm": "The replay was recorded with a different game client mod. It may not play correctly. Do you still want to load it?",
     "gui:replayopenoldclient": "The replay will be loaded using game version %s in a new browser tab or window.",
     "gui:replaywindowclose": "You can now close this browser tab/window",
     "gui:confirmdeletereplay": "Are you sure you want to permanently delete replay \"%s\"?",
@@ -416,5 +418,9 @@
     "stt:delayedoils": "Oil derricks are destroyed after a delay.",
     "stt:instantcapture": "Engineers capture enemy structures instantly.",
     "gui:delayedoils": "Delayed Oil Derricks",
-    "gui:instantcapture": "Instant Capture"
+    "gui:instantcapture": "Instant Capture",
+    "ts:leave_game_confirm": "You are currently in an active game. Leaving now will disconnect you from this match and your current progress will be lost.\n\nAre you sure you want to leave?",
+    "ts:leave_game": "Leave Game",
+    "ts:game_restored": "Your game was restored from the browser cache.\n\nThe game was paused while you were away.\n\nClick OK to continue playing.",
+    "gui:cancel": "Cancel"
 }

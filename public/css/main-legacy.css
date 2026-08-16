@@ -3270,3 +3270,60 @@ input[type="range"]:focus {
 #ra2web-root .bot-upload-btn:hover {
     background: rgba(178, 34, 34, 0.7);
 }
+
+#ra2web-root .replay-progress-bar {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+}
+
+#ra2web-root .replay-progress-time {
+    color: #fff;
+    font-size: 12px;
+    text-shadow: 0 0 3px #000, 0 0 3px #000;
+    margin-bottom: 3px;
+}
+
+#ra2web-root .replay-progress-track {
+    position: relative;
+    width: 480px;
+    max-width: 60%;
+    height: 8px;
+    background: rgba(0, 0, 0, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 4px;
+    cursor: pointer;
+    pointer-events: auto;
+    touch-action: none;
+}
+
+#ra2web-root .replay-progress-track.disabled {
+    pointer-events: none;
+    opacity: 0.5;
+}
+
+#ra2web-root .replay-progress-fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    background: #ffd800;
+    border-radius: 4px;
+}
+
+#ra2web-root .replay-progress-thumb {
+    position: absolute;
+    top: 50%;
+    width: 12px;
+    height: 12px;
+    margin-left: -6px;
+    margin-top: -6px;
+    background: #fff;
+    border-radius: 50%;
+    border: 1px solid #000;
+}

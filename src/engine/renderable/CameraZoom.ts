@@ -9,6 +9,11 @@ export class CameraZoom {
     getZoom(): number {
         return this.zoom;
     }
+    setZoom(zoom: number): void {
+        if (this.freeCamera.value) {
+            this.zoom = Math.max(0.1, zoom);
+        }
+    }
     applyStep(step: number): void {
         if (this.freeCamera.value) {
             this.zoom = Math.max(0.1, this.zoom + step);

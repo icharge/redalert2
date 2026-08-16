@@ -175,7 +175,9 @@
     "gui:replaylisterror": "无法加载回放",
     "gui:replayerror": "无法加载回放",
     "gui:replayversionmismatch": "回放使用的是不同的游戏版本（%s），无法加载。请微信关注公众号 思牛逼 阅读里面文章获取解决方案！",
+    "gui:replayversionmismatchconfirm": "回放使用的是不同的游戏版本（%s），可能无法正常播放。是否仍然要加载？",
     "gui:replaymodmismatch": "回放是在不同的游戏客户端修改下录制的，无法加载。请微信关注公众号 思牛逼 阅读里面文章获取解决方案！",
+    "gui:replaymodmismatchconfirm": "回放是在不同的游戏客户端修改下录制的，可能无法正常播放。是否仍然要加载？",
     "gui:replayopenoldclient": "将在新的浏览器选项卡或窗口中使用游戏版本 %s 加载回放。",
     "gui:replaywindowclose": "您现在可以关闭此浏览器选项卡/窗口",
     "gui:confirmdeletereplay": "您确定要永久删除回放\"%s\"吗？",
@@ -395,5 +397,9 @@
     "stt:delayedoils": "油井被摧毁前有延迟。",
     "stt:instantcapture": "工程师可立即占领敌方建筑。",
     "gui:delayedoils": "延迟摧毁油井",
-    "gui:instantcapture": "即时占领"
+    "gui:instantcapture": "即时占领",
+    "ts:leave_game_confirm": "你正在进行一局游戏，离开将断开与当前对局的连接，当前进度将丢失。\n\n确定要离开吗？",
+    "ts:leave_game": "离开游戏",
+    "ts:game_restored": "你的游戏已从浏览器缓存中恢复。\n\n离开期间游戏已暂停。\n\n点击确定继续游戏。",
+    "gui:cancel": "取消"
 }

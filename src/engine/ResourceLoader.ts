@@ -41,9 +41,18 @@ export class LoaderResult {
 export class ResourceLoader {
     private resourceBaseUrl: string;
     private httpRequest: HttpRequest;
-    constructor(resourceBaseUrl: string) {
+    private cacheResponses: boolean;
+    private readonly responseCache = new Map<string, Promise<ArrayBuffer>>();
+    constructor(resourceBaseUrl: string, cacheResponses = false) {
         this.resourceBaseUrl = resourceBaseUrl.endsWith('/') ? resourceBaseUrl : resourceBaseUrl + '/';
         this.httpRequest = new HttpRequest();
+        this.cacheResponses = cacheResponses;
+    }
+    enableResponseCache(): void {
+        this.cacheResponses = true;
+    }
+    clearResponseCache(): void {
+        this.responseCache.clear();
     }
     async prefetchResource(resourceType: ResourceType, cancellationToken?: CancellationToken): Promise<void> {
         const resourceConfig = resourceConfigs.get(resourceType);
@@ -166,6 +175,17 @@ export class ResourceLoader {
         return new LoaderResult(resultsMap);
     }
     protected async fetchResource(url: string, cancellationToken?: CancellationToken, options?: FetchResourceOptions): Promise<ArrayBuffer> {
+        if (this.cacheResponses) {
+            let pending = this.responseCache.get(url);
+            if (!pending) {
+                pending = this.httpRequest.fetchRaw(url).catch((error) => {
+                    this.responseCache.delete(url);
+                    throw error;
+                });
+                this.responseCache.set(url, pending);
+            }
+            return await pending;
+        }
         return await this.httpRequest.fetchRaw(url, cancellationToken as any, options?.onProgress as any);
     }
 }

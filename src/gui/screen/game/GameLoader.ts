@@ -27,12 +27,12 @@ import { MixinRules } from '@/game/ini/MixinRules';
 import { isNotNullOrUndefined } from '@/util/typeGuard';
 export class GameLoader {
     constructor(private appVersion: string, private workerHostApi: any, private cdnResourceLoader: any, private appResourceLoader: any, private rules: any, private gameModes: any, private sound: any, private iniLogger: any, private actionLogger: any, private speedCheat: any, private gameResConfig: any, private vxlGeometryPool: any, private buildingImageDataCache: any, private debugBotIndex: any, private devMode: boolean) { }
-    async load(gameId: string, timestamp: number, gameOptions: any, mapFile: any, playerName: string, isSinglePlayer: boolean, loadingScreenApi: any, cancellationToken?: any): Promise<any> {
+    async load(gameId: string, timestamp: number, gameOptions: any, mapFile: any, playerName: string, isSinglePlayer: boolean, loadingScreenApi: any, cancellationToken?: any, options?: { fastReload?: boolean }): Promise<any> {
         const loadingPlayerInfos = this.resolveLoadingPlayerInfos(gameId, timestamp, gameOptions);
         loadingScreenApi.start(loadingPlayerInfos, gameOptions.mapTitle, playerName);
         try {
             this.workerHostApi?.warmUpPool?.();
-            return await this.doLoad(gameId, timestamp, gameOptions, mapFile, playerName, isSinglePlayer, loadingScreenApi, cancellationToken);
+            return await this.doLoad(gameId, timestamp, gameOptions, mapFile, playerName, isSinglePlayer, loadingScreenApi, cancellationToken, options?.fastReload ?? false);
         }
         finally {
             this.workerHostApi?.dispose?.();
@@ -48,12 +48,14 @@ export class GameLoader {
             countryId: generatedCountries.get(player) ?? player.countryId,
         }));
     }
-    private async doLoad(gameId: string, timestamp: number, gameOptions: any, mapFile: any, playerName: string, isSinglePlayer: boolean, loadingScreenApi: any, cancellationToken?: any): Promise<any> {
+    private async doLoad(gameId: string, timestamp: number, gameOptions: any, mapFile: any, playerName: string, isSinglePlayer: boolean, loadingScreenApi: any, cancellationToken?: any, fastReload = false): Promise<any> {
         if (!Engine.vfs) {
             throw new Error('Virtual File System not initialized');
         }
-        this.clearStaticCaches();
-        this.buildingImageDataCache.clear();
+        if (!fastReload) {
+            this.clearStaticCaches();
+            this.buildingImageDataCache.clear();
+        }
         try {
             if (!Engine.getActiveMod()) {
                 await this.loadFestiveAssets(cancellationToken);
