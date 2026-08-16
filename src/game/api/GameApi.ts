@@ -1,5 +1,7 @@
 import { PowerLevel } from "@/game/player/trait/PowerTrait";
 import { MapApi } from "@/game/api/MapApi";
+import { Box2 } from "@/game/math/Box2";
+import { Vector2 } from "@/game/math/Vector2";
 import { ObjectType } from "@/engine/type/ObjectType";
 import { GameSpeed } from "@/game/GameSpeed";
 import { RulesApi } from "@/game/api/RulesApi";
@@ -118,8 +120,26 @@ export class GameApi {
     }
     getUnitsInArea(area: any): any[] {
         return this.game.map.technosByTile
-            .queryRange(area)
+            .queryRange(this.toBox2(area))
             .map((obj: any) => obj.id);
+    }
+    private toBox2(area: any): Box2 {
+        if (area && typeof area.containsPoint === "function") {
+            return area as Box2;
+        }
+        if (area && area.min && area.max) {
+            return new Box2(
+                new Vector2(area.min.x, area.min.y),
+                new Vector2(area.max.x, area.max.y),
+            );
+        }
+        if (area && area.minX !== undefined && area.minY !== undefined) {
+            return new Box2(
+                new Vector2(area.minX, area.minY),
+                new Vector2(area.maxX ?? area.max.x, area.maxY ?? area.max.y),
+            );
+        }
+        throw new TypeError("getUnitsInArea: area must be a Box2-like object with min/max or minX/minY/maxX/maxY");
     }
     getVisibleUnits(playerName: string, type: "self" | "allied" | "hostile" | "enemy", filter: (rules: any) => boolean = () => true): any[] {
         const player = this.game.getPlayerByName(playerName);
