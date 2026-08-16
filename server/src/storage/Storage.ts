@@ -44,6 +44,27 @@ export interface LadderMatchRecord {
     reportedAt: number;
     /** JSON-encoded report payload pushed to the 730 broadcast (audit trail). */
     payload: string;
+    /** File name of the server-recorded .rpl replay for this game ("" = none). */
+    replayPath: string;
+    /** True once a ranked report scored this game; public games stay false. */
+    scored: boolean;
+}
+
+// One row per report player, so match history can be queried by player
+// without scanning the JSON payloads.
+export interface LadderMatchPlayerRecord {
+    gameId: string;
+    usernameKey: string;
+    seasonId: number;
+    ladderType: string;
+    resultType: number;
+    rankType: number;
+    points: number;
+    pointsGain: number;
+    mmr: number;
+    mmrGain: number;
+    mapName: string;
+    reportedAt: number;
 }
 
 /**
@@ -67,7 +88,8 @@ export interface Storage {
     // row only when no season with the same id exists yet.
     bootstrapLadderSeason(season: LadderSeasonRecord): void;
     getLadderSeasons(sku: number): LadderSeasonRecord[];
-    getLadderSeasonById(id: number): LadderSeasonRecord | undefined;
+    getLadderSeasonById(sku: number, id: number): LadderSeasonRecord | undefined;
+    updateLadderSeasonStatus(sku: number, id: number, status: string): boolean;
 
     // Standings, ordered by lastGameAt desc within the same rating (the
     // comparator in rating.ts defines the final order; storage order is only
@@ -78,7 +100,24 @@ export interface Storage {
 
     // Match audit / dedupe.
     getLadderMatch(gameId: string): LadderMatchRecord | undefined;
+    /** Archive row for a finished game (public or ranked); INSERT OR IGNORE semantics. */
     insertLadderMatch(match: LadderMatchRecord): void;
+    /** Upgrade an existing unscored (public) row to a scored ranked one. */
+    upsertScoredLadderMatch(match: LadderMatchRecord): void;
+    updateLadderMatchReplayPath(gameId: string, replayPath: string): boolean;
+    getRecentLadderMatches(limit: number): LadderMatchRecord[];
+    countLadderMatches(): number;
+    countLadderMatchesSince(sinceMs: number): number;
+    countLadderMatchesForSeason(seasonId: number, ladderType: string): number;
+
+    // Per-player match history (written alongside ladder_matches on score).
+    insertLadderMatchPlayer(record: LadderMatchPlayerRecord): void;
+    getLadderMatchPlayers(usernameKey: string, seasonId: number | undefined, ladderType: string | undefined, limit: number): LadderMatchPlayerRecord[];
+
+    // Admin console helpers.
+    searchLadderUsernames(prefix: string, limit: number): string[];
+    countStandingPlayers(): number;
+    getLadderStandingsByUser(usernameKey: string): LadderStandingRecord[];
 
     close(): void;
 }

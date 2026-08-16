@@ -1,5 +1,6 @@
 import {
     AccountRecord,
+    LadderMatchPlayerRecord,
     LadderMatchRecord,
     LadderSeasonRecord,
     LadderStandingRecord,
@@ -10,9 +11,10 @@ import {
 export class MemoryStorage implements Storage {
     private accounts = new Map<string, AccountRecord>();
     private sessions = new Map<string, SessionRecord>();
-    private seasons = new Map<number, LadderSeasonRecord>();
+    private seasons = new Map<string, LadderSeasonRecord>();
     private standings = new Map<string, LadderStandingRecord>();
     private matches = new Map<string, LadderMatchRecord>();
+    private matchPlayers = new Map<string, LadderMatchPlayerRecord>();
 
     accountExists(username: string): boolean {
         return this.accounts.has(username.toLowerCase());
@@ -55,8 +57,9 @@ export class MemoryStorage implements Storage {
     }
 
     bootstrapLadderSeason(season: LadderSeasonRecord): void {
-        if (!this.seasons.has(season.id)) {
-            this.seasons.set(season.id, { ...season });
+        const key = this.seasonKey(season.sku, season.id);
+        if (!this.seasons.has(key)) {
+            this.seasons.set(key, { ...season });
         }
     }
 
@@ -66,8 +69,18 @@ export class MemoryStorage implements Storage {
             .sort((a, b) => b.startTime - a.startTime);
     }
 
-    getLadderSeasonById(id: number): LadderSeasonRecord | undefined {
-        return this.seasons.get(id);
+    getLadderSeasonById(sku: number, id: number): LadderSeasonRecord | undefined {
+        return this.seasons.get(this.seasonKey(sku, id));
+    }
+
+    updateLadderSeasonStatus(sku: number, id: number, status: string): boolean {
+        const key = this.seasonKey(sku, id);
+        const season = this.seasons.get(key);
+        if (!season) {
+            return false;
+        }
+        this.seasons.set(key, { ...season, status });
+        return true;
     }
 
     getLadderStanding(usernameKey: string, seasonId: number, ladderType: string): LadderStandingRecord | undefined {
@@ -92,7 +105,95 @@ export class MemoryStorage implements Storage {
     }
 
     insertLadderMatch(match: LadderMatchRecord): void {
-        this.matches.set(match.gameId, { ...match });
+        if (!this.matches.has(match.gameId)) {
+            this.matches.set(match.gameId, { ...match });
+        }
+    }
+
+    upsertScoredLadderMatch(match: LadderMatchRecord): void {
+        const existing = this.matches.get(match.gameId);
+        if (existing && existing.scored) {
+            return;
+        }
+        this.matches.set(match.gameId, {
+            ...match,
+            replayPath: match.replayPath !== "" ? match.replayPath : (existing?.replayPath ?? ""),
+            scored: true,
+        });
+    }
+
+    updateLadderMatchReplayPath(gameId: string, replayPath: string): boolean {
+        const match = this.matches.get(gameId);
+        if (!match || match.replayPath !== "") {
+            return false;
+        }
+        this.matches.set(gameId, { ...match, replayPath });
+        return true;
+    }
+
+    getRecentLadderMatches(limit: number): LadderMatchRecord[] {
+        return [...this.matches.values()]
+            .sort((a, b) => b.reportedAt - a.reportedAt)
+            .slice(0, limit);
+    }
+
+    countLadderMatches(): number {
+        return this.matches.size;
+    }
+
+    countLadderMatchesSince(sinceMs: number): number {
+        let count = 0;
+        for (const match of this.matches.values()) {
+            if (match.reportedAt >= sinceMs) {
+                count += 1;
+            }
+        }
+        return count;
+    }
+
+    countLadderMatchesForSeason(seasonId: number, ladderType: string): number {
+        let count = 0;
+        for (const match of this.matches.values()) {
+            if (match.seasonId === seasonId && match.ladderType === ladderType) {
+                count += 1;
+            }
+        }
+        return count;
+    }
+
+    insertLadderMatchPlayer(record: LadderMatchPlayerRecord): void {
+        this.matchPlayers.set(`${record.gameId}|${record.usernameKey.toLowerCase()}`, { ...record, usernameKey: record.usernameKey.toLowerCase() });
+    }
+
+    getLadderMatchPlayers(usernameKey: string, seasonId: number | undefined, ladderType: string | undefined, limit: number): LadderMatchPlayerRecord[] {
+        const key = usernameKey.toLowerCase();
+        return [...this.matchPlayers.values()]
+            .filter(record =>
+                record.usernameKey === key &&
+                (seasonId === undefined || record.seasonId === seasonId) &&
+                (ladderType === undefined || record.ladderType === ladderType))
+            .sort((a, b) => b.reportedAt - a.reportedAt)
+            .slice(0, limit);
+    }
+
+    searchLadderUsernames(prefix: string, limit: number): string[] {
+        const needle = prefix.toLowerCase();
+        const found = new Set<string>();
+        for (const standing of this.standings.values()) {
+            if (standing.usernameKey.startsWith(needle)) {
+                found.add(standing.usernameKey);
+            }
+        }
+        return [...found].sort().slice(0, limit);
+    }
+
+    countStandingPlayers(): number {
+        return new Set([...this.standings.values()].map(standing => standing.usernameKey)).size;
+    }
+
+    getLadderStandingsByUser(usernameKey: string): LadderStandingRecord[] {
+        const key = usernameKey.toLowerCase();
+        return [...this.standings.values()].filter(standing => standing.usernameKey === key);
     }
 
     close(): void {
@@ -101,9 +202,14 @@ export class MemoryStorage implements Storage {
         this.seasons.clear();
         this.standings.clear();
         this.matches.clear();
+        this.matchPlayers.clear();
     }
 
     private standingKey(usernameKey: string, seasonId: number, ladderType: string): string {
         return `${usernameKey.toLowerCase()}|${seasonId}|${ladderType}`;
+    }
+
+    private seasonKey(sku: number, id: number): string {
+        return `${sku}|${id}`;
     }
 }

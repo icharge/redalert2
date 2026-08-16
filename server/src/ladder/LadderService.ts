@@ -64,6 +64,9 @@ export interface RecordMatchInput {
     gameId: string;
     ladderType: LadderType;
     duration: number;
+    mapName?: string;
+    /** File name of the server-recorded .rpl replay, if one exists. */
+    replayPath?: string;
     players: ReportPlayerInput[];
 }
 
@@ -78,6 +81,7 @@ export interface ReportPlayerOutput {
 export interface ReportOutput {
     gameId: string;
     duration: number;
+    mapName?: string;
     players: ReportPlayerOutput[];
 }
 
@@ -212,9 +216,12 @@ export class LadderService {
      * for outcome shapes that cannot be scored (conflicting reports).
      */
     recordMatch(input: RecordMatchInput): ReportOutput {
+        // A previously scored row for this gameId is the dedupe: the same game
+        // can never score twice. Unscored rows (public games archived at gserv
+        // finalize) fall through and get upgraded to scored in place.
         const existing = this.storage.getLadderMatch(input.gameId);
-        if (existing) {
-            this.log.debug(`ladder match ${input.gameId} already recorded; skipping`);
+        if (existing?.scored) {
+            this.log.debug(`ladder match ${input.gameId} already scored; skipping`);
             return deserializePayload(existing);
         }
         const season = this.resolveSeason(input.sku, CURRENT_SEASON);
@@ -276,6 +283,7 @@ export class LadderService {
         const report: ReportOutput = {
             gameId: input.gameId,
             duration: input.duration,
+            mapName: input.mapName,
             players: input.players.map(player => {
                 const key = player.name.toLowerCase();
                 const next = updated.get(key)!;
@@ -295,15 +303,261 @@ export class LadderService {
         for (const standing of updated.values()) {
             this.storage.upsertLadderStanding(standing);
         }
-        this.storage.insertLadderMatch({
+        const payload = JSON.stringify(report);
+        // The archive row may already exist (a public game archived at gserv
+        // finalize); the scored upsert upgrades it in place and keeps its
+        // replay path. A previously scored row is the gameId dedupe.
+        this.storage.upsertScoredLadderMatch({
             gameId: input.gameId,
             seasonId,
             ladderType: input.ladderType,
             reportedAt: now,
-            payload: JSON.stringify(report),
+            payload,
+            replayPath: input.replayPath ?? "",
+            scored: true,
         });
+        for (const player of report.players) {
+            this.storage.insertLadderMatchPlayer({
+                gameId: input.gameId,
+                usernameKey: player.name.toLowerCase(),
+                seasonId,
+                ladderType: input.ladderType,
+                resultType: player.resultType,
+                rankType: player.rankType,
+                points: player.points.value,
+                pointsGain: player.points.gain,
+                mmr: player.mmr.value,
+                mmrGain: player.mmr.gain,
+                mapName: input.mapName ?? "",
+                reportedAt: now,
+            });
+        }
         this.log.info(`ladder match ${input.gameId} recorded (${input.ladderType}, season ${seasonId}): ${input.players.map(player => `${player.name}:${WolGameReportResult[player.resultType]}`).join(", ")}`);
         return report;
+    }
+
+    // --- Admin console domain operations ------------------------------------
+
+    /**
+     * Archive a finished game that never goes through the ranked report
+     * (public/custom matches, recorded when the gserv instance finalizes).
+     * Idempotent: an existing row (scored or not) is left untouched.
+     */
+    archivePublicMatch(input: { gameId: string; reportedAt: number; players: string[]; replayPath: string }): void {
+        this.storage.insertLadderMatch({
+            gameId: input.gameId,
+            seasonId: 0,
+            ladderType: "",
+            reportedAt: input.reportedAt,
+            payload: JSON.stringify({
+                gameId: input.gameId,
+                duration: 0,
+                players: input.players.map(name => ({ name, resultType: -1 })),
+            }),
+            replayPath: input.replayPath,
+            scored: false,
+        });
+        this.log.debug(`archived public match ${input.gameId} (replay ${input.replayPath})`);
+    }
+
+    /** Resolve a match by gameId (for replay download); undefined when unknown. */
+    getMatch(gameId: string): AdminMatch | undefined {
+        const match = this.storage.getLadderMatch(gameId);
+        if (!match) {
+            return undefined;
+        }
+        return {
+            ...deserializePayload(match),
+            seasonId: match.seasonId,
+            ladderType: match.ladderType,
+            reportedAt: match.reportedAt,
+            replayPath: match.replayPath,
+            scored: match.scored,
+        };
+    }
+
+    /**
+     * Link a replay file on disk to its archive row: creates a public row when
+     * none exists, or fills the replay path of an existing row. Idempotent.
+     */
+    linkReplayFile(gameId: string, fileName: string, reportedAt: number): boolean {
+        const existing = this.storage.getLadderMatch(gameId);
+        if (!existing) {
+            this.archivePublicMatch({ gameId, reportedAt, players: [], replayPath: fileName });
+            return true;
+        }
+        if (existing.replayPath === "") {
+            return this.storage.updateLadderMatchReplayPath(gameId, fileName);
+        }
+        return false;
+    }
+    /**
+     * Season list with per-season stats. `isCurrent` marks the newest season
+     * by start_time (what recordMatch resolves "current" to).
+     */
+    getSeasonsAdmin(): AdminSeason[] {
+        const skus = [...KNOWN_SKUS];
+        const seasonsBySku = new Map<number, LadderSeasonRecord[]>();
+        for (const sku of skus) {
+            seasonsBySku.set(sku, this.storage.getLadderSeasons(sku));
+        }
+        const currentKeys = new Set<string>();
+        for (const [sku, seasons] of seasonsBySku) {
+            if (seasons.length > 0) {
+                currentKeys.add(`${sku}|${seasons[0].id}`);
+            }
+        }
+        const result: AdminSeason[] = [];
+        for (const [sku, seasons] of seasonsBySku) {
+            for (const season of seasons) {
+                const rankedPlayers: Record<string, number> = {};
+                const matchesByType: Record<string, number> = {};
+                for (const type of LADDER_TYPES) {
+                    rankedPlayers[type] = this.countRankedPlayers(season.id, type);
+                    matchesByType[type] = this.storage.countLadderMatchesForSeason(season.id, type);
+                }
+                result.push({
+                    id: season.id,
+                    name: season.name,
+                    sku: season.sku,
+                    startTime: season.startTime,
+                    endTime: season.endTime,
+                    status: season.status,
+                    isCurrent: currentKeys.has(`${sku}|${season.id}`),
+                    rankedPlayers,
+                    matches: matchesByType,
+                });
+            }
+        }
+        return result.sort((a, b) => b.sku - a.sku || b.startTime - a.startTime);
+    }
+
+    createSeason(input: { name: string; sku: number; startTime?: number; endTime?: number }): AdminSeason | undefined {
+        if (!KNOWN_SKUS.has(input.sku)) {
+            return undefined;
+        }
+        const seasons = this.storage.getLadderSeasons(input.sku);
+        const nextId = seasons.reduce((max, season) => Math.max(max, season.id), 0) + 1;
+        // A new season must be strictly newer than the newest existing one,
+        // otherwise a same-millisecond start_time would tie in the sort and
+        // the older season would stay "current".
+        const startTime = Math.max(input.startTime ?? Date.now(), (seasons[0]?.startTime ?? 0) + 1);
+        const endTime = input.endTime ?? startTime + 365 * 24 * 60 * 60 * 1000;
+        const season: LadderSeasonRecord = {
+            id: nextId,
+            name: input.name,
+            sku: input.sku,
+            startTime,
+            endTime,
+            status: "current",
+        };
+        this.storage.bootstrapLadderSeason(season);
+        this.log.info(`admin: created season ${nextId} "${input.name}" (sku ${input.sku})`);
+        return this.getSeasonsAdmin().find(entry => entry.id === nextId && entry.sku === input.sku);
+    }
+
+    closeSeason(sku: number, id: number): boolean {
+        const season = this.storage.getLadderSeasonById(sku, id);
+        if (!season) {
+            return false;
+        }
+        const closed = this.storage.updateLadderSeasonStatus(sku, id, "closed");
+        if (closed) {
+            this.log.info(`admin: closed season ${id} (sku ${sku})`);
+        }
+        return closed;
+    }
+
+    getDashboard(): AdminDashboard {
+        const now = Date.now();
+        const startOfDay = now - (now % (24 * 60 * 60 * 1000));
+        const current = this.resolveSeasonAcrossSkus(CURRENT_SEASON);
+        return {
+            players: this.storage.countStandingPlayers(),
+            matchesTotal: this.storage.countLadderMatches(),
+            matchesToday: this.storage.countLadderMatchesSince(startOfDay),
+            seasons: this.getSeasonsAdmin(),
+            ladders: LADDER_TYPES.map(type => {
+                const standings = current ? this.rankedOrder(current.id, type) : [];
+                return {
+                    ladderType: type,
+                    rankedPlayers: current ? this.countRankedPlayers(current.id, type) : 0,
+                    top10: standings.slice(0, 10).map((standing, index) => ({
+                        name: standing.username,
+                        rank: index + 1,
+                        points: this.pointsOf(standing),
+                        mmr: standing.rating,
+                        wins: standing.wins,
+                        losses: standing.losses,
+                        rankType: rankTypeForRating(standing.rating),
+                    })),
+                };
+            }),
+        };
+    }
+
+    getRecentMatches(limit: number): AdminMatch[] {
+        return this.storage.getRecentLadderMatches(Math.max(1, Math.min(200, Math.floor(limit)))).map(match => ({
+            ...deserializePayload(match),
+            seasonId: match.seasonId,
+            ladderType: match.ladderType,
+            reportedAt: match.reportedAt,
+            replayPath: match.replayPath,
+            scored: match.scored,
+        }));
+    }
+
+    searchPlayers(prefix: string, limit: number): AdminPlayerSearchResult[] {
+        const names = this.storage.searchLadderUsernames(prefix, Math.max(1, Math.min(50, Math.floor(limit))));
+        return names.map(name => ({
+            name,
+            standings: this.storage.getLadderStandingsByUser(name),
+        }));
+    }
+
+    getPlayerHistory(name: string, seasonSlug: string | undefined, ladderType: LadderType | undefined, limit: number): PlayerHistory | undefined {
+        const seasonId = seasonSlug ? this.resolveSeasonAcrossSkus(seasonSlug)?.id : undefined;
+        const matches = this.storage.getLadderMatchPlayers(name, seasonId, ladderType, Math.max(1, Math.min(200, Math.floor(limit))));
+        if (matches.length === 0) {
+            return undefined;
+        }
+        return {
+            name,
+            matches: matches.map(match => ({
+                gameId: match.gameId,
+                seasonId: match.seasonId,
+                ladderType: match.ladderType,
+                resultType: match.resultType,
+                rankType: match.rankType,
+                points: match.points,
+                pointsGain: match.pointsGain,
+                mmr: match.mmr,
+                mmrGain: match.mmrGain,
+                mapName: match.mapName,
+                reportedAt: match.reportedAt,
+            })),
+        };
+    }
+
+    private resolveSeasonAcrossSkus(slug: string): LadderSeasonRecord | undefined {
+        const all = [...KNOWN_SKUS].flatMap(sku => this.storage.getLadderSeasons(sku)).sort((a, b) => b.startTime - a.startTime);
+        if (slug === CURRENT_SEASON) {
+            return all[0];
+        }
+        if (slug === PREV_SEASON) {
+            return all[1];
+        }
+        const id = Number(slug);
+        if (!Number.isInteger(id)) {
+            return undefined;
+        }
+        for (const sku of KNOWN_SKUS) {
+            const season = this.storage.getLadderSeasonById(sku, id);
+            if (season) {
+                return season;
+            }
+        }
+        return undefined;
     }
 
     private isScoreable(winners: number, losers: number, drawers: number): boolean {
@@ -335,7 +589,7 @@ export class LadderService {
             if (!Number.isInteger(id)) {
                 return undefined;
             }
-            record = this.storage.getLadderSeasonById(id);
+            record = this.storage.getLadderSeasonById(sku, id);
         }
         return record ? { record, slug } : undefined;
     }
@@ -446,6 +700,72 @@ export class LadderError extends Error {
         super(message);
         this.name = "LadderError";
     }
+}
+
+export interface AdminSeason {
+    id: number;
+    name: string;
+    sku: number;
+    startTime: number;
+    endTime: number;
+    status: string;
+    isCurrent: boolean;
+    rankedPlayers: Record<string, number>;
+    matches: Record<string, number>;
+}
+
+export interface AdminDashboard {
+    players: number;
+    matchesTotal: number;
+    matchesToday: number;
+    seasons: AdminSeason[];
+    ladders: {
+        ladderType: LadderType;
+        rankedPlayers: number;
+        top10: {
+            name: string;
+            rank: number;
+            points: number;
+            mmr: number;
+            wins: number;
+            losses: number;
+            rankType: number;
+        }[];
+    }[];
+}
+
+export interface AdminMatch {
+    gameId: string;
+    seasonId: number;
+    ladderType: string;
+    reportedAt: number;
+    duration: number;
+    mapName?: string;
+    replayPath: string;
+    scored: boolean;
+    players: ReportPlayerOutput[];
+}
+
+export interface AdminPlayerSearchResult {
+    name: string;
+    standings: LadderStandingRecord[];
+}
+
+export interface PlayerHistory {
+    name: string;
+    matches: {
+        gameId: string;
+        seasonId: number;
+        ladderType: string;
+        resultType: WolGameReportResult;
+        rankType: number;
+        points: number;
+        pointsGain: number;
+        mmr: number;
+        mmrGain: number;
+        mapName: string;
+        reportedAt: number;
+    }[];
 }
 
 function deserializePayload(match: LadderMatchRecord): ReportOutput {

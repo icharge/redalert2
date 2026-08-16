@@ -1,6 +1,8 @@
 import { loadConfig, ServerConfig } from "./config";
-import { makeLogger, fileLogOptionsOf } from "./logger";
+import { makeLogger, fileLogOptionsOf, Logger } from "./logger";
 import { createStorage } from "./storage";
+import { Storage } from "./storage/Storage";
+import { readdirSync } from "node:fs";
 import { AccountStore } from "./auth/accountStore";
 import { SessionManager } from "./auth/session";
 import { WolServer } from "./server/WolServer";
@@ -31,6 +33,19 @@ const ladder = new LadderService(storage, makeLogger(config.logLevel, "ladder", 
     placementMatches: config.placementMatches,
 });
 const httpDeps: HttpDeps = { accounts, sessions, ladder, gservs: gservManager, wol };
+
+// Archive every finished game (public + ranked) with its replay file name so
+// the admin console can list and serve replays. Ranked reports later upgrade
+// the same row to a scored match.
+gserv.onMatchArchived = (event) => {
+    ladder.archivePublicMatch({
+        gameId: event.gameId,
+        reportedAt: event.timestamp * 1000,
+        players: event.players,
+        replayPath: event.replayFileName,
+    });
+};
+backfillReplayPaths(storage, config.replaysDir, ladder, log);
 
 wol.startPingLoop();
 gserv.startSweepLoop();
@@ -85,8 +100,7 @@ const server = Bun.serve<WsData>({
     },
 });
 
-const httpProtocol = config.externalUrl.startsWith("wss") ? "https" : "http";
-log.info(`Wol server listening on ws://${server.hostname}:${server.port}`);
+const httpProtocol = config.externalUrl.startsWith("wss") ? "https" : "http";log.info(`Wol server listening on ws://${server.hostname}:${server.port}`);
 log.info(`Http endpoints on ${httpProtocol}://${server.hostname}:${server.port} (/login /register /ladder /wgameres /servers.ini /health)`);
 log.info(`Gserv endpoint at ${config.externalUrl}${config.gservUrlPath}`);
 log.info(`Log level: ${config.logLevel}`);
@@ -168,6 +182,31 @@ function reload(signal: string): void {
         log.warn(`reload: ${restartOnly.join("; ")} require a full restart to apply`);
     }
     log.info(`config reloaded (${signal}); connections and game sessions were kept`);
+}
+
+// On boot, link existing replay files on disk to their match archive rows so
+// history from before the archive existed stays browsable and downloadable.
+function backfillReplayPaths(storage: Storage, replaysDir: string, ladder: LadderService, log: Logger): void {
+    let files: string[];
+    try {
+        files = readdirSync(replaysDir);
+    }
+    catch {
+        return;
+    }
+    let linked = 0;
+    for (const file of files) {
+        if (!file.endsWith(".rpl") || !file.startsWith("game-")) {
+            continue;
+        }
+        const gameId = file.slice("game-".length).split(" ")[0];
+        if (ladder.linkReplayFile(gameId, file, Date.now())) {
+            linked += 1;
+        }
+    }
+    if (linked > 0) {
+        log.info(`backfill: linked ${linked} replay file(s) in ${replaysDir}`);
+    }
 }
 
 process.once("SIGINT", () => shutdown("SIGINT"));

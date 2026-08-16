@@ -76,6 +76,9 @@ export interface ServerConfig {
     placementMatches: number;
     minReportDurationSeconds: number;
     gservReportWindowSeconds: number;
+    adminUsernames: string[];
+    /** Public origin of the game client (for admin console replay deeplinks). */
+    clientUrl?: string;
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env as Record<string, string | undefined>): ServerConfig {
@@ -150,5 +153,12 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
         // for up to 5 minutes) can still be validated. After this the gameId
         // is forgotten and can never be re-reported.
         gservReportWindowSeconds: Number(env.GSERV_REPORT_WINDOW_SECONDS ?? 600),
+        // Usernames allowed into the /admin console (comma-separated). The
+        // console manages seasons and browses ladder data; there is no role
+        // stored in the database.
+        adminUsernames: env.ADMIN_USERNAMES
+            ? env.ADMIN_USERNAMES.split(",").map(name => name.trim().toLowerCase()).filter(Boolean)
+            : [],
+        clientUrl: env.CLIENT_URL?.trim() || undefined,
     };
 }

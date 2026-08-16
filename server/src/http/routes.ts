@@ -1,5 +1,7 @@
 import { AccountStore } from "../auth/accountStore";
 import { SessionManager } from "../auth/session";
+import { readFileSync, readdirSync } from "node:fs";
+import path from "node:path";
 import { ServerConfig } from "../config";
 import { Logger, makeLogger } from "../logger";
 import { randomHex } from "../util/random";
@@ -11,6 +13,7 @@ import { GservManager } from "../gserv/GservManager";
 import { WolServer } from "../server/WolServer";
 import { numeric, WOL_SERVER_NAME } from "../protocol/replies";
 import * as Code from "../protocol/wolCodes";
+import { handleAdmin } from "./adminRoutes";
 import { corsHeaders, withCors } from "./cors";
 
 function json(body: unknown, status = 200): Response {
@@ -141,6 +144,28 @@ wgameresUrl="${baseUrl}/wgameres"
     }
 
     const pathParts = url.pathname.split("/").filter(Boolean);
+    if (pathParts[0] === "admin") {
+        return handleAdmin(req, { sessions: deps.sessions, ladder: deps.ladder, replaysDir: config.replaysDir }, config, pathParts, log);
+    }
+    // GET /replays/{gameId} — public .rpl download powering the in-game
+    // replay deeplink (#/replay/...). Replays are game recordings, not
+    // sensitive; no auth (the admin console still has its own download).
+    if (req.method === "GET" && pathParts[0] === "replays" && pathParts.length === 2) {
+        const match = deps.ladder.getMatch(pathParts[1]);
+        if (!match || match.replayPath === "") {
+            return withCors(json({ error: "Replay not found" }, 404), config, req);
+        }
+        try {
+            const content = readFileSync(path.join(config.replaysDir, match.replayPath));
+            return withCors(new Response(content, {
+                status: 200,
+                headers: { "Content-Type": "text/plain; charset=utf-8" },
+            }), config, req);
+        }
+        catch {
+            return withCors(json({ error: "Replay file missing on disk" }, 404), config, req);
+        }
+    }
     if (pathParts[0] === "ladder") {
         return handleLadder(req, deps, config, pathParts, log);
     }
@@ -347,6 +372,8 @@ async function handleWgameres(req: Request, deps: HttpDeps, config: ServerConfig
             gameId: report.gameId,
             ladderType,
             duration: report.duration,
+            mapName: report.mapName,
+            replayPath: findReplayFile(config.replaysDir, report.gameId),
             players,
         });
     }
@@ -396,4 +423,17 @@ function samePlayers(instancePlayers: string[], reportPlayers: string[]): boolea
 
 function isBase64(value: string): boolean {
     return value.length % 4 === 0 && /^[A-Za-z0-9+/]*={0,2}$/.test(value);
+}
+
+// Replay files are named "game-<gameId> <ISO timestamp>.rpl" (see
+// GservReplayRecorder.finalize). Returns the file name when one exists.
+function findReplayFile(replaysDir: string, gameId: string): string | undefined {
+    const prefix = `game-${gameId} `;
+    try {
+        const files = readdirSync(replaysDir);
+        return files.find(file => file.startsWith(prefix) && file.endsWith(".rpl"));
+    }
+    catch {
+        return undefined;
+    }
 }

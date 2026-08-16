@@ -163,6 +163,7 @@ export class Application {
         this.viewport = new BoxedVar({ x: 0, y: 0, width: window.innerWidth, height: window.innerHeight });
         this.viewportAdapter = new ViewportAdapter(this.viewport);
         this.routing = new Routing();
+        this.currentRouteHandler = undefined;
         this.splashScreenUpdateCallback = splashScreenUpdateCallback;
         this.localPrefs = new MockLocalPrefs(localStorage);
         this.runtimeVars = new MockConsoleVars();
@@ -865,26 +866,98 @@ export class Application {
             rootElement: this.rootEl ?? undefined,
         };
     }
+    private currentRouteHandler: any;
+
+    private async bootstrapMainApp(): Promise<void> {
+        console.log('[Application] Initializing main page');
+        this.applyRootLayout(this.viewport.value);
+        const { CfTurnstile } = await import('./util/CfTurnstile.js');
+        const cfTurnstile = new CfTurnstile(this.config.turnstile);
+        if (cfTurnstile.isEnabled()) {
+            cfTurnstile.load().catch((error) => console.error('Failed to load Cloudflare Turnstile', error));
+        }
+        this.gui = new Gui(this.getVersion(), this.strings, this.config, this.viewport, this.rootEl!, this.cdnResourceLoader, this.gameResConfig, this.runtimeVars, this.generalOptions, this.fullScreen, this.currentLocale, cfTurnstile);
+        await this.gui.init();
+        this.currentRouteHandler = this;
+    }
+
+    /**
+     * #/replay/<base64url> deeplink: fetch a server-recorded .rpl and jump
+     * straight into replay playback. The payload is JSON {url, name?} where
+     * url points at the public GET /replays/{gameId} endpoint.
+     */
+    private async launchReplayLink(encodedPayload: string | undefined): Promise<void> {
+        const { ScreenType } = await import('./gui/screen/ScreenType.js');
+        const { Replay } = await import('./network/gamestate/Replay.js');
+        const showError = (message: string) => {
+            this.gui?.getMessageBoxApi().show(message, this.strings.get("GUI:Ok"));
+        };
+        let payload: { url?: string; name?: string };
+        try {
+            if (!encodedPayload) {
+                throw new Error("Missing replay link payload");
+            }
+            payload = JSON.parse(decodeBase64Url(encodedPayload));
+        }
+        catch {
+            showError("Invalid replay link");
+            return;
+        }
+        const url = payload.url;
+        if (!url || !/^https?:\/\//.test(url)) {
+            showError("Invalid replay link");
+            return;
+        }
+        let text: string;
+        try {
+            const response = await fetch(url, { headers: { "Accept": "text/plain" } });
+            if (!response.ok) {
+                throw new Error("HTTP " + response.status);
+            }
+            text = await response.text();
+        }
+        catch {
+            showError(this.strings.get("TS:DownloadFailed"));
+            return;
+        }
+        let replay: InstanceType<typeof Replay>;
+        try {
+            replay = new Replay();
+            replay.unserialize(text, { name: payload.name });
+        }
+        catch (error) {
+            showError(String(error instanceof Error ? error.message : error));
+            return;
+        }
+        const engineVersion = Engine.getVersion();
+        const engineModHash = Engine.getActiveMod?.() ?? '';
+        if (replay.engineVersion !== engineVersion) {
+            showError(this.strings.get("GUI:ReplayVersionMismatch", replay.engineVersion));
+            return;
+        }
+        if (engineModHash && replay.modHash !== engineModHash) {
+            showError(this.strings.get("GUI:ReplayModMismatch"));
+            return;
+        }
+        this.gui?.getRootController().goToScreen(ScreenType.Replay, { replay });
+    }
+
     private initRouting(): void {
-        let currentHandler: any = null;
         this.routing.addRoute("*", async () => {
-            if (currentHandler && currentHandler.destroy) {
+            if (this.currentRouteHandler && this.currentRouteHandler.destroy) {
                 console.log('[Application] Destroying current handler');
-                await currentHandler.destroy();
-                currentHandler = null;
+                await this.currentRouteHandler.destroy();
+                this.currentRouteHandler = null;
             }
         });
         this.routing.addRoute("/", async () => {
-            console.log('[Application] Initializing main page');
-            this.applyRootLayout(this.viewport.value);
-            const { CfTurnstile } = await import('./util/CfTurnstile.js');
-            const cfTurnstile = new CfTurnstile(this.config.turnstile);
-            if (cfTurnstile.isEnabled()) {
-                cfTurnstile.load().catch((error) => console.error('Failed to load Cloudflare Turnstile', error));
-            }
-            this.gui = new Gui(this.getVersion(), this.strings, this.config, this.viewport, this.rootEl!, this.cdnResourceLoader, this.gameResConfig, this.runtimeVars, this.generalOptions, this.fullScreen, this.currentLocale, cfTurnstile);
-            await this.gui.init();
-            currentHandler = this;
+            await this.bootstrapMainApp();
+        });
+        // #/replay/<base64url(JSON {url, name?})> — deeplink into direct replay
+        // playback of a server-recorded .rpl (e.g. from the admin console).
+        this.routing.addRoute("/replay", async (params) => {
+            await this.bootstrapMainApp();
+            await this.launchReplayLink(params[0]);
         });
         this.routing.addRoute("/vxltest", async () => {
             if (!Engine.vfs) {
@@ -893,7 +966,7 @@ export class Application {
             console.log('[Application] Initializing VxlTester');
             const { VxlTester } = await this.importOptionalDevModule('./tools/VxlTester');
             await VxlTester.main(Engine.vfs, this.runtimeVars, this.createTestToolContext());
-            currentHandler = VxlTester;
+            this.currentRouteHandler = VxlTester;
         });
         this.routing.addRoute("/lobbytest", async () => {
             if (!Engine.vfs) {
@@ -902,7 +975,7 @@ export class Application {
             console.log('[Application] Initializing LobbyFormTester');
             const { LobbyFormTester } = await this.importOptionalDevModule('./tools/LobbyFormTester');
             await LobbyFormTester.main(this.rootEl!, this.strings, this.createTestToolContext());
-            currentHandler = LobbyFormTester;
+            this.currentRouteHandler = LobbyFormTester;
         });
         this.routing.addRoute("/soundtest", async () => {
             if (!Engine.vfs) {
@@ -911,7 +984,7 @@ export class Application {
             console.log('[Application] Initializing SoundTester');
             const { SoundTester } = await this.importOptionalDevModule('./tools/SoundTester');
             await SoundTester.main(Engine.vfs, this.rootEl!, this.createTestToolContext());
-            currentHandler = SoundTester;
+            this.currentRouteHandler = SoundTester;
         });
         this.routing.addRoute("/buildtest", async () => {
             if (!Engine.vfs) {
@@ -920,7 +993,7 @@ export class Application {
             console.log('[Application] Initializing BuildingTester');
             const { BuildingTester } = await this.importOptionalDevModule('./tools/BuildingTester');
             await BuildingTester.main([], this.createTestToolContext());
-            currentHandler = BuildingTester;
+            this.currentRouteHandler = BuildingTester;
         });
         this.routing.addRoute("/inftest", async () => {
             if (!Engine.vfs) {
@@ -929,7 +1002,7 @@ export class Application {
             console.log('[Application] Initializing InfantryTester');
             const { InfantryTester } = await this.importOptionalDevModule('./tools/InfantryTester');
             await InfantryTester.main(this.runtimeVars, this.createTestToolContext());
-            currentHandler = InfantryTester;
+            this.currentRouteHandler = InfantryTester;
         });
         this.routing.addRoute("/airtest", async () => {
             if (!Engine.vfs) {
@@ -938,7 +1011,7 @@ export class Application {
             console.log('[Application] Initializing AircraftTester');
             const { AircraftTester } = await this.importOptionalDevModule('./tools/AircraftTester');
             await AircraftTester.main(this.runtimeVars, this.createTestToolContext());
-            currentHandler = AircraftTester;
+            this.currentRouteHandler = AircraftTester;
         });
         this.routing.addRoute("/vehicletest", async () => {
             if (!Engine.vfs) {
@@ -947,7 +1020,7 @@ export class Application {
             console.log('[Application] Initializing VehicleTester');
             const { VehicleTester } = await this.importOptionalDevModule('./tools/VehicleTester');
             await VehicleTester.main(this.runtimeVars, this.createTestToolContext());
-            currentHandler = VehicleTester;
+            this.currentRouteHandler = VehicleTester;
         });
         this.routing.addRoute("/shptest", async () => {
             if (!Engine.vfs) {
@@ -958,7 +1031,7 @@ export class Application {
             const gameMap = await TestToolSupport.loadMap(this.createTestToolContext().mapResourceLoader!, "mp03t4.map");
             const { ShpTester } = await this.importOptionalDevModule('./tools/ShpTester');
             await ShpTester.main(Engine.vfs, gameMap, this.rootEl!, this.strings, this.createTestToolContext());
-            currentHandler = ShpTester;
+            this.currentRouteHandler = ShpTester;
         });
         this.routing.addRoute("/worldscenetest", async () => {
             if (!Engine.vfs) {
@@ -969,7 +1042,7 @@ export class Application {
             const gameMap = await TestToolSupport.loadMap(this.createTestToolContext().mapResourceLoader!, "mp03t4.map");
             const { WorldSceneTester } = await this.importOptionalDevModule('./tools/WorldSceneTester');
             await WorldSceneTester.main(Engine.vfs, gameMap, this.rootEl!, this.strings, this.createTestToolContext());
-            currentHandler = WorldSceneTester;
+            this.currentRouteHandler = WorldSceneTester;
         });
         this.routing.addRoute("/unitmovementtest", async () => {
             if (!Engine.vfs) {
@@ -980,7 +1053,7 @@ export class Application {
             const gameMap = await TestToolSupport.loadMap(this.createTestToolContext().mapResourceLoader!, "mp03t4.map");
             const { UnitMovementTester } = await this.importOptionalDevModule('./tools/UnitMovementTester');
             await UnitMovementTester.main(Engine.vfs, gameMap, this.rootEl!, this.strings, this.createTestToolContext());
-            currentHandler = UnitMovementTester;
+            this.currentRouteHandler = UnitMovementTester;
         });
         this.routing.addRoute("/perftest", async () => {
             if (!Engine.vfs) {
@@ -989,7 +1062,7 @@ export class Application {
             console.log('[Application] Initializing PerformanceTester');
             const { PerformanceTester } = await this.importOptionalDevModule('./tools/PerformanceTester');
             await PerformanceTester.main(this.rootEl!, this.strings, this.runtimeVars, this.generalOptions, this.createTestToolContext());
-            currentHandler = PerformanceTester;
+            this.currentRouteHandler = PerformanceTester;
         });
         this.routing.addRoute("/scenesandbox", async () => {
             if (!Engine.vfs) {
@@ -1017,7 +1090,7 @@ export class Application {
             await SceneSandboxTester.main(Engine.vfs, loadedMap, this.rootEl!, this.strings, this.createTestToolContext(), {
                 mapName: loadedMapName,
             });
-            currentHandler = SceneSandboxTester;
+            this.currentRouteHandler = SceneSandboxTester;
         });
         this.routing.addRoute("/liveinteraction", async () => {
             if (!Engine.vfs) {
@@ -1031,7 +1104,7 @@ export class Application {
                 generalOptions: this.generalOptions,
                 runtimeVars: this.runtimeVars,
             });
-            currentHandler = LiveInteractionTester;
+            this.currentRouteHandler = LiveInteractionTester;
         });
         this.routing.init();
     }
@@ -1239,6 +1312,15 @@ export class Application {
             await errorBox.show(errorMessage, false);
         }
     }
+}
+
+// URL-safe base64 (the replay deeplink payload uses - _ and no padding so it
+// survives hash/query handling).
+function decodeBase64Url(encoded: string): string {
+    const base64 = encoded.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
+    const binary = atob(padded);
+    return decodeURIComponent(Array.from(binary, (char) => "%" + char.charCodeAt(0).toString(16).padStart(2, "0")).join(""));
 }
 declare global {
     interface Window {

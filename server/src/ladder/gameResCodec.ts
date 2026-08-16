@@ -47,6 +47,7 @@ export interface DecodedGameRes {
     duration: number;
     version: string;
     accountName: string;
+    mapName: string;
     players: GameResPlayerInfo[];
 }
 
@@ -116,6 +117,7 @@ export function decodeGameRes(data: Uint8Array): DecodedGameRes {
         duration: toInt("DURA"),
         version: toString("VERS"),
         accountName: toString("SNAM"),
+        mapName: toString("SCEN"),
         players,
     };
 }

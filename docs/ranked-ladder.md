@@ -277,6 +277,32 @@ This keeps both sides of a ranked game on identical game logic.
 | `MIN_REPORT_DURATION_SECONDS` | `120` | minimum reportable game length |
 | `GSERV_REPORT_WINDOW_SECONDS` | `600` | how long ended instances keep their metadata for validation |
 
+## Match archive & replays
+
+`ladder_matches` doubles as the match archive for **every** finished game:
+
+- **Public/custom games** are archived when the gserv instance finalizes
+  (`scored = 0`, `ladder_type = ""`), with the recorded replay file name.
+- **Ranked games** upgrade the same row in place when the game-res report
+  arrives (`scored = 1`, ladder type + payload) — the gameId stays the dedupe.
+- On boot, `backfillReplayPaths` links existing `.rpl` files in
+  `REPLAYS_DIR` to their rows, so pre-upgrade history stays browsable.
+
+Replay files are written by the server when `RECORD_REPLAYS=true` (default
+off) as `REPLAYS_DIR/game-<gameId> <ISO timestamp>.rpl` and are importable in
+the client's Replays screen. Admin API:
+`GET /admin/replays` (list + file sizes) and
+`GET /admin/replays/{gameId}` (download the `.rpl`).
+
+**Direct playback deeplink**: the client route `#/replay/<base64url>` (payload
+`JSON {url, name?}`) fetches a server `.rpl` from the public
+`GET /replays/{gameId}` endpoint and jumps straight into the replay player —
+no manual download/import. The admin console's Replays tab offers a "Watch"
+button that opens this link (game URL + replay API URL are configurable
+there). The client gates the replay on the engine version and only enforces
+the mod hash when the client itself runs a mod (server replays record `"0"`
+as the unmodded sentinel).
+
 ## Season rotation (ops)
 
 Seasons live in `ladder_seasons` (`id, name, sku, start_time, end_time,

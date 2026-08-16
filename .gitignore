@@ -130,9 +130,13 @@ dist
 # Vite build output
 dist
 
+# Runtime data (sqlite db, logs, replays) when running from the repo root
+data/
+
 # Temporary test files
 __test_strip.mjs
 __stripped_output.js
 _temp_builtIn/
 
-#शंकर 
+# Admin console build output
+dist-admin/
