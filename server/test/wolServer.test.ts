@@ -58,7 +58,7 @@ describe("WolServer login", () => {
         const token = sessions.create("carol");
         const socket = new FakeSocket();
         const user = server.handleOpen(socket);
-        server.handleMessage(user, `cvers 0.83.3 16640\r\n`);
+        server.handleMessage(user, `cvers 0.83.4 16640\r\n`);
         server.handleMessage(user, `session ${token}\r\n`);
         expect(user.authenticated).toBe(true);
         expect(user.nick).toBe("carol");
@@ -141,7 +141,7 @@ describe("WolServer games", () => {
         expect(hasLine(alice.socket, line => line.includes("353 alice = #alice's_game :@alice,0,0,0 bob,0,0,0"))).toBe(true);
 
         alice.socket.sent.length = 0;
-        server.handleMessage(alice.user, `topic ${GAME_NAME} :g19N39,0,0,0,0,mpdefault,,,,0.83.2`);
+        server.handleMessage(alice.user, `topic ${GAME_NAME} :g19N39,0,0,0,0,mpdefault,,,,0.83.4`);
         server.handleMessage(alice.user, `list 45 45`);
         expect(hasLine(alice.socket, line => line.startsWith(":wol-ra2web 321 alice"))).toBe(true);
         expect(hasLine(alice.socket, line => line.includes("322 alice #alice's_game 2 0 0 0 0 0 45::g19N39"))).toBe(true);

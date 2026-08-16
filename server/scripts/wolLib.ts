@@ -90,7 +90,7 @@ export async function registerOrLogin(baseUrl: string, username: string, passwor
 }
 
 export async function loginWs(client: WolTestClient, token: string): Promise<void> {
-    client.send(`cvers 0.83.2 16640`);
+    client.send(`cvers 0.83.4 16640`);
     await client.waitFor(line => line.includes(" 700 "), "cvers 700");
     client.send(`session ${token}`);
     await client.waitFor(line => line.includes(" 376 "), "MOTD end 376");

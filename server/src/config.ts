@@ -89,7 +89,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
         host: env.SERVER_HOST ?? "0.0.0.0",
         port,
         externalUrl,
-        gameVersion: env.GAME_VERSION ?? "0.83.2",
+        gameVersion: env.GAME_VERSION ?? "0.83.4",
         globalChannelPass: env.GLOBAL_CHANNEL_PASS ?? "zotclot9",
         matchBotName: env.MATCH_BOT_NAME ?? "matchbot",
         motd: (env.SERVER_MOTD ?? "Welcome to RA2Web\ngood luck and have fun").replace(/\\n/g, "\n").split("\n"),

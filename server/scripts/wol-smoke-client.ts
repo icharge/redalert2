@@ -119,7 +119,7 @@ async function main(): Promise<void> {
     const client = makeClient();
     await client.open;
 
-    client.send(`cvers 0.83.2 16640`);
+    client.send(`cvers 0.83.4 16640`);
     const cversReply = await client.waitFor(line => line.includes(" 700 "), "cvers 700");
     check("cvers accepted (700)", / 700 /.test(cversReply), cversReply);
 
@@ -153,7 +153,7 @@ async function main(): Promise<void> {
     check("created game channel", true);
 
     const descB64 = Buffer.from("smoke game", "utf16le").toString("base64");
-    const topic = `g19N39,0,0,0,0,mpdefault,${descB64},,0.83.2`;
+    const topic = `g19N39,0,0,0,0,mpdefault,${descB64},,0.83.4`;
     client.send(`topic ${gameName} :${topic}`);
 
     client.send(`list 45 45`);

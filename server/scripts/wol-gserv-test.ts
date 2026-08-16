@@ -85,7 +85,7 @@ async function main(): Promise<void> {
     const aiPart = new Array(8).fill("0,-1,-1,-1,-1").join(",");
     const fullOpts = `0,0,2,10000,100,0,0,1,1,0,1,0,${mapTitle},2,1,1000,mpdefault,abc123,1,0,0,1,0:${username},0,0,0,0,0,0,0:@:${aiPart},`;
     wol.send(`gameopt ${gameName} :${fullOpts}`);
-    wol.send(`topic ${gameName} :g19N39,0,0,0,0,mpdefault,,,,0.83.2`);
+    wol.send(`topic ${gameName} :g19N39,0,0,0,0,mpdefault,,,,0.83.4`);
 
     wol.send(`startg ${gameName} ${username}`);
     const startg = await wol.waitFor(line => line.includes(" STARTG "), "STARTG");
@@ -99,7 +99,7 @@ async function main(): Promise<void> {
     const gserv = makeBinaryClient(gservUrl);
     await gserv.open;
 
-    gserv.send(`cvers 0.83.2 3`);
+    gserv.send(`cvers 0.83.4 3`);
     const cvers = await gserv.waitFor(line => line.includes(" 10 "), "gserv cvers 10");
     check("gserv cvers accepted (10)", / 10 /.test(cvers), cvers);
 
@@ -107,7 +107,7 @@ async function main(): Promise<void> {
     const loggedIn = await gserv.waitFor(line => line.includes(" 100 "), "gserv ticket 100");
     check("gserv ticket logged in (100)", / 100 /.test(loggedIn), loggedIn);
 
-    gserv.send(`join ${gameId} 0.83.2 `);
+    gserv.send(`join ${gameId} 0.83.4 `);
     const connected = await gserv.waitFor(line => line.includes(" 400 "), "gserv join 400");
     check("gserv join instance connected (400)", / 400 /.test(connected), connected);
 

@@ -2,12 +2,24 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import basicSsl from '@vitejs/plugin-basic-ssl';
 import fs from 'fs';
+import { execSync } from 'child_process';
 const devPort = 4000;
+function getGitShortHash(): string {
+    try {
+        return execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
+    }
+    catch {
+        return 'dev';
+    }
+}
 const manualHttpsConfig = fs.existsSync('./certs/server.key') && fs.existsSync('./certs/server.crt')
     ? { key: fs.readFileSync('./certs/server.key'), cert: fs.readFileSync('./certs/server.crt') }
     : undefined;
 export default defineConfig(({ mode }) => ({
     plugins: [react(), ...(manualHttpsConfig ? [] : [basicSsl()])],
+    define: {
+        __GIT_HASH__: JSON.stringify(getGitShortHash()),
+    },
     build: {
         chunkSizeWarningLimit: 4096,
         minify: mode === 'single' ? 'oxc' : false,
