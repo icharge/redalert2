@@ -22,6 +22,8 @@ import { commandButtonConfigs } from "@/gui/screen/game/component/hud/commandBar
 import { isNotNullOrUndefined } from "@/util/typeGuard";
 import { DebugText } from "@/gui/screen/game/component/hud/DebugText";
 import { ReplayStatsOverlay } from "@/gui/screen/game/component/hud/ReplayStatsOverlay";
+import { UiText } from "@/gui/component/UiText";
+import { version as appVersion } from "@/version";
 declare const THREE: any;
 interface Viewport {
     x: number;
@@ -429,7 +431,16 @@ export class Hud extends UiObject {
             image: rendcapImg,
             palette: sidebarPalette,
             x: sidebarBounds.x - rendcapImg.width,
-        }))), jsx.jsx(Messages, {
+        })), jsx.jsx(UiText, {
+            value: appVersion,
+            textColor,
+            textAlign: "right",
+            width: 160,
+            height: this.actionBarHeight,
+            x: sidebarBounds.x - rendcapImg.width - 164,
+            y: 0,
+            zIndex: 1,
+        })), jsx.jsx(Messages, {
             messages: this.messageList,
             chatHistory: this.chatHistory,
             width: sidebarBounds.x - 10,

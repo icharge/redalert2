@@ -37,7 +37,7 @@ export class UiText extends UiComponent<UiTextProps> {
         canvas.height = height;
         this.ctx = canvas.getContext("2d", { alpha: true });
         this.texture = this.createTexture(canvas);
-        this.updateTexture(this.value, this.textAlign, this.props.textColor);
+        this.updateTexture(this.props.value, this.textAlign, this.props.textColor);
         this.mesh = this.createMesh(width, height);
         return obj;
     }
