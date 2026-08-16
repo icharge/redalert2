@@ -144,7 +144,7 @@ describe("WolServer games", () => {
         server.handleMessage(alice.user, `topic ${GAME_NAME} :g19N39,0,0,0,0,mpdefault,,,,0.83.4`);
         server.handleMessage(alice.user, `list 45 45`);
         expect(hasLine(alice.socket, line => line.startsWith(":wol-ra2web 321 alice"))).toBe(true);
-        expect(hasLine(alice.socket, line => line.includes("322 alice #alice's_game 2 0 45 0 0 0 0 0::g19N39"))).toBe(true);
+        expect(hasLine(alice.socket, line => line.includes("322 alice #alice's_game 2 0 45 0 0 0 0::g19N39"))).toBe(true);
         expect(hasLine(alice.socket, line => line.startsWith(":wol-ra2web 323 alice"))).toBe(true);
 
         alice.socket.sent.length = 0;
@@ -179,7 +179,7 @@ describe("WolServer games", () => {
 
         alice.socket.sent.length = 0;
         server.handleMessage(alice.user, `list 45 45`);
-        expect(hasLine(alice.socket, line => line.includes("322 alice #alice's_game 1 0 45 0 0 0 0 384::g19N39"))).toBe(true);
+        expect(hasLine(alice.socket, line => line.includes("322 alice #alice's_game 1 0 45 0 0 0 384::g19N39"))).toBe(true);
 
         bob.socket.sent.length = 0;
         server.handleMessage(bob.user, `joingame ${GAME_NAME} 0 secret`);

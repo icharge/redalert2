@@ -356,6 +356,12 @@ export class WolServer {
             const human = game.members.size;
             const topic = game.topic ?? "";
             const mode = game.password !== undefined ? 384 : 0;
+            // Wire format must match the client's listGames parsing
+            // (WolConnection.list): params[4]=channelType, [5]=tournament,
+            // [6]=resLocked, [7]=hostPing, [8]=mode::topic, [9]=hostMuted.
+            // mode::topic has to be a plain field (topics are comma-joined
+            // base64, so they never contain spaces); hostMuted rides the
+            // trailing slot.
             this.sendNumeric(user, Code.RPL_LIST, user.nick, [
                 game.key,
                 String(human),
@@ -363,10 +369,9 @@ export class WolServer {
                 String(game.channelType),
                 game.tournament ? "1" : "0",
                 "0",
-                String(user.ping),
-                "0",
+                String(game.pings.get(game.hostName) ?? 0),
                 `${mode}::${topic}`,
-            ]);
+            ], "0");
         }
         this.sendNumeric(user, Code.RPL_LISTEND, user.nick, [arg], "End of /LIST");
     }
