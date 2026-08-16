@@ -29,6 +29,17 @@ import { browserFileSystemAccess } from './engine/gameRes/browserFileSystemAcces
 import type { TestToolRuntimeContext } from './tools/TestToolSupport';
 import { attachPerformanceOptions, installPerformanceDebugApi } from './performance/PerformanceRuntime';
 
+function isEditableElementFocused(): boolean {
+    const element = document.activeElement;
+    if (!element) {
+        return false;
+    }
+    if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+        return true;
+    }
+    return element instanceof HTMLElement && element.isContentEditable;
+}
+
 const optionalDevModuleImporters: Record<string, () => Promise<any>> = {
     './tools/VxlTester': () => import('./tools/VxlTester'),
     './tools/LobbyFormTester': () => import('./tools/LobbyFormTester'),
@@ -131,7 +142,12 @@ export class Application {
         height: number;
     } | null;
     private hasLoadedGeneralOptionsFromStorage: boolean = false;
-    private readonly handleViewportEnvironmentChange = () => this.updateViewportSize();
+    private readonly handleViewportEnvironmentChange = () => {
+        if (isEditableElementFocused()) {
+            return;
+        }
+        this.updateViewportSize();
+    };
     private readonly handlePreferredResolutionChange = (resolution?: {
         width: number;
         height: number;
@@ -466,6 +482,17 @@ export class Application {
     }
     private updateViewportSize(isFullScreen: boolean = this.fullScreen.isFullScreen() || this.isNativeFullScreen()): void {
         const nextViewport = this.computeViewportLayout(isFullScreen);
+        const current = this.viewport.value;
+        const layoutChanged = nextViewport.width !== current.width ||
+            nextViewport.height !== current.height ||
+            nextViewport.scale !== current.scale ||
+            nextViewport.displayWidth !== current.displayWidth ||
+            nextViewport.displayHeight !== current.displayHeight ||
+            nextViewport.isMobileLayout !== current.isMobileLayout ||
+            nextViewport.isPortrait !== current.isPortrait;
+        if (!layoutChanged) {
+            return;
+        }
         this.viewport.value = nextViewport;
         this.applyRootLayout(nextViewport);
         console.log('[Application] updateViewportSize', {

@@ -132,9 +132,19 @@ export class Gui {
             if (this.jsxRenderer) {
                 this.jsxRenderer.setCamera(newCamera);
             }
-            this.rootController?.rerenderCurrentScreen();
+            this.scheduleRerenderCurrentScreen();
             this.canvasMetrics?.notifyViewportChange();
         }
+    }
+    private viewportRerenderTimer?: ReturnType<typeof setTimeout>;
+    private scheduleRerenderCurrentScreen(): void {
+        if (this.viewportRerenderTimer !== undefined) {
+            clearTimeout(this.viewportRerenderTimer);
+        }
+        this.viewportRerenderTimer = setTimeout(() => {
+            this.viewportRerenderTimer = undefined;
+            this.rootController?.rerenderCurrentScreen();
+        }, 100);
     }
     private initUiScene(): void {
         console.log('[Gui] Initializing UI scene');

@@ -13,6 +13,7 @@ This folder contains architectural and technical documentation for the RA2WEB Re
 - [`online-play.md`](online-play.md) — LAN / online multiplayer room flow, lockstep sync, and map transfer.
 - [`wol-irc-and-modernization.md`](wol-irc-and-modernization.md) — WOL/IRC client stack, the server, and options for modernizing online play.
 - [`csf-tool.md`](csf-tool.md) — The CSF CLI (`tools/csf.ts`): commands, the `.csf` binary format, and locale file workflows.
+- [`viewport-resize-system.md`](viewport-resize-system.md) — Viewport/resize pipeline: why menu screens rerender on resize, and the desktop-flicker / mobile-keyboard fixes.
 - [`../server/README.md`](../server/README.md) — The WOL lobby/channel + gserv match server.
 
 ## Quick Facts
@@ -37,6 +38,7 @@ The docs are written against the current source tree. If you move, rename, or si
 - WOL/IRC login, lobby, or modernization changes → `wol-irc-and-modernization.md`
 - `server/*` → `server/README.md`, `networking.md`, and `wol-irc-and-modernization.md`
 - `src/game/*`, `src/gui/*`, `src/data/*` → `architecture.md` and `engine.md`
+- Viewport / resize / fullscreen / mobile-layout changes → `viewport-resize-system.md`
 - Build / entry flow changes → `overview.md`
 - `tools/*` or `.csf` file / locale workflows → `csf-tool.md`
 

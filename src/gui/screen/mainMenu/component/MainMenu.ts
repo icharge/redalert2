@@ -50,6 +50,7 @@ export class MainMenu extends UiObject {
     private sidebarMpSlotEnabled: boolean = false;
     private sidebarCollapsed: boolean = true;
     private sidebarNeedsRefresh?: boolean;
+    private sidebarBottomClipHeight: number = 0;
     private sidebarMpSlotContent?: SidebarMpContent;
     private contentComponent?: UiObject;
     private sidebarPreviewInner?: UiObject;
@@ -82,12 +83,18 @@ export class MainMenu extends UiObject {
         const sidebarImage = this.getImage("sdtp.shp");
         const sidebarViewport = this.computeSidebarViewport(sidebarImage);
         this.sidebarContainer.setPosition(sidebarViewport.x, sidebarViewport.y);
-        this.sidebarContainer.remove(...this.sidebarObjects);
-        this.sidebarObjects.forEach((obj) => obj.destroy());
-        this.createSidebarButtons(this.computeSidebarButtonsViewport(sidebarImage));
-        this.updateButtons(this.sidebarButtonsRawConfigs ?? []);
-        if (!this.sidebarCollapsed) {
-            this.showButtons();
+        const buttonsViewport = this.computeSidebarButtonsViewport(sidebarImage);
+        const buttonBgImage = this.getImage("sdbtnbkgd.shp");
+        const slotCount = Math.floor(buttonsViewport.height / buttonBgImage.height);
+        const remainingHeight = buttonsViewport.height - buttonBgImage.height * slotCount;
+        if (slotCount !== this.sidebarSlots.length || remainingHeight !== this.sidebarBottomClipHeight) {
+            this.sidebarContainer.remove(...this.sidebarObjects);
+            this.sidebarObjects.forEach((obj) => obj.destroy());
+            this.createSidebarButtons(buttonsViewport);
+            this.updateButtons(this.sidebarButtonsRawConfigs ?? []);
+            if (!this.sidebarCollapsed) {
+                this.showButtons();
+            }
         }
     }
     setContentComponent(component?: UiObject): void {
@@ -316,6 +323,7 @@ export class MainMenu extends UiObject {
         let bottomImage = this.getImage("sdbtm.shp");
         const remainingHeight = viewport.height - buttonBgImage.height * slotCount;
         const clippedBottomImage = bottomImage.clip(bottomImage.width, remainingHeight);
+        this.sidebarBottomClipHeight = remainingHeight;
         this.sidebarSlots = [];
         this.sidebarButtons = [];
         this.sidebarObjects = this.jsxRenderer.render(jsx("fragment", null, new Array(slotCount).fill(0).map((_, slotIndex) => {
