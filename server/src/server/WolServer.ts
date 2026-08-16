@@ -305,6 +305,16 @@ export class WolServer {
             this.sendNumeric(user, Code.ERR_CHANNELISFULL, user.nick, [key], "Cannot join channel (+l) - channel is full");
             return;
         }
+        if (channel.has(user.nick)) {
+            // Already a member (the quick-match client joins its channel once
+            // on screen enter and again when the queue starts). Answer with a
+            // JOIN line so the client's pending join command resolves instead
+            // of timing out; nothing is broadcast.
+            const member = channel.members.get(user.nick);
+            const flags = `${0},${user.ping},${member?.operator ? 1 : 0},${user.fresh ? 1 : 0}`;
+            user.send(userLine(userPrefix(user.nick, user.hostmask), "JOIN", `:${flags} ${channel.key}`));
+            return;
+        }
         this.addMember(channel, user, false);
     }
 

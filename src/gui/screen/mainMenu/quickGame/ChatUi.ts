@@ -13,6 +13,7 @@ export class ChatUi {
     private updateView: () => void;
     private wolConfig: any;
     private wolCon: any;
+    private wolService: any;
     private wladderService: any;
     private strings: any;
     private sound: any;
@@ -22,11 +23,12 @@ export class ChatUi {
     private playerProfiles: Map<string, any>;
     private channelName?: string;
     private ranksUpdateTask?: Task<void>;
-    constructor(messages: any[], updateView: () => void, wolConfig: any, wolCon: any, _wolService: any, wladderService: any, strings: any, sound: any) {
+    constructor(messages: any[], updateView: () => void, wolConfig: any, wolCon: any, wolService: any, wladderService: any, strings: any, sound: any) {
         this.messages = messages;
         this.updateView = updateView;
         this.wolConfig = wolConfig;
         this.wolCon = wolCon;
+        this.wolService = wolService;
         this.wladderService = wladderService;
         this.strings = strings;
         this.sound = sound;
@@ -116,28 +118,40 @@ export class ChatUi {
             });
         }
     }
-    join(channelName: string): void {
-        this.channelName = channelName;
+    // Upstream parity: the quick-match chat lives in the generic lobby channel
+    // (#Lob <clientChannelType> 0), NOT the queue channel; joinQueue joins the
+    // queue channel separately, so the two never collide.
+    async loadChannel(cancellationToken: CancellationToken): Promise<void> {
+        this.channelName = undefined;
+        this.users = [];
         this.wolCon.onJoinChannel.subscribe(this.onChannelJoinLeave);
         this.wolCon.onLeaveChannel.subscribe(this.onChannelJoinLeave);
         this.wolCon.onChannelUsers.subscribe(this.onChannelUsers);
         this.wolCon.onChatMessage.subscribe(this.onChannelMessage);
-    }
-    leave(): void {
-        this.channelName = undefined;
-        this.users.length = 0;
-        this.messages.length = 0;
-        this.playerProfiles.clear();
-        this.ranksUpdateTask?.cancel();
-        this.ranksUpdateTask = undefined;
-        this.wolCon.onJoinChannel.unsubscribe(this.onChannelJoinLeave);
-        this.wolCon.onLeaveChannel.unsubscribe(this.onChannelJoinLeave);
-        this.wolCon.onChannelUsers.unsubscribe(this.onChannelUsers);
-        this.wolCon.onChatMessage.unsubscribe(this.onChannelMessage);
+        const channelName = `#Lob ${this.wolConfig.getClientChannelType()} 0`;
+        await this.wolCon.joinChannel(channelName, this.wolConfig.getGlobalChannelPass());
+        if (cancellationToken.isCancelled()) {
+            if (this.wolCon.isOpen()) {
+                this.wolCon.leaveChannel(channelName);
+            }
+        }
+        else {
+            this.channelName = channelName;
+            this.playerProfiles.clear();
+            this.updateView();
+        }
     }
     dispose(): void {
         this.disposables.dispose();
         this.ranksUpdateTask?.cancel();
+        this.ranksUpdateTask = undefined;
+        if (this.wolCon.isOpen() && this.channelName) {
+            this.wolCon.leaveChannel(this.channelName);
+        }
+        this.wolCon.onJoinChannel.unsubscribe(this.onChannelJoinLeave);
+        this.wolCon.onLeaveChannel.unsubscribe(this.onChannelJoinLeave);
+        this.wolCon.onChannelUsers.unsubscribe(this.onChannelUsers);
+        this.wolCon.onChatMessage.unsubscribe(this.onChannelMessage);
     }
     getChatProps(): any {
         return {

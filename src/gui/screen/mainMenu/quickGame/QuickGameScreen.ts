@@ -1,5 +1,5 @@
 import { Task } from "@puzzl/core/lib/async/Task";
-import { CancellationToken, OperationCanceledError } from "@puzzl/core/lib/async/cancellation";
+import { CancellationToken, CancellationTokenSource, OperationCanceledError } from "@puzzl/core/lib/async/cancellation";
 import { jsx } from "@/gui/jsx/jsx";
 import { HtmlView } from "@/gui/jsx/HtmlView";
 import { MusicType } from "@/engine/sound/Music";
@@ -14,7 +14,6 @@ import { QuickGameForm } from "@/gui/screen/mainMenu/quickGame/component/QuickGa
 import { LocalPrefs, StorageKey } from "@/LocalPrefs";
 import { WLadderService } from "@/network/ladder/WLadderService";
 import { LadderQueueType, getLadderTypeForQueueType, teamSizes } from "@/network/ladder/wladderConfig";
-import { PlayerRankType } from "@/network/ladder/PlayerRankType";
 import { WolError } from "@/network/WolError";
 import { REQ_MATCH, REQ_STATS, REQ_LIST_QUEUES, RPL_WORKING, RPL_STATS, RPL_QUEUE_LIST, RPL_BAD_VERS, RPL_BAD_HASH, RPL_MODE_UNAVAIL, RPL_RATE_LIMITED, RPL_MATCHED, RPL_REQUEUE, RPL_REMOVED_FROM_QUEUE, TAG_COUNTRY, TAG_COLOR, TAG_RANKED, TAG_VERSION, TAG_MODHASH } from "@/network/qmCodes";
 import * as PartyCode from "@/network/partyCodes";
@@ -536,7 +535,26 @@ export class QuickGameScreen extends MainMenuScreen {
             this.updateStatsIntervalId = window.setInterval(() => {
                 this.wolCon.privmsg([this.wolConfig.getQuickMatchBotName()], REQ_LIST_QUEUES);
             }, 30000);
-            await this.joinQuickMatchChannel();
+            const channelJoinCancellation = new CancellationTokenSource();
+            this.disposables.add(() => channelJoinCancellation.cancel());
+            try {
+                await this.chatUi.loadChannel(channelJoinCancellation.token);
+            }
+            catch (error) {
+                let message = this.strings.get("WOL:MatchBadParameters");
+                if (error instanceof WolError) {
+                    const errorKey = new Map<number, string>()
+                        .set(WolError.Code.NoSuchChannel, "WOL:ChannelJoinFailure")
+                        .set(WolError.Code.BadChannelPass, "TXT_BADPASS")
+                        .set(WolError.Code.ChannelFull, "TXT_CHANNEL_FULL")
+                        .set(WolError.Code.BannedFromChannel, "TXT_JOINBAN")
+                        .get(error.code);
+                    if (errorKey) {
+                        message = this.strings.get(errorKey);
+                    }
+                }
+                messages.push({ text: message });
+            }
         }
         else {
             this.controller.goToScreen(ScreenType.Login as any, {
@@ -584,30 +602,10 @@ export class QuickGameScreen extends MainMenuScreen {
         }
         const ladderType = getLadderTypeForQueueType(queueType);
         const [profile] = await this.wladderService.listSearch([username], cancellationToken, ladderType, WLadderService.CURRENT_SEASON, this.clientLocale);
-        // Never render a rank on your name that is not yours: only accept the
-        // profile when it belongs to the current user and the rank fields are
-        // well-formed (upstream renders whatever listSearch returns, unchecked).
-        if (this.isOwnPlayerProfile(profile, username) && !cancellationToken.isCancelled()) {
+        if (profile && !cancellationToken.isCancelled()) {
             this.playerProfile = profile;
             this.form?.applyOptions((options: any) => (options.playerProfile = this.playerProfile));
         }
-    }
-    private isOwnPlayerProfile(profile: any, username: string): boolean {
-        if (!profile || typeof profile !== "object") {
-            return false;
-        }
-        if (typeof profile.name !== "string" || profile.name.toLowerCase() !== username.toLowerCase()) {
-            return false;
-        }
-        if (profile.rank === undefined) {
-            // Placement box: only placementMatchesLeft is shown.
-            return Number.isInteger(profile.placementMatchesLeft) && profile.placementMatchesLeft >= 0;
-        }
-        return Number.isInteger(profile.rank) &&
-            profile.rank > 0 &&
-            Number.isInteger(profile.rankType) &&
-            profile.rankType >= PlayerRankType.Private &&
-            profile.rankType <= PlayerRankType.CommanderInChief;
     }
     private refreshSidebarButtons(): void {
         const buttons: any[] = [
@@ -809,29 +807,6 @@ export class QuickGameScreen extends MainMenuScreen {
         }
         return colorId;
     }
-    private async joinQuickMatchChannel(): Promise<void> {
-        const channelName = `#Lob ${this.wolConfig.getQuickMatchChannelId(this.queueOpts.type)} 0`;
-        try {
-            await this.wolCon.joinChannel(channelName, this.wolConfig.getGlobalChannelPass());
-            this.chatUi?.join(channelName);
-            this.quickMatchChannelName = channelName;
-        }
-        catch (error) {
-            let message = this.strings.get("WOL:MatchBadParameters");
-            if (error instanceof WolError) {
-                const errorKey = new Map<number, string>()
-                    .set(WolError.Code.NoSuchChannel, "WOL:ChannelJoinFailure")
-                    .set(WolError.Code.BadChannelPass, "TXT_BADPASS")
-                    .set(WolError.Code.ChannelFull, "TXT_CHANNEL_FULL")
-                    .set(WolError.Code.BannedFromChannel, "TXT_JOINBAN")
-                    .get(error.code);
-                if (errorKey) {
-                    message = this.strings.get(errorKey);
-                }
-            }
-            this.chatUi?.addSystemMessage(message);
-        }
-    }
     private async joinQueue(): Promise<void> {
         const currentState = this.queueState;
         if (currentState !== QueueState.None) {
@@ -979,7 +954,8 @@ export class QuickGameScreen extends MainMenuScreen {
             this.refreshProfileTask.cancel();
             this.refreshProfileTask = undefined;
         }
-        this.chatUi?.leave();
+        // Disposing the screen also disposes the ChatUi, which leaves its
+        // channel and unsubscribes its handlers (upstream parity).
         this.disposables.dispose();
         if (this.wolCon.isOpen() && this.quickMatchChannelName) {
             this.wolCon.leaveChannel(this.quickMatchChannelName);

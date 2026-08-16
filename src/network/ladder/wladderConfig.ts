@@ -23,3 +23,13 @@ export function getLadderTypeForQueueType(queueType: LadderQueueType): LadderTyp
             throw new Error(`Unhandled queue type "${queueType}"`);
     }
 }
+export function getQueueTypeForLadderType(ladderType: LadderType): LadderQueueType {
+    switch (ladderType) {
+        case LadderType.Solo1v1:
+            return LadderQueueType.Solo1v1;
+        case LadderType.Random2v2:
+            return LadderQueueType.Team2v2;
+        default:
+            throw new Error(`Unhandled ladder type "${ladderType}"`);
+    }
+}

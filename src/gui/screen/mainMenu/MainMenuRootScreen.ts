@@ -464,7 +464,9 @@ export class MainMenuRootScreen extends RootScreen {
             screen = new screenClass(this.rootController, this.strings, this.jsxRenderer, rules, mapFileLoader, mapList, gameModes, this.localPrefs, this.messageBoxApi, mapDir);
         }
         else if (screenType === MainMenuScreenType.Home) {
-            screen = new screenClass(this.strings, this.messageBoxApi, this.appVersion, false, false, this.fullScreen);
+            // quickMatchEnabled comes from the [General] section of
+            // config.ini (default off); storage is always disabled today.
+            screen = new screenClass(this.strings, this.messageBoxApi, this.appVersion, false, this.config.quickMatchEnabled, this.fullScreen);
         }
         else {
             screen = new screenClass(this.strings, this.messageBoxApi, this.appVersion, false, false);
