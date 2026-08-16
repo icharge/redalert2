@@ -48,6 +48,8 @@ export class WorldInteraction {
         this.pointerEvents.addEventListener('canvas', 'wheel', this.handleWheel);
         this.document.addEventListener('keydown', this.handleKeyDown);
         this.document.addEventListener('keyup', this.handleKeyUp);
+        this.document.addEventListener('visibilitychange', this.handleWindowBlur);
+        this.document.defaultView?.addEventListener('blur', this.handleWindowBlur);
         this.mapHoverHandler.onHoverChange.subscribe(this.handleMapHoverChange);
         this.renderer.onFrame.subscribe(this.handleFrame);
         this.unitSelectionHandler.onUserSelectionChange.subscribe(this.handleSelectionChange);
@@ -65,6 +67,8 @@ export class WorldInteraction {
         this.pointerEvents.removeEventListener('canvas', 'wheel', this.handleWheel);
         this.document.removeEventListener('keydown', this.handleKeyDown);
         this.document.removeEventListener('keyup', this.handleKeyUp);
+        this.document.removeEventListener('visibilitychange', this.handleWindowBlur);
+        this.document.defaultView?.removeEventListener('blur', this.handleWindowBlur);
         this.mapHoverHandler.onHoverChange.unsubscribe(this.handleMapHoverChange);
         this.renderer.onFrame.unsubscribe(this.handleFrame);
         this.unitSelectionHandler.onUserSelectionChange.unsubscribe(this.handleSelectionChange);
@@ -198,16 +202,54 @@ export class WorldInteraction {
     };
     private handleKeyModifierChange(event: KeyboardEvent): void {
         const previous = this.lastKeyMods;
-        this.lastKeyMods = event;
-        this.lastKeyboardEvent = event;
+        const normalized = this.normalizeModifierEvent(event);
+        this.lastKeyMods = normalized;
+        this.lastKeyboardEvent = normalized;
         if (this.currentMode ||
             (this.maybePan && this.hasDragged) ||
             this.mapScrollHandler.isScrolling() ||
-            event.repeat ||
-            (event.shiftKey === previous?.shiftKey && event.ctrlKey === previous?.ctrlKey && event.altKey === previous?.altKey)) {
+            event.repeat) {
             return;
         }
-        this.updateDefaultAction(this.getCurrentHover(), this.unitSelectionHandler.getSelectedUnits(), event);
+        const previousAltHeld = previous ? this.isAltHeld(previous) : false;
+        if (this.isAltHeld(normalized) === previousAltHeld &&
+            normalized.shiftKey === previous?.shiftKey &&
+            normalized.ctrlKey === previous?.ctrlKey) {
+            return;
+        }
+        this.updateDefaultAction(this.getCurrentHover(), this.unitSelectionHandler.getSelectedUnits(), normalized);
+    }
+    private readonly handleWindowBlur = (): void => {
+        if (!this.initialized || !this.enabled) {
+            return;
+        }
+        const previous = this.lastKeyMods;
+        this.lastKeyMods = undefined;
+        this.lastKeyboardEvent = undefined;
+        if (previous && (this.isAltHeld(previous) || previous.ctrlKey || previous.shiftKey)) {
+            this.updateDefaultAction(this.getCurrentHover(), this.unitSelectionHandler.getSelectedUnits(), undefined);
+        }
+    };
+    private isAltHeld(event: KeyboardEvent): boolean {
+        if (event.key === 'Alt') {
+            return event.type === 'keydown';
+        }
+        return event.altKey;
+    }
+    private normalizeModifierEvent(event: KeyboardEvent): KeyboardEvent {
+        if (event.key !== 'Alt' || event.type !== 'keydown' || event.altKey) {
+            return event;
+        }
+        const normalized = new KeyboardEvent(event.type, {
+            key: event.key,
+            keyCode: event.keyCode,
+            ctrlKey: event.ctrlKey,
+            altKey: true,
+            shiftKey: event.shiftKey,
+            metaKey: event.metaKey,
+        });
+        Object.defineProperty(normalized, 'which', { value: event.which });
+        return normalized;
     }
     private readonly handleMapHoverChange = (hover: any): void => {
         this.currentMode?.hover?.(hover, this.isMinimapHover);

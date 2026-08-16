@@ -19,6 +19,7 @@ type ControlEnvelope =
         type: 'room-sync';
         roomId: string;
         members: LanPeerIdentity[];
+        directPeerIds: string[];
     }
     | {
         type: 'member-join';
@@ -95,6 +96,7 @@ export interface LanMeshSnapshot {
     roomReady: boolean;
     directPeerCount: number;
     members: LanMemberSnapshot[];
+    fullMeshConnected: boolean;
     activeQrPayloadText: string;
     activeQrPayloadKind?: 'invite' | 'join-response';
     activeQrPayloadTitle?: string;
@@ -136,12 +138,19 @@ function generateShortCode(): string {
     return generateId().replace(/-/g, '').slice(0, 6).toUpperCase();
 }
 
+const RECONNECT_DELAY_MILLIS = 2000;
+const RECONNECT_INTERVAL_MILLIS = 10000;
+const RECONNECT_MAX_ATTEMPTS = 3;
+
 function createPeerConnection(): RTCPeerConnection {
     if (typeof RTCPeerConnection === 'undefined') {
         throw new Error('This browser does not support WebRTC.');
     }
     return new RTCPeerConnection({
-        iceServers: [],
+        iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+        ],
     });
 }
 
@@ -154,6 +163,9 @@ export class LanMeshSession {
     private readonly members = new Map<string, LanPeerIdentity>();
     private readonly linksByKey = new Map<string, LinkContext>();
     private readonly directLinks = new Map<string, LinkContext>();
+    private readonly reconnectAttemptByPeerId = new Map<string, number>();
+    private readonly reconnectAttemptedAtByPeerId = new Map<string, number>();
+    private readonly connectivityByPeerId = new Map<string, Set<string>>();
     private pendingInvite?: PendingInvite;
     private activeQrPayload?: ActiveQrPayload;
 
@@ -305,6 +317,9 @@ export class LanMeshSession {
         Array.from(this.linksByKey.values()).forEach((context) => this.disposeLink(context));
         this.linksByKey.clear();
         this.directLinks.clear();
+        this.reconnectAttemptByPeerId.clear();
+        this.reconnectAttemptedAtByPeerId.clear();
+        this.connectivityByPeerId.clear();
         this.roomId = undefined;
         this.members.clear();
         this.members.set(this.self.id, { ...this.self });
@@ -351,6 +366,19 @@ export class LanMeshSession {
                 return left.name.localeCompare(right.name, 'zh-Hans-CN');
             });
 
+        const memberIds = members.map((member) => member.id);
+        const fullMeshConnected = memberIds.every((peerId, index) =>
+            memberIds.slice(index + 1).every((otherId) => {
+                if (peerId === this.self.id || otherId === this.self.id) {
+                    const otherPeerId = peerId === this.self.id ? otherId : peerId;
+                    return this.directLinks.get(otherPeerId)?.status === 'connected';
+                }
+                const reported = this.connectivityByPeerId.get(peerId);
+                const reportedByOther = this.connectivityByPeerId.get(otherId);
+                return (reported?.has(otherId) ?? false) || (reportedByOther?.has(peerId) ?? false);
+            })
+        );
+
         return {
             self: { ...this.self },
             roomId: this.roomId,
@@ -358,6 +386,7 @@ export class LanMeshSession {
             roomReady: this.directLinks.size > 0,
             directPeerCount: Array.from(this.directLinks.values()).filter((context) => context.status === 'connected').length,
             members,
+            fullMeshConnected,
             activeQrPayloadText: this.activeQrPayload?.text ?? '',
             activeQrPayloadKind: this.activeQrPayload?.kind,
             activeQrPayloadTitle: this.activeQrPayload?.title,
@@ -564,6 +593,10 @@ export class LanMeshSession {
 
         if (context.role === 'mesh-offerer' || context.role === 'mesh-answerer') {
             this.log('info', `Connected directly with ${context.peer.name}.`);
+            if (context.peer) {
+                this.reconnectAttemptByPeerId.delete(context.peer.id);
+                this.reconnectAttemptedAtByPeerId.delete(context.peer.id);
+            }
             this.broadcastRoomSync();
         }
     }
@@ -578,14 +611,25 @@ export class LanMeshSession {
 
         if (context.peer) {
             this.directLinks.delete(context.peer.id);
-            if (this.members.delete(context.peer.id)) {
-                this.log(reason === 'left' ? 'info' : 'warn', `${context.peer.name} left the room.`);
+            if (reason === 'left') {
+                if (this.members.delete(context.peer.id)) {
+                    this.log('info', `${context.peer.name} left the room.`);
+                }
+                this.reconnectAttemptByPeerId.delete(context.peer.id);
+                this.reconnectAttemptedAtByPeerId.delete(context.peer.id);
+            }
+            else {
+                this.log('warn', `Connection to ${context.peer.name} lost; reconnecting...`);
             }
         }
 
         this.disposeLink(context);
         this.broadcastRoomSync();
         this.dispatchSnapshot();
+
+        if (reason === 'disconnect' && context.peer && this.roomId) {
+            this.scheduleReconnect(context.peer);
+        }
     }
 
     private handleChannelMessage(context: LinkContext, data: string | ArrayBuffer | Blob): void {
@@ -625,6 +669,9 @@ export class LanMeshSession {
                 return;
             case 'room-sync':
                 this.mergeMembers(...payload.members);
+                if (context.peer) {
+                    this.connectivityByPeerId.set(context.peer.id, new Set(payload.directPeerIds));
+                }
                 this.dispatchSnapshot();
                 return;
             case 'member-join':
@@ -742,10 +789,65 @@ export class LanMeshSession {
             this.directLinks.delete(peerId);
             this.disposeLink(link);
         }
+        this.reconnectAttemptByPeerId.delete(peerId);
+        this.reconnectAttemptedAtByPeerId.delete(peerId);
+        this.connectivityByPeerId.delete(peerId);
+        Array.from(this.connectivityByPeerId.values()).forEach((directPeerIds) => directPeerIds.delete(peerId));
         if (member) {
             this.log(reason === 'left' ? 'info' : 'warn', `${member.name} left the room.`);
         }
         this.dispatchSnapshot();
+    }
+
+    private scheduleReconnect(peer: LanPeerIdentity): void {
+        if (!this.roomId || !this.members.has(peer.id)) {
+            return;
+        }
+        const attempts = this.reconnectAttemptByPeerId.get(peer.id) ?? 0;
+        if (attempts >= RECONNECT_MAX_ATTEMPTS) {
+            this.evictPeer(peer);
+            return;
+        }
+        const lastAttemptAt = this.reconnectAttemptedAtByPeerId.get(peer.id) ?? 0;
+        if (Date.now() - lastAttemptAt < RECONNECT_INTERVAL_MILLIS) {
+            return;
+        }
+        this.reconnectAttemptedAtByPeerId.set(peer.id, Date.now());
+        this.reconnectAttemptByPeerId.set(peer.id, attempts + 1);
+        window.setTimeout(() => {
+            void this.tryReconnectPeer(peer).catch((error) => {
+                this.log('warn', `Reconnect attempt for ${peer.name} failed: ${(error as Error).message}`);
+                this.scheduleReconnect(peer);
+            });
+        }, RECONNECT_DELAY_MILLIS);
+    }
+
+    private async tryReconnectPeer(target: LanPeerIdentity): Promise<void> {
+        if (!this.roomId || !this.members.has(target.id) || this.directLinks.has(target.id)) {
+            return;
+        }
+        const relay = Array.from(this.directLinks.values())
+            .find((context) => context.status === 'connected' && context.peer && context.peer.id !== target.id);
+        if (!relay?.peer) {
+            return;
+        }
+        await this.handleMeshConnectRequest(relay, target);
+    }
+
+    private evictPeer(peer: LanPeerIdentity): void {
+        if (!this.members.has(peer.id)) {
+            return;
+        }
+        this.log('warn', `Could not reconnect to ${peer.name}; removing them from the room.`);
+        if (this.roomId) {
+            this.broadcastEnvelope({
+                type: 'member-leave',
+                roomId: this.roomId,
+                peerId: peer.id,
+                reason: 'disconnect',
+            });
+        }
+        this.removePeer(peer.id, 'disconnect');
     }
 
     private getMemberList(): LanPeerIdentity[] {
@@ -761,7 +863,14 @@ export class LanMeshSession {
             type: 'room-sync',
             roomId: this.roomId,
             members: this.getMemberList(),
+            directPeerIds: this.getDirectPeerIds(),
         });
+    }
+
+    private getDirectPeerIds(): string[] {
+        return Array.from(this.directLinks.values())
+            .filter((context) => context.status === 'connected' && context.peer)
+            .map((context) => context.peer!.id);
     }
 
     private broadcastEnvelope(envelope: ControlEnvelope, excludedPeerId?: string): void {

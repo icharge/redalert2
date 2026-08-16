@@ -53,8 +53,9 @@ export class MoveOrder extends Order {
             else {
                 canMove = this.map.terrain.getPassableSpeed(this.target.tile, speedType, isInfantry, hasBridge) > 0 &&
                     !hasTerrainDisguise &&
-                    !(this.target.obj?.isTechno() &&
-                        !this.game.areFriendly(this.target.obj, this.sourceObject));
+                    (this.forceMove ||
+                        !(this.target.obj?.isTechno() &&
+                            !this.game.areFriendly(this.target.obj, this.sourceObject)));
             }
         }
         if (isMini) {

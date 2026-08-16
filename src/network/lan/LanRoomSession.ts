@@ -674,10 +674,19 @@ export class LanRoomSession {
         if (!this.roomState) {
             return;
         }
-        const activeMembers = this.lastMeshSnapshot.members.map((member) => ({
+        const meshMembers = this.lastMeshSnapshot.members.map((member) => ({
             id: member.id,
             name: member.name,
         }));
+        const meshIds = new Set(meshMembers.map((member) => member.id));
+        const activeMembers = meshMembers.concat(
+            this.roomState.memberOrder
+                .filter((peerId) => !meshIds.has(peerId))
+                .map((peerId) => {
+                    const assignment = this.roomState!.humanAssignments.find((candidate) => candidate.peerId === peerId);
+                    return { id: peerId, name: assignment?.name ?? peerId };
+                }),
+        );
         const activeIds = new Set(activeMembers.map((member) => member.id));
 
         this.roomState.memberOrder = this.roomState.memberOrder.filter((peerId) => activeIds.has(peerId));
@@ -965,8 +974,10 @@ export class LanRoomSession {
         if (this.roomState.humanAssignments.length !== this.lastMeshSnapshot.members.length) {
             return false;
         }
-        const connectedMembers = this.lastMeshSnapshot.members.filter((member) => member.isSelf || member.status === 'connected');
-        if (connectedMembers.length !== this.lastMeshSnapshot.members.length) {
+        const everyMemberConnected = this.lastMeshSnapshot.members.every(
+            (member) => member.isSelf || (member.isDirect && member.status === 'connected')
+        );
+        if (!everyMemberConnected || !this.lastMeshSnapshot.fullMeshConnected) {
             return false;
         }
         if (!this.roomState.gameOpts.mapOfficial) {

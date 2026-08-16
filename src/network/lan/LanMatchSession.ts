@@ -29,6 +29,11 @@ export interface LanMatchTransport {
     getSnapshot(): LanMatchTransportSnapshot;
     broadcastAppMessage(payload: unknown, excludedPeerId?: string): void;
     leaveRoom?(): void;
+    sendChat?(text: string): void;
+    onChat?: {
+        subscribe(listener: (entry: { from: LanMatchPeerIdentity; text: string; timestamp: number }) => void): void;
+        unsubscribe(listener: (entry: { from: LanMatchPeerIdentity; text: string; timestamp: number }) => void): void;
+    };
     onSnapshotChange: {
         subscribe(listener: (snapshot: LanMatchTransportSnapshot, source: LanMeshSession) => void): void;
         unsubscribe(listener: (snapshot: LanMatchTransportSnapshot, source: LanMeshSession) => void): void;
@@ -182,6 +187,10 @@ export class LanMatchSession {
         return cloneLaunchDescriptor(this.descriptor);
     }
 
+    getTransport(): LanMatchTransport {
+        return this.transport;
+    }
+
     getHumanAssignment(peerId: string): LanHumanAssignment | undefined {
         const assignment = this.assignmentByPeerId.get(peerId);
         return assignment ? { ...assignment } : undefined;
@@ -209,7 +218,43 @@ export class LanMatchSession {
     }
 
     areAllPlayersLoaded(): boolean {
-        return this.getOrderedActivePeerIds().every((peerId) => (this.loadPercentByPeerId.get(peerId) ?? 0) >= 100);
+        return this.getOrderedActivePeerIds().every(
+            (peerId) => !this.suspectedDropPeerIds.has(peerId) && (this.loadPercentByPeerId.get(peerId) ?? 0) >= 100
+        );
+    }
+
+    getSuspectedDropPeerIds(): string[] {
+        return this.getSortedPeerIds(this.suspectedDropPeerIds);
+    }
+
+    confirmDropPeers(peerIds: string[]): void {
+        const toDrop = peerIds.filter((peerId) => this.suspectedDropPeerIds.has(peerId) && this.activePeerIds.has(peerId));
+        if (!toDrop.length) {
+            return;
+        }
+        this.commitDrops(toDrop);
+        this.dispatchSnapshot();
+    }
+
+    notifyStalledTurn(tick: number): void {
+        const tickBatches = this.turnBatchesByTick.get(tick);
+        if (!tickBatches) {
+            return;
+        }
+        const missingPeerIds = this.getOrderedActivePeerIds().filter(
+            (peerId) => !this.suspectedDropPeerIds.has(peerId) && !tickBatches.has(peerId)
+        );
+        if (!missingPeerIds.length || this.getControlPeerId() !== this.transport.getSelf().id) {
+            return;
+        }
+        logLanMatch('stall-timeout', {
+            localPeerId: this.transport.getSelf().id,
+            tick,
+            missingPeerIds,
+        });
+        missingPeerIds.forEach((peerId) => this.suspectedDropPeerIds.add(peerId));
+        this.refreshLocalControlTurns();
+        this.dispatchSnapshot();
     }
 
     submitLocalTurn(tick: number, actionData: Uint8Array): string {

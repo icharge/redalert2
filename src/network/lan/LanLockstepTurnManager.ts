@@ -4,6 +4,7 @@ import { ActionType } from '@/game/action/ActionType';
 import { NoAction } from '@/game/action/NoAction';
 import { Parser } from '@/network/gameopt/Parser';
 import { Serializer } from '@/network/gameopt/Serializer';
+import { TURN_TIMEOUT_MILLIS } from '@/network/gservConfig';
 import { LanMatchSession, LanResolvedTurn } from '@/network/lan/LanMatchSession';
 import { EventDispatcher } from '@/util/event';
 
@@ -16,6 +17,7 @@ export class LanLockstepTurnManager {
     private passiveMode = false;
     private lagState = false;
     private matchDisposed = false;
+    private stalledSince?: number;
 
     public readonly onActionsSent = new EventDispatcher<this, string>();
     public readonly onActionsReceived = new EventDispatcher<this, string>();
@@ -68,9 +70,18 @@ export class LanLockstepTurnManager {
             const resolvedTurn = this.matchSession.tryConsumeTurn(tick);
             if (!resolvedTurn) {
                 this.updateLagState(true, tick);
+                const now = Date.now();
+                if (this.stalledSince === undefined) {
+                    this.stalledSince = now;
+                }
+                else if (now - this.stalledSince > TURN_TIMEOUT_MILLIS) {
+                    this.matchSession.notifyStalledTurn(tick);
+                    this.stalledSince = now;
+                }
                 return false;
             }
 
+            this.stalledSince = undefined;
             this.updateLagState(false, tick);
             const processedActions = this.processResolvedTurn(tick, resolvedTurn);
             if (processedActions.length) {

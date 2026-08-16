@@ -196,6 +196,95 @@ describe("GservServer turn window", () => {
         server.handleMessage(bob.client, buildRequestFrame(0, noop));
         expect(alice.socket.sent.filter((data): data is Uint8Array => data instanceof Uint8Array).length).toBe(1);
     });
+
+    test("passive player (active 0) is no longer required for turn relay", () => {
+        const { manager, server } = setup();
+        const instance = manager.create(["alice", "bob"], "ws://gserv");
+        instance.gameopts = buildGameOpts(["alice", "bob"]);
+        const alice = join(server, manager, instance, "alice");
+        const bob = join(server, manager, instance, "bob");
+        server.handleMessage(alice.client, "loaded 100");
+        server.handleMessage(bob.client, "loaded 100");
+
+        const noop = serializePlayerActions([{ id: 0, params: new Uint8Array() }]);
+        const countBinary = (socket: FakeSocket) => socket.sent.filter((data): data is Uint8Array => data instanceof Uint8Array).length;
+
+        // Both players submit turn 0, then bob resigns and becomes an
+        // observer: the server must stop waiting for bob's submissions.
+        server.handleMessage(alice.client, buildRequestFrame(0, noop));
+        server.handleMessage(bob.client, buildRequestFrame(0, noop));
+        const relayedAfterTurn0 = countBinary(alice.socket);
+        expect(relayedAfterTurn0).toBe(1);
+
+        server.handleMessage(bob.client, "active 0");
+        server.handleMessage(alice.client, buildRequestFrame(1, noop));
+
+        // Without the fix the server would keep waiting for bob's turn 1 and
+        // never relay; with it, alice's turn 1 is relayed immediately.
+        expect(countBinary(alice.socket)).toBe(2);
+    });
+});
+
+describe("GservServer loading screen info", () => {
+    test("loadinfo reports the full roster with connected status, and pushes on join", () => {
+        const { manager, server } = setup();
+        const instance = manager.create(["alice", "bob", "carol"], "ws://gserv");
+        instance.gameopts = buildGameOpts(["alice", "bob", "carol"]);
+        const alice = join(server, manager, instance, "alice");
+
+        server.handleMessage(alice.client, "loadinfo");
+        let aliceLines = alice.socket.sent.filter((data): data is string => typeof data === "string").join("\n");
+        const firstLoadInfo = aliceLines.split("\n").filter((line) => line.includes(" 600 ")).at(-1);
+        expect(firstLoadInfo).toContain("alice,1,0,0,0,0");
+        expect(firstLoadInfo).toContain("bob,0,0,0,0,0");
+        expect(firstLoadInfo).toContain("carol,0,0,0,0,0");
+
+        // When bob joins, every already-connected member is pushed an updated
+        // loadinfo so the loading screen does not sit on stale data.
+        const bob = join(server, manager, instance, "bob");
+        server.handleMessage(bob.client, "loaded 42");
+        aliceLines = alice.socket.sent.filter((data): data is string => typeof data === "string").join("\n");
+        const pushedLoadInfo = aliceLines.split("\n").filter((line) => line.includes(" 600 ")).at(-1);
+        expect(pushedLoadInfo).toContain("bob,1,42,0,0,0");
+    });
+});
+
+describe("GservServer in-game chat", () => {
+    function chatSetup() {
+        const { manager, server } = setup();
+        const instance = manager.create(["alice", "bob"], "ws://gserv");
+        instance.gameopts = buildGameOpts(["alice", "bob"]);
+        const alice = join(server, manager, instance, "alice");
+        const bob = join(server, manager, instance, "bob");
+        server.handleMessage(alice.client, "loaded 100");
+        server.handleMessage(bob.client, "loaded 100");
+        return { server, instance, alice, bob };
+    }
+
+    test("relays #all chat to other members as :nick PRIVMSG #all :text", () => {
+        const { server, alice, bob } = chatSetup();
+        server.handleMessage(alice.client, "privmsg #all :hello bob");
+        const relayed = bob.socket.lines().find((line) => line.includes("PRIVMSG #all :hello bob"));
+        expect(relayed).toBe(":alice PRIVMSG #all :hello bob");
+        // The sender must not receive a duplicate relay; the client echoes
+        // their own message locally.
+        expect(alice.socket.lines().filter((line) => line.includes("PRIVMSG #all :hello bob"))).toHaveLength(0);
+    });
+
+    test("relays comma-separated recipient lists (team chat) to each member", () => {
+        const { server, alice, bob } = chatSetup();
+        server.handleMessage(alice.client, "privmsg bob,alice :hi team");
+        expect(bob.socket.lines().filter((line) => line.includes("PRIVMSG bob :hi team"))).toHaveLength(1);
+        expect(alice.socket.lines().filter((line) => line.includes("PRIVMSG bob :hi team"))).toHaveLength(0);
+    });
+
+    test("ignores recipients that are not room members", () => {
+        const { server, alice, bob } = chatSetup();
+        server.handleMessage(alice.client, "privmsg ghost :hello");
+        expect(bob.socket.lines().filter((line) => line.includes("PRIVMSG"))).toHaveLength(0);
+        const aliceLines = alice.socket.lines().join("\n");
+        expect(aliceLines).toContain(" 805 ");
+    });
 });
 
 describe("GservServer per-instance stats logging", () => {

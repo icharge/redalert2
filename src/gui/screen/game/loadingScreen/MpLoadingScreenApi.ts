@@ -175,7 +175,10 @@ export class MpLoadingScreenApi implements LoadingScreenApi {
         const now = Date.now();
         const extendedInfos = loadInfos
             .map(loadInfo => {
-            const player = this.players!.find(p => p.name === loadInfo.name)!;
+            const player = this.players?.find(p => p.name === loadInfo.name);
+            if (!player) {
+                return undefined;
+            }
             const loadTimeoutFirstSeenAt = (loadInfo as any).loadTimeoutFirstSeenAt as number | undefined;
             return {
                 name: loadInfo.name,
@@ -191,7 +194,8 @@ export class MpLoadingScreenApi implements LoadingScreenApi {
                     : colors[player.colorId].asHexString(),
                 team: player.teamId,
             };
-        });
+        })
+            .filter((info): info is NonNullable<typeof info> => info !== undefined);
         if (hasTeams) {
             return extendedInfos.sort((a, b) => {
                 if (Boolean(a.country) === Boolean(b.country)) {

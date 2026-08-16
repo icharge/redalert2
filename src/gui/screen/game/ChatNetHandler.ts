@@ -1,15 +1,27 @@
 import { CompositeDisposable } from '@/util/disposable/CompositeDisposable';
-import { ChatRecipientType } from '@/network/chat/ChatMessage';
+import { ChatMessage, ChatRecipientType } from '@/network/chat/ChatMessage';
 import { RECIPIENT_ALL, RECIPIENT_TEAM } from '@/network/gservConfig';
+import { LanMatchTransport } from '@/network/lan/LanMatchSession';
 export class ChatNetHandler {
     private disposables = new CompositeDisposable();
-    constructor(private gservCon: any, private wolCon: any, private messageList: any, private chatHistory: any, private chatMessageFormat: any, private localPlayer: any, private game: any, private replayRecorder: any, private mutedPlayers: Set<string>) { }
+    constructor(private gservCon: any, private wolCon: any, private messageList: any, private chatHistory: any, private chatMessageFormat: any, private localPlayer: any, private game: any, private replayRecorder: any, private mutedPlayers: Set<string>, private lanTransport?: LanMatchTransport) { }
     init(): void {
+        this.lanTransport?.onChat?.subscribe(this.handleLanChatMessage);
+        this.disposables.add(() => this.lanTransport?.onChat?.unsubscribe(this.handleLanChatMessage));
         this.wolCon.onChatMessage.subscribe(this.handleMessage);
         this.disposables.add(() => this.wolCon.onChatMessage.unsubscribe(this.handleMessage));
         this.gservCon.onChatMessage.subscribe(this.handleMessage);
         this.disposables.add(() => this.gservCon.onChatMessage.unsubscribe(this.handleMessage));
     }
+    private readonly handleLanChatMessage = (entry: any): void => {
+        const message: ChatMessage = {
+            from: entry.from.name,
+            to: { type: ChatRecipientType.Channel, name: RECIPIENT_ALL },
+            text: entry.text,
+            time: new Date(entry.timestamp),
+        };
+        this.handleMessage(message);
+    };
     private handleMessage = (message: any): void => {
         if (message.from === this.localPlayer.name &&
             message.to.type === ChatRecipientType.Whisper) {
@@ -28,7 +40,17 @@ export class ChatNetHandler {
                 color = 'mediumpurple';
             }
             else {
-                const player = this.game.getPlayerByName(message.from);
+                if (message.to.type !== ChatRecipientType.Channel ||
+                    ![RECIPIENT_ALL, RECIPIENT_TEAM].includes(message.to.name)) {
+                    return;
+                }
+                let player: any;
+                try {
+                    player = this.game.getPlayerByName(message.from);
+                }
+                catch {
+                    return;
+                }
                 playerName = player.name;
                 color = player.color.asHexString();
             }
@@ -52,6 +74,10 @@ export class ChatNetHandler {
         }
     };
     submitMessage(text: string, recipient: any): void {
+        if (this.lanTransport?.sendChat) {
+            this.lanTransport.sendChat(text);
+            return;
+        }
         if (!this.gservCon.isOpen()) {
             console.warn("Can't send chat message. Network connection is already closed.");
             return;

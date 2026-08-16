@@ -36,7 +36,7 @@ import { ChatNetHandler } from '@/gui/screen/game/ChatNetHandler';
 import { ChatTypingHandler } from '@/gui/screen/game/ChatTypingHandler';
 import { ConnectionInfoScreen } from '@/gui/screen/game/gameMenu/ConnectionInfoScreen';
 import { DataStream } from '@/data/DataStream';
-import { CON_INFO_THRESH_MILLIS } from '@/network/gservConfig';
+import { CON_INFO_THRESH_MILLIS, LAN_LOAD_TIMEOUT_MILLIS } from '@/network/gservConfig';
 import { GameRes } from '@/network/gameres/GameRes';
 import { Task } from '@puzzl/core/lib/async/Task';
 import { IrcConnection } from '@/network/IrcConnection';
@@ -69,7 +69,7 @@ import * as THREE from 'three';
 export class GameScreen extends RootScreen {
     private disposables = new CompositeDisposable();
     private avgPing = new MedianPing();
-    private preventUnload = true;
+    public preventUnload = true;
     protected controller?: any;
     private game?: any;
     private replay?: any;
@@ -338,7 +338,20 @@ export class GameScreen extends RootScreen {
     }
 
     private async waitForLanPlayersLoaded(cancellationToken: any): Promise<void> {
+        const deadline = Date.now() + LAN_LOAD_TIMEOUT_MILLIS;
         while (!cancellationToken.isCancelled() && this.lanMatchSession && !this.lanMatchSession.areAllPlayersLoaded()) {
+            if (Date.now() > deadline) {
+                const suspectedDrops = this.lanMatchSession.getSuspectedDropPeerIds();
+                if (suspectedDrops.length > 0) {
+                    this.lanMatchSession.confirmDropPeers(suspectedDrops);
+                    return;
+                }
+                this.handleError(
+                    new Error('LAN load timeout'),
+                    this.strings.get('TS:ConnectFailed'),
+                );
+                return;
+            }
             await sleep(50);
         }
     }
@@ -1201,17 +1214,26 @@ export class GameScreen extends RootScreen {
         }
         this.playerUi.init?.(hud);
         this.disposables.add(this.playerUi, () => this.playerUi = undefined);
-        if (this.usesServerConnection()) {
-            const chatNetHandler = new ChatNetHandler(this.gservCon, this.wolService.getConnection(), messageList, chatHistory, new ChatMessageFormat(this.strings, localPlayer.name), localPlayer, game, this.replayRecorderInstance, this.mutedPlayers ?? new Set<string>());
+        if (!this.isSinglePlayer) {
+            const lanTransport = this.isLanGame ? this.lanMatchSession?.getTransport() : undefined;
+            const chatNetHandler = new ChatNetHandler(this.gservCon, this.wolService.getConnection(), messageList, chatHistory, new ChatMessageFormat(this.strings, localPlayer.name), localPlayer, game, this.replayRecorderInstance, this.mutedPlayers ?? new Set<string>(), lanTransport);
             chatNetHandler.init();
             const worldInteraction = this.playerUi.worldInteraction;
             const chatTypingHandler = new ChatTypingHandler(worldInteraction.keyboardHandler, worldInteraction.arrowScrollHandler, messageList, chatHistory);
+            worldInteraction.chatTypingHandler = chatTypingHandler;
             this.chatTypingHandler = chatTypingHandler;
             this.chatNetHandler = chatNetHandler;
             this.disposables.add(() => {
                 this.chatTypingHandler = this.chatNetHandler = undefined;
             });
             this.initHudChatTypingEvents(chatTypingHandler, chatNetHandler, hud);
+            const handleMenuSendMessage = (event: any) => {
+                if (event.value?.length) {
+                    chatNetHandler.submitMessage(event.value, event.recipient);
+                }
+            };
+            menu.onSendMessage.subscribe(handleMenuSendMessage);
+            this.disposables.add(() => menu.onSendMessage.unsubscribe(handleMenuSendMessage));
         }
     }
     private initGameMenuEvents(menu: any, eva: any, game: any, localPlayer: any, actionQueue: any, actionFactory: any): void {

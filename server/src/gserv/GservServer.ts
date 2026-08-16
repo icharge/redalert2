@@ -4,6 +4,7 @@ import { GservInstance, GservManager } from "./GservManager";
 import { SocketLike } from "../server/SocketLike";
 import { isValidNickChars, stripCrlf } from "../protocol/validate";
 import { TokenBucket } from "../util/rateLimit";
+import { basename } from "node:path";
 import * as Code from "../protocol/gservCodes";
 import { GSERV_SERVER_NAME } from "../protocol/replies";
 import { GservReplayRecorder } from "./replay/GservReplayRecorder";
@@ -21,6 +22,17 @@ export interface GservClient {
     loaded: number;
     active: boolean;
     rateBucket?: TokenBucket;
+}
+
+/**
+ * Fired when a game finalizes and its replay (if any) has been written.
+ * Lets the match archive record public games and their replay file names.
+ */
+export interface MatchArchivedEvent {
+    gameId: string;
+    timestamp: number;
+    players: string[];
+    replayFileName: string;
 }
 
 // Gameplay sends at most one binary frame per network turn (~30/s at the
@@ -265,7 +277,7 @@ export class GservServer {
                 this.handleLoadInfo(client);
                 break;
             case "active":
-                client.active = parts[1] === "1";
+                this.handleActive(client, parts[1] === "1");
                 break;
             case "taunt":
                 this.handleTaunt(client, parts);
@@ -371,6 +383,7 @@ export class GservServer {
         members.set(client.nick, client);
         this.log.info(`join instance ${gameId} as ${client.nick}`);
         client.socket.send(`:${this.serverName} ${Code.RPL_INSTANCE_CONNECTED} ${client.nick} :connected\r\n`);
+        this.broadcastLoadInfo(instance);
     }
 
     private handleGameOpts(client: GservClient): void {
@@ -383,6 +396,7 @@ export class GservServer {
             return;
         }
         client.loaded = Number(parts[1] ?? 0);
+        this.broadcastLoadInfo(client.instance);
         this.checkAllLoaded(client.instance);
     }
 
@@ -440,18 +454,59 @@ export class GservServer {
         }
     }
 
+    private handleActive(client: GservClient, active: boolean): void {
+        client.active = active;
+        if (active || !client.instance) {
+            return;
+        }
+        const state = this.instanceStates.get(client.instance.gameId);
+        if (!state) {
+            return;
+        }
+        if (!state.requiredNicks.delete(client.nick)) {
+            return;
+        }
+        this.log.info(`player ${client.nick} went passive; no longer required for turn relay`);
+        const playerId = state.recorder.playerIdFor(client.nick);
+        if (playerId !== undefined) {
+            for (const submissions of state.pending.values()) {
+                if (!submissions.has(client.nick)) {
+                    submissions.set(client.nick, { playerId, blob: NO_ACTION_BLOB });
+                }
+            }
+        }
+        this.flushPendingTurns(state);
+    }
+
     private handleLoadInfo(client: GservClient): void {
         if (!client.instance) {
             return;
         }
-        const members = this.instanceMembers.get(client.instance.gameId);
+        this.sendLoadInfo(client.instance, client);
+    }
+
+    private sendLoadInfo(instance: GservInstance, target: GservClient): void {
+        const members = this.instanceMembers.get(instance.gameId);
         const lines: string[] = [];
-        if (members) {
-            for (const member of members.values()) {
-                lines.push(`${member.nick},0,${member.loaded},0,0,0`);
+        for (const nick of instance.players) {
+            const member = members?.get(nick);
+            const status = member ? 1 : 0;
+            const loaded = member?.loaded ?? 0;
+            lines.push(`${nick},${status},${loaded},0,0,0`);
+        }
+        target.socket.send(`:${this.serverName} ${Code.RPL_LOAD_INFO} ${target.nick} :${lines.join(",")}\r\n`);
+    }
+
+    private broadcastLoadInfo(instance: GservInstance, excludedNick?: string): void {
+        const members = this.instanceMembers.get(instance.gameId);
+        if (!members) {
+            return;
+        }
+        for (const member of members.values()) {
+            if (member.nick !== excludedNick) {
+                this.sendLoadInfo(instance, member);
             }
         }
-        client.socket.send(`:${this.serverName} ${Code.RPL_LOAD_INFO} ${client.nick} :${lines.join(",")}\r\n`);
     }
 
     private handleTaunt(client: GservClient, parts: string[]): void {
@@ -465,20 +520,22 @@ export class GservServer {
         if (sep === -1) {
             return;
         }
-        const target = line.slice(8, sep).trim();
+        const targets = line.slice(8, sep).trim().split(",").map(target => target.trim()).filter(Boolean);
         const text = stripCrlf(line.slice(sep + 2));
-        if (target === "#all" || target === "#team") {
-            this.broadcastLine(client, `:${client.nick} PRIVMSG ${target} :${text}`);
-            const state = client.instance ? this.instanceStates.get(client.instance.gameId) : undefined;
-            state?.recorder.recordChat(client.nick, text);
-        }
-        else if (target !== client.nick && isValidNickChars(target)) {
-            const member = this.findMember(client, target);
-            if (member) {
-                member.socket.send(`:${client.nick} PRIVMSG ${target} :${text}\r\n`);
+        for (const target of targets) {
+            if (target === "#all" || target === "#team") {
+                this.broadcastLine(client, `:${client.nick} PRIVMSG ${target} :${text}`);
+                const state = client.instance ? this.instanceStates.get(client.instance.gameId) : undefined;
+                state?.recorder.recordChat(client.nick, text);
             }
-            else {
-                client.socket.send(`:${this.serverName} ${Code.RPL_PRIVMSG_NOT_ALLOWED} ${client.nick} :not allowed\r\n`);
+            else if (target !== client.nick && isValidNickChars(target)) {
+                const member = this.findMember(client, target);
+                if (member) {
+                    member.socket.send(`:${client.nick} PRIVMSG ${target} :${text}\r\n`);
+                }
+                else {
+                    client.socket.send(`:${this.serverName} ${Code.RPL_PRIVMSG_NOT_ALLOWED} ${client.nick} :not allowed\r\n`);
+                }
             }
         }
     }
@@ -579,11 +636,23 @@ export class GservServer {
         try {
             const filePath = state.recorder.finalize();
             this.log.info(`saved replay for instance ${gameId}: ${filePath}`);
+            if (this.onMatchArchived) {
+                const instance = this.manager.get(gameId);
+                this.onMatchArchived({
+                    gameId,
+                    timestamp: instance?.timestamp ?? Math.floor(Date.now() / 1000),
+                    players: instance?.players ?? [],
+                    replayFileName: basename(filePath),
+                });
+            }
         }
         catch (error) {
             this.log.error(`failed to save replay for instance ${gameId}: ${(error as Error).message}`);
         }
     }
+
+    /** Called with the written replay file name whenever a game finalizes. */
+    onMatchArchived?: (event: MatchArchivedEvent) => void;
 
     private findMember(client: GservClient, nick: string): GservClient | undefined {
         if (!client.instance) {
