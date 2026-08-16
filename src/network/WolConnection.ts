@@ -467,23 +467,24 @@ export class WolConnection {
             replyEndCode: WolCode.RPL_LISTEND,
         });
         return replies.slice(1, -1).map((reply) => {
-            if (!reply.params || reply.params.length < 9) {
+            if (!reply.params || reply.params.length < 10) {
                 throw new Error(`Unexpected reply for list command "${reply.raw}". Insufficient params.`);
             }
             const channelName = IrcProtocol.unescapeChannelName(reply.params[1]);
             const humanPlayers = Number(reply.params[2]);
-            const tournament = Number(reply.params[4]);
-            const resLocked = reply.params[5];
-            const hostPing = reply.params[6];
-            const hostMuted = reply.params[7];
+            const channelType = Number(reply.params[4]);
+            const tournament = Number(reply.params[5]);
+            const resLocked = reply.params[6];
+            const hostPing = reply.params[7];
             const [modeCode, topicPart] = reply.params[8]?.split("::") ?? [];
-            if (Number(modeCode) !== mode && !topicPart) {
+            const hostMuted = reply.params[9];
+            if (channelType !== mode && !topicPart) {
                 return undefined;
             }
             if (modeCode === undefined || topicPart === undefined) {
                 return undefined;
             }
-            if (Number(modeCode) !== mode) {
+            if (channelType !== mode) {
                 return undefined;
             }
             const topic = new Parser().parseTopic(topicPart);

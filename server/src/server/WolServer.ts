@@ -352,16 +352,17 @@ export class WolServer {
         for (const game of matching) {
             const human = game.members.size;
             const topic = game.topic ?? "";
-            const modeCode = game.channelType;
+            const mode = game.password !== undefined ? 384 : 0;
             this.sendNumeric(user, Code.RPL_LIST, user.nick, [
                 game.key,
                 String(human),
                 "0",
+                String(game.channelType),
                 game.tournament ? "1" : "0",
                 "0",
                 String(user.ping),
                 "0",
-                `${modeCode}::${topic}`,
+                `${mode}::${topic}`,
             ]);
         }
         this.sendNumeric(user, Code.RPL_LISTEND, user.nick, [arg], "End of /LIST");

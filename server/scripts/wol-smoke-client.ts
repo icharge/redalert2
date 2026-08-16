@@ -160,7 +160,7 @@ async function main(): Promise<void> {
     await client.waitFor(line => line.includes(" 321 "), "LIST start 321");
     const listEntry = await client.waitFor(line => line.includes(" 322 ") && line.includes(gameName), "LIST entry 322");
     await client.waitFor(line => line.includes(" 323 "), "LIST end 323");
-    check("game listed with topic", /322 .*45::g19N39/.test(listEntry), listEntry);
+    check("game listed with topic", /322 .*0::g19N39/.test(listEntry), listEntry);
 
     client.send(`gameopt ${gameName} :A1`);
     client.send(`startg ${gameName} ${username}`);
