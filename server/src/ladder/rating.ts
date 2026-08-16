@@ -202,7 +202,9 @@ export function ratingDelta(input: OutcomeInput, config: RatingConfig = DEFAULT_
  */
 export function applyOutcome(standing: StandingInput, input: OutcomeInput, config: RatingConfig = DEFAULT_RATING_CONFIG): StandingUpdate {
     const delta = ratingDelta(input, config);
-    const rating = standing.rating + delta;
+    // Ratings are whole numbers (the ladder UI shows points/MMR as-is, and
+    // SQLite standings rows are INTEGER).
+    const rating = Math.round(standing.rating + delta);
     if (input.won) {
         const winStreak = standing.winStreak + 1;
         const bonusPool = winStreak >= WIN_STREAK_BONUS_THRESHOLD
