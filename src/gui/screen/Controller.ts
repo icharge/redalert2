@@ -2,6 +2,7 @@ import { EventDispatcher } from '../../util/event';
 export interface Screen {
     title?: string;
     musicType?: any;
+    preventUnload?: boolean;
     onEnter(params?: any): void | Promise<void>;
     onLeave(): void | Promise<void>;
     onStack?(): void | Promise<void>;

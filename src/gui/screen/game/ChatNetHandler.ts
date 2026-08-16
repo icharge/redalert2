@@ -23,6 +23,10 @@ export class ChatNetHandler {
         this.handleMessage(message);
     };
     private handleMessage = (message: any): void => {
+        if (message?.from === this.gservCon.getServerName() ||
+            message?.from === this.wolCon.getServerName()) {
+            return;
+        }
         if (message.from === this.localPlayer.name &&
             message.to.type === ChatRecipientType.Whisper) {
             this.messageList.addChatMessage(this.chatMessageFormat.formatPrefixPlain(message) + ' ' + message.text, 'mediumpurple');
@@ -31,9 +35,7 @@ export class ChatNetHandler {
         }
         const prefix = this.chatMessageFormat.formatPrefixPlain(message);
         let color: string;
-        if (message.to.type !== ChatRecipientType.Page ||
-            (message.from !== this.gservCon.getServerName() &&
-                message.from !== this.wolCon.getServerName())) {
+        if (message.to.type !== ChatRecipientType.Page) {
             let playerName: string;
             if (message.to.type === ChatRecipientType.Whisper) {
                 playerName = message.from;

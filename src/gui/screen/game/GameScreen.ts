@@ -32,6 +32,7 @@ import { CombatantSidebarModel } from '@/gui/screen/game/component/hud/viewmodel
 import { ActionFactoryReg } from '@/game/action/ActionFactoryReg';
 import { MessageList } from '@/gui/screen/game/component/hud/viewmodel/MessageList';
 import { ChannelType } from '@/engine/sound/ChannelType';
+import { SoundKey } from '@/engine/sound/SoundKey';
 import { ChatNetHandler } from '@/gui/screen/game/ChatNetHandler';
 import { ChatTypingHandler } from '@/gui/screen/game/ChatTypingHandler';
 import { ConnectionInfoScreen } from '@/gui/screen/game/gameMenu/ConnectionInfoScreen';
@@ -1234,7 +1235,27 @@ export class GameScreen extends RootScreen {
             };
             menu.onSendMessage.subscribe(handleMenuSendMessage);
             this.disposables.add(() => menu.onSendMessage.unsubscribe(handleMenuSendMessage));
+            const handleNewChatMessage = (message: any) => {
+                if (message?.from !== localPlayer.name) {
+                    this.sound.play(SoundKey.IncomingMessage, ChannelType.Ui);
+                }
+            };
+            chatHistory.onNewMessage.subscribe(handleNewChatMessage);
+            this.disposables.add(() => chatHistory.onNewMessage.unsubscribe(handleNewChatMessage));
         }
+    }
+    handleBfcacheRestore(): void {
+        if (!this.isSinglePlayer || !this.game || this.gameEndHandled) {
+            return;
+        }
+        this.pausedAtSpeed = this.game.speed.value;
+        this.game.desiredSpeed.value = Number.EPSILON;
+        this.messageBoxApi.alert(this.strings.get('ts:game_restored'), this.strings.get('gui:ok')).then(() => {
+            if (this.pausedAtSpeed !== undefined) {
+                this.game.desiredSpeed.value = this.pausedAtSpeed;
+                this.pausedAtSpeed = undefined;
+            }
+        });
     }
     private initGameMenuEvents(menu: any, eva: any, game: any, localPlayer: any, actionQueue: any, actionFactory: any): void {
         menu.onOpen.subscribe(() => {

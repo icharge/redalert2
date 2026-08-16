@@ -268,6 +268,31 @@ export class GservConnection {
             const recipientList = recipients.join(",");
             this.con.sendMessage(`privmsg ${recipientList} :` + text);
         }
+        const channels = recipients.filter((recipient) => recipient === RECIPIENT_ALL || recipient === RECIPIENT_TEAM);
+        if (channels.length) {
+            channels.forEach((recipient) => {
+                this._onChatMessage.dispatch(this, {
+                    from: this.currentUser,
+                    to: {
+                        type: ChatRecipientType.Channel,
+                        name: recipient,
+                    },
+                    text,
+                    time: new Date(),
+                });
+            });
+        }
+        else {
+            this._onChatMessage.dispatch(this, {
+                from: this.currentUser,
+                to: {
+                    type: ChatRecipientType.Channel,
+                    name: RECIPIENT_TEAM,
+                },
+                text,
+                time: new Date(),
+            });
+        }
     }
 
     private handlePrivMsg(message: string): void {
