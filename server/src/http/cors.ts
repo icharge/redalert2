@@ -1,7 +1,9 @@
 import { ServerConfig } from "../config";
 
 const CORS_METHODS = "GET, POST, OPTIONS";
-const CORS_ALLOW_HEADERS = "Content-Type, X-CSRF-Token";
+// "authorization" is used by /wgameres (Bearer session token) and the realm
+// AuthService; header names are case-insensitive per the fetch spec.
+const CORS_ALLOW_HEADERS = "Content-Type, X-CSRF-Token, authorization";
 
 export function isOriginAllowed(config: ServerConfig, request: Request): boolean {
     const allowed = config.corsAllowedOrigins;

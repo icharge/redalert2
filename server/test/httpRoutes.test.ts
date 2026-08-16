@@ -146,6 +146,7 @@ describe("http routes", () => {
         expect(res.headers.get("Access-Control-Allow-Origin")).toBe("http://localhost:5173");
         expect(res.headers.get("Access-Control-Allow-Credentials")).toBe("true");
         expect(res.headers.get("Access-Control-Allow-Headers")).toContain("X-CSRF-Token");
+        expect(res.headers.get("Access-Control-Allow-Headers")).toContain("authorization");
     });
 
     test("logout with a session token revokes it", async () => {
