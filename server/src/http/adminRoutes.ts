@@ -6,7 +6,9 @@
 
 import { ServerConfig } from "../config";
 import { Session, SessionManager } from "../auth/session";
+import { AccountStore } from "../auth/accountStore";
 import { LadderService, isLadderType } from "../ladder/LadderService";
+import { WolServer } from "../server/WolServer";
 import { Logger } from "../logger";
 import { statSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
@@ -15,6 +17,8 @@ import { withCors } from "./cors";
 export interface AdminDeps {
     sessions: SessionManager;
     ladder: LadderService;
+    accounts: AccountStore;
+    wol: WolServer;
     replaysDir: string;
 }
 
@@ -47,6 +51,31 @@ export async function handleAdmin(req: Request, deps: AdminDeps, config: ServerC
             return deny(config, req, "Not Found", 404);
         }
         case "seasons": {
+            // POST /admin/seasons/{id}?sku=16640 — edit name/start/end.
+            if (req.method === "POST" && parts.length === 3) {
+                const id = Number(segment);
+                const sku = Number(new URL(req.url).searchParams.get("sku"));
+                let body: any;
+                try {
+                    body = await req.json();
+                }
+                catch {
+                    return deny(config, req, "Invalid request body", 400);
+                }
+                if (!Number.isInteger(id) || !Number.isInteger(sku)) {
+                    return deny(config, req, "Not Found", 404);
+                }
+                const updated = deps.ladder.updateSeason(sku, id, {
+                    name: typeof body?.name === "string" ? body.name : undefined,
+                    startTime: Number.isFinite(Number(body?.startTime)) ? Number(body.startTime) : undefined,
+                    endTime: Number.isFinite(Number(body?.endTime)) ? Number(body.endTime) : undefined,
+                });
+                if (!updated) {
+                    return deny(config, req, "Season not found or invalid input", 400);
+                }
+                log.info(`admin: ${session.username} updated season ${id} (sku ${sku})`);
+                return withCors(json(updated), config, req);
+            }
             // POST /admin/seasons/{id}/close?sku=16640
             if (req.method === "POST" && parts[3] === "close") {
                 const id = Number(segment);
@@ -202,6 +231,40 @@ export async function handleAdmin(req: Request, deps: AdminDeps, config: ServerC
                 }
                 return withCors(json(deps.ladder.searchPlayers(q, limit)), config, req);
             }
+            // POST /admin/players/{name}/ban? /unban? /reset? — player management
+            if (req.method === "POST" && typeof segment === "string" && parts.length === 4) {
+                const name = segment;
+                const action = parts[3];
+                if (action === "ban" || action === "unban") {
+                    const banned = action === "ban";
+                    const account = deps.accounts.get(name);
+                    if (!account) {
+                        return deny(config, req, "Player not found", 404);
+                    }
+                    deps.accounts.setBanned(name, banned);
+                    if (banned) {
+                        // Revoke sessions and kick an online connection so the
+                        // ban takes effect immediately.
+                        deps.sessions.revokeByUser(account.username);
+                        const user = deps.wol.users.get(account.username);
+                        if (user) {
+                            user.socket.close(4006, "Banned");
+                        }
+                    }
+                    log.info(`admin: ${session.username} ${banned ? "banned" : "unbanned"} ${account.username}`);
+                    return withCors(json({ name: account.username, banned }), config, req);
+                }
+                if (action === "reset") {
+                    const account = deps.accounts.get(name);
+                    if (!account) {
+                        return deny(config, req, "Player not found", 404);
+                    }
+                    const result = deps.ladder.resetPlayerStats(name);
+                    log.info(`admin: ${session.username} reset ladder stats for ${account.username} (${result.standingsRemoved} standing(s), ${result.matchesRemoved} history row(s))`);
+                    return withCors(json({ name: account.username, ...result }), config, req);
+                }
+                return deny(config, req, "Not Found", 404);
+            }
             // GET /admin/players/{name}?season=current&ladderType=1v1
             if (req.method === "GET" && typeof segment === "string" && segment.length > 0) {
                 const url = new URL(req.url);
@@ -214,7 +277,16 @@ export async function handleAdmin(req: Request, deps: AdminDeps, config: ServerC
                 if (!history) {
                     return deny(config, req, "Player not found", 404);
                 }
-                return withCors(json(history), config, req);
+                const account = deps.accounts.get(segment);
+                return withCors(json({
+                    ...history,
+                    account: account ? {
+                        username: account.username,
+                        banned: account.banned,
+                        createdAt: account.createdAt,
+                        online: deps.wol.users.has(account.username),
+                    } : undefined,
+                }), config, req);
             }
             return deny(config, req, "Not Found", 404);
         }

@@ -145,7 +145,13 @@ wgameresUrl="${baseUrl}/wgameres"
 
     const pathParts = url.pathname.split("/").filter(Boolean);
     if (pathParts[0] === "admin") {
-        return handleAdmin(req, { sessions: deps.sessions, ladder: deps.ladder, replaysDir: config.replaysDir }, config, pathParts, log);
+        return handleAdmin(req, {
+            sessions: deps.sessions,
+            ladder: deps.ladder,
+            accounts: deps.accounts,
+            wol: deps.wol,
+            replaysDir: config.replaysDir,
+        }, config, pathParts, log);
     }
     // GET /replays/{gameId} — public .rpl download powering the in-game
     // replay deeplink (#/replay/...). Replays are game recordings, not

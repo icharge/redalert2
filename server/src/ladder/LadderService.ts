@@ -468,6 +468,31 @@ export class LadderService {
         return closed;
     }
 
+    /**
+     * Edit a season's name/start/end. Only the fields provided are changed;
+     * the start time is left free (moving it changes which season is
+     * "current", which is the admin's call). Undefined when the season is
+     * unknown or the input is invalid.
+     */
+    updateSeason(sku: number, id: number, input: { name?: string; startTime?: number; endTime?: number }): AdminSeason | undefined {
+        const season = this.storage.getLadderSeasonById(sku, id);
+        if (!season) {
+            return undefined;
+        }
+        const name = input.name?.trim();
+        if (name !== undefined && (name.length === 0 || name.length > 40)) {
+            return undefined;
+        }
+        const startTime = input.startTime ?? season.startTime;
+        const endTime = input.endTime ?? season.endTime;
+        if (!Number.isFinite(startTime) || !Number.isFinite(endTime) || endTime <= startTime) {
+            return undefined;
+        }
+        this.storage.updateLadderSeasonDetails(sku, id, name ?? season.name, startTime, endTime);
+        this.log.info(`admin: updated season ${id} (sku ${sku})`);
+        return this.getSeasonsAdmin().find(entry => entry.sku === sku && entry.id === id);
+    }
+
     getDashboard(): AdminDashboard {
         const now = Date.now();
         const startOfDay = now - (now % (24 * 60 * 60 * 1000));
@@ -536,6 +561,17 @@ export class LadderService {
                 mapName: match.mapName,
                 reportedAt: match.reportedAt,
             })),
+        };
+    }
+
+    /**
+     * Reset a player's ladder footprint: standings and match-history rows are
+     * deleted (the match archive itself is kept for audit). Idempotent.
+     */
+    resetPlayerStats(usernameKey: string): { standingsRemoved: number; matchesRemoved: number } {
+        return {
+            standingsRemoved: this.storage.deleteStandingsByUser(usernameKey),
+            matchesRemoved: this.storage.deleteMatchPlayersByUser(usernameKey),
         };
     }
 

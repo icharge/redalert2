@@ -77,6 +77,7 @@ export interface Storage {
     accountExists(username: string): boolean;
     createAccount(username: string, passwordHash: string, createdAt: number): void;
     getAccount(username: string): AccountRecord | undefined;
+    setAccountBanned(usernameKey: string, banned: boolean): boolean;
     countAccounts(): number;
     insertSession(token: string, username: string, createdAt: number): void;
     getSession(token: string): SessionRecord | undefined;
@@ -90,6 +91,7 @@ export interface Storage {
     getLadderSeasons(sku: number): LadderSeasonRecord[];
     getLadderSeasonById(sku: number, id: number): LadderSeasonRecord | undefined;
     updateLadderSeasonStatus(sku: number, id: number, status: string): boolean;
+    updateLadderSeasonDetails(sku: number, id: number, name: string, startTime: number, endTime: number): boolean;
 
     // Standings, ordered by lastGameAt desc within the same rating (the
     // comparator in rating.ts defines the final order; storage order is only
@@ -118,6 +120,8 @@ export interface Storage {
     searchLadderUsernames(prefix: string, limit: number): string[];
     countStandingPlayers(): number;
     getLadderStandingsByUser(usernameKey: string): LadderStandingRecord[];
+    deleteStandingsByUser(usernameKey: string): number;
+    deleteMatchPlayersByUser(usernameKey: string): number;
 
     close(): void;
 }

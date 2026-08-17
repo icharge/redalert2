@@ -1,4 +1,4 @@
-import { Database } from "bun:sqlite";
+import { Database, SQLQueryBindings } from "bun:sqlite";
 import {
     AccountRecord,
     LadderMatchPlayerRecord,
@@ -75,6 +75,7 @@ export class SqliteStorage implements Storage {
     private db: Database;
     private accountInsert;
     private accountSelect;
+    private accountBanned;
     private accountCount;
     private sessionInsert;
     private sessionSelect;
@@ -85,6 +86,7 @@ export class SqliteStorage implements Storage {
     private seasonSelectAll;
     private seasonSelectById;
     private seasonUpdateStatus;
+    private seasonUpdateDetails;
     private standingSelect;
     private standingSelectAll;
     private standingUpsert;
@@ -197,6 +199,7 @@ export class SqliteStorage implements Storage {
             ON ladder_match_players (username_key, reported_at DESC)`);
         this.accountInsert = db.prepare("INSERT INTO accounts (username_key, username, password_hash, created_at, banned) VALUES (?, ?, ?, ?, ?)");
         this.accountSelect = db.prepare("SELECT username, password_hash, created_at, banned FROM accounts WHERE username_key = ?");
+        this.accountBanned = db.prepare("UPDATE accounts SET banned = ? WHERE username_key = ?");
         this.accountCount = db.prepare("SELECT COUNT(*) AS count FROM accounts");
         this.sessionInsert = db.prepare("INSERT INTO sessions (token, username, created_at) VALUES (?, ?, ?)");
         this.sessionSelect = db.prepare("SELECT token, username, created_at FROM sessions WHERE token = ?");
@@ -208,6 +211,7 @@ export class SqliteStorage implements Storage {
         this.seasonSelectAll = db.prepare("SELECT id, name, sku, start_time, end_time, status FROM ladder_seasons WHERE sku = ? ORDER BY start_time DESC");
         this.seasonSelectById = db.prepare("SELECT id, name, sku, start_time, end_time, status FROM ladder_seasons WHERE sku = ? AND id = ?");
         this.seasonUpdateStatus = db.prepare("UPDATE ladder_seasons SET status = ? WHERE sku = ? AND id = ?");
+        this.seasonUpdateDetails = db.prepare("UPDATE ladder_seasons SET name = ?, start_time = ?, end_time = ? WHERE sku = ? AND id = ?");
         this.standingSelect = db.prepare(`SELECT username_key, username, season_id, ladder_type, rating, wins, losses, draws,
             placement_games, win_streak, bonus_pool, last_game_at FROM ladder_standings
             WHERE username_key = ? AND season_id = ? AND ladder_type = ?`);
@@ -278,6 +282,10 @@ export class SqliteStorage implements Storage {
         } : undefined;
     }
 
+    setAccountBanned(usernameKey: string, banned: boolean): boolean {
+        return this.accountBanned.run(banned ? 1 : 0, usernameKey.toLowerCase()).changes > 0;
+    }
+
     countAccounts(): number {
         return (this.accountCount.get() as { count: number }).count;
     }
@@ -318,6 +326,10 @@ export class SqliteStorage implements Storage {
 
     updateLadderSeasonStatus(sku: number, id: number, status: string): boolean {
         return this.seasonUpdateStatus.run(status, sku, id).changes > 0;
+    }
+
+    updateLadderSeasonDetails(sku: number, id: number, name: string, startTime: number, endTime: number): boolean {
+        return this.seasonUpdateDetails.run(name, startTime, endTime, sku, id).changes > 0;
     }
 
     getLadderStanding(usernameKey: string, seasonId: number, ladderType: string): LadderStandingRecord | undefined {
@@ -449,6 +461,14 @@ export class SqliteStorage implements Storage {
         return (this.standingsByUser.all(usernameKey.toLowerCase()) as LadderStandingRow[]).map(this.mapStanding);
     }
 
+    deleteStandingsByUser(usernameKey: string): number {
+        return dbChanges(this.db, "DELETE FROM ladder_standings WHERE username_key = ?", usernameKey.toLowerCase());
+    }
+
+    deleteMatchPlayersByUser(usernameKey: string): number {
+        return dbChanges(this.db, "DELETE FROM ladder_match_players WHERE username_key = ?", usernameKey.toLowerCase());
+    }
+
     close(): void {
         this.db.close();
     }
@@ -492,4 +512,8 @@ export class SqliteStorage implements Storage {
             lastGameAt: row.last_game_at,
         };
     }
+}
+
+function dbChanges(db: Database, sql: string, ...params: SQLQueryBindings[]): number {
+    return db.query(sql).run(...params).changes;
 }

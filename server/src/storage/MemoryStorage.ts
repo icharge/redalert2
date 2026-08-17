@@ -28,6 +28,15 @@ export class MemoryStorage implements Storage {
         return this.accounts.get(username.toLowerCase());
     }
 
+    setAccountBanned(usernameKey: string, banned: boolean): boolean {
+        const account = this.accounts.get(usernameKey.toLowerCase());
+        if (!account) {
+            return false;
+        }
+        this.accounts.set(usernameKey.toLowerCase(), { ...account, banned });
+        return true;
+    }
+
     countAccounts(): number {
         return this.accounts.size;
     }
@@ -80,6 +89,16 @@ export class MemoryStorage implements Storage {
             return false;
         }
         this.seasons.set(key, { ...season, status });
+        return true;
+    }
+
+    updateLadderSeasonDetails(sku: number, id: number, name: string, startTime: number, endTime: number): boolean {
+        const key = this.seasonKey(sku, id);
+        const season = this.seasons.get(key);
+        if (!season) {
+            return false;
+        }
+        this.seasons.set(key, { ...season, name, startTime, endTime });
         return true;
     }
 
@@ -194,6 +213,30 @@ export class MemoryStorage implements Storage {
     getLadderStandingsByUser(usernameKey: string): LadderStandingRecord[] {
         const key = usernameKey.toLowerCase();
         return [...this.standings.values()].filter(standing => standing.usernameKey === key);
+    }
+
+    deleteStandingsByUser(usernameKey: string): number {
+        const key = usernameKey.toLowerCase();
+        let removed = 0;
+        for (const [mapKey, standing] of this.standings) {
+            if (standing.usernameKey === key) {
+                this.standings.delete(mapKey);
+                removed += 1;
+            }
+        }
+        return removed;
+    }
+
+    deleteMatchPlayersByUser(usernameKey: string): number {
+        const key = usernameKey.toLowerCase();
+        let removed = 0;
+        for (const [mapKey, record] of this.matchPlayers) {
+            if (record.usernameKey === key) {
+                this.matchPlayers.delete(mapKey);
+                removed += 1;
+            }
+        }
+        return removed;
     }
 
     close(): void {

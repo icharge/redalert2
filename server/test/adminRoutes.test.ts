@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { handleHttp, HttpDeps } from "../src/http/routes";
+import { FakeSocket } from "./helpers";
 import { AccountStore } from "../src/auth/accountStore";
 import { SessionManager } from "../src/auth/session";
 import { loadConfig, ServerConfig } from "../src/config";
@@ -260,6 +261,58 @@ describe("admin routes", () => {
         });
         // Requires admin like everything else.
         expect((await handleHttp(new Request("http://localhost/admin/config"), deps, config)).status).toBe(401);
+    });
+
+    test("player management: ban revokes sessions and kicks, unban restores, reset clears stats", async () => {
+        const { config, deps, ladder, sessions } = setup();
+        const token = await adminToken(sessions, "root");
+        // Create the target account + an active session + WOL connection.
+        await deps.accounts.register("charge", "password123");
+        const targetToken = await adminToken(sessions, "charge");
+        const socket = new FakeSocket();
+        const user = deps.wol.handleOpen(socket);
+        user.nick = "charge";
+        user.authenticated = true;
+        deps.wol.users.set("charge", user);
+        // Some ladder footprint.
+        ladder.recordMatch({
+            sku: RA2_SKU,
+            gameId: "g-ban-1",
+            ladderType: "1v1",
+            duration: 300,
+            players: [
+                { name: "charge", resultType: WolGameReportResult.Win },
+                { name: "victim", resultType: WolGameReportResult.Loss },
+            ],
+        });
+
+        // Ban: session revoked + connection kicked + flag set.
+        const ban = await post(config, deps, "/admin/players/charge/ban", token);
+        expect(ban.status).toBe(200);
+        expect((await ban.json())).toEqual({ name: "charge", banned: true });
+        expect(deps.sessions.validate(targetToken)).toBeUndefined();
+        expect(socket.readyState).toBe(3);
+        expect(deps.accounts.get("charge")!.banned).toBe(true);
+        expect((await get(config, deps, "/admin/players/charge", token)).json()).resolves.toMatchObject({
+            account: { username: "charge", banned: true },
+        });
+
+        // Unban restores login.
+        const unban = await post(config, deps, "/admin/players/charge/unban", token);
+        expect(unban.status).toBe(200);
+        expect(deps.accounts.get("charge")!.banned).toBe(false);
+
+        // Reset wipes standings + history but keeps the match archive.
+        const reset = await post(config, deps, "/admin/players/charge/reset", token);
+        expect(reset.status).toBe(200);
+        const resetData: any = await reset.json();
+        expect(resetData.standingsRemoved).toBe(1);
+        expect(resetData.matchesRemoved).toBe(1);
+        expect(deps.ladder.getMatch("g-ban-1")?.scored).toBe(true);
+        expect((await get(config, deps, "/admin/players/charge", token)).status).toBe(404);
+
+        // Unknown player 404s.
+        expect((await post(config, deps, "/admin/players/nobody/ban", token)).status).toBe(404);
     });
 
     test("admin routes answer preflight with CORS headers", async () => {

@@ -106,6 +106,13 @@ export const api = {
     closeSeason(sku: number, id: number): Promise<{ ok: boolean }> {
         return request(`/admin/seasons/${id}/close?sku=${sku}`, { method: "POST" });
     },
+    updateSeason(sku: number, id: number, patch: { name?: string; startTime?: number; endTime?: number }): Promise<SeasonStats> {
+        return request(`/admin/seasons/${id}?sku=${sku}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(patch),
+        });
+    },
     matches(limit = 50, player?: string): Promise<AdminMatch[]> {
         const params = new URLSearchParams({ limit: String(limit) });
         if (player) {
@@ -126,6 +133,12 @@ export const api = {
         }
         const query = params.toString();
         return request(`/admin/players/${encodeURIComponent(name)}` + (query ? "?" + query : ""));
+    },
+    banPlayer(name: string, banned: boolean): Promise<{ name: string; banned: boolean }> {
+        return request(`/admin/players/${encodeURIComponent(name)}/${banned ? "ban" : "unban"}`, { method: "POST" });
+    },
+    resetPlayerStats(name: string): Promise<{ name: string; standingsRemoved: number; matchesRemoved: number }> {
+        return request(`/admin/players/${encodeURIComponent(name)}/reset`, { method: "POST" });
     },
     replays(limit = 50): Promise<ReplayEntry[]> {
         return request(`/admin/replays?limit=${limit}`);

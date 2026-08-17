@@ -49,6 +49,10 @@ export class AccountStore {
         return this.storage.getAccount(username);
     }
 
+    setBanned(username: string, banned: boolean): boolean {
+        return this.storage.setAccountBanned(username, banned);
+    }
+
     isFresh(account: Account): boolean {
         return Date.now() - account.createdAt < this.limits.freshAccountAgeSeconds * 1000;
     }

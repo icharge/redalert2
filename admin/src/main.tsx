@@ -15,6 +15,16 @@ function fmtTime(ms: number): string {
     return new Date(ms).toLocaleString();
 }
 
+function toDatetimeLocal(ms: number): string {
+    const d = new Date(ms);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function fromDatetimeLocal(value: string): number {
+    return new Date(value).getTime();
+}
+
 function fmtDuration(seconds: number): string {
     const m = Math.floor(seconds / 60);
     const s = seconds % 60;
@@ -93,6 +103,10 @@ function SeasonsView({ onError }: { onError: (e: string) => void }) {
     const [seasons, setSeasons] = useState<SeasonStats[] | undefined>();
     const [name, setName] = useState("");
     const [sku, setSku] = useState(16640);
+    const [editing, setEditing] = useState<string | undefined>();
+    const [editName, setEditName] = useState("");
+    const [editStart, setEditStart] = useState("");
+    const [editEnd, setEditEnd] = useState("");
 
     const load = () => {
         api.seasons().then(setSeasons).catch((e) => onError(String(e)));
@@ -120,6 +134,26 @@ function SeasonsView({ onError }: { onError: (e: string) => void }) {
             onError(String(e));
         }
     };
+    const startEdit = (s: SeasonStats) => {
+        setEditing(`${s.sku}-${s.id}`);
+        setEditName(s.name);
+        setEditStart(toDatetimeLocal(s.startTime));
+        setEditEnd(toDatetimeLocal(s.endTime));
+    };
+    const saveEdit = async (s: SeasonStats) => {
+        try {
+            await api.updateSeason(s.sku, s.id, {
+                name: editName,
+                startTime: fromDatetimeLocal(editStart),
+                endTime: fromDatetimeLocal(editEnd),
+            });
+            setEditing(undefined);
+            load();
+        }
+        catch (e) {
+            onError(String(e));
+        }
+    };
     return (
         <div>
             <div className="card">
@@ -138,21 +172,49 @@ function SeasonsView({ onError }: { onError: (e: string) => void }) {
                 <table>
                     <thead><tr><th>ID</th><th>Name</th><th>Game</th><th>Status</th><th>Start</th><th>End</th><th>Ranked (1v1 / 2v2)</th><th>Matches</th><th/></tr></thead>
                     <tbody>
-                        {seasons.map((s) => (
-                            <tr key={s.sku + "-" + s.id}>
-                                <td>{s.id}</td>
-                                <td>{s.name}</td>
-                                <td>{SKU_LABEL[s.sku] ?? s.sku}</td>
-                                <td><span className={"badge " + (s.isCurrent ? "current" : s.status)}>{s.isCurrent ? "current" : s.status}</span></td>
-                                <td>{fmtTime(s.startTime)}</td>
-                                <td>{fmtTime(s.endTime)}</td>
-                                <td>{s.rankedPlayers["1v1"] ?? 0} / {s.rankedPlayers["2v2-random"] ?? 0}</td>
-                                <td>{(s.matches["1v1"] ?? 0) + (s.matches["2v2-random"] ?? 0)}</td>
-                                <td>{s.status !== "closed" && !s.isCurrent && (
-                                    <button className="danger" onClick={() => close(s)}>Close</button>
-                                )}</td>
-                            </tr>
-                        ))}
+                        {seasons.map((s) => {
+                            const isEditing = editing === `${s.sku}-${s.id}`;
+                            return (
+                                <tr key={s.sku + "-" + s.id}>
+                                    <td>{s.id}</td>
+                                    {isEditing ? (
+                                        <td><input style={{ width: 160 }} value={editName} onChange={(e) => setEditName(e.target.value)}/></td>
+                                    ) : (
+                                        <td>{s.name}</td>
+                                    )}
+                                    <td>{SKU_LABEL[s.sku] ?? s.sku}</td>
+                                    <td><span className={"badge " + (s.isCurrent ? "current" : s.status)}>{s.isCurrent ? "current" : s.status}</span></td>
+                                    {isEditing ? (
+                                        <>
+                                            <td><input type="datetime-local" value={editStart} onChange={(e) => setEditStart(e.target.value)}/></td>
+                                            <td><input type="datetime-local" value={editEnd} onChange={(e) => setEditEnd(e.target.value)}/></td>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <td>{fmtTime(s.startTime)}</td>
+                                            <td>{fmtTime(s.endTime)}</td>
+                                        </>
+                                    )}
+                                    <td>{s.rankedPlayers["1v1"] ?? 0} / {s.rankedPlayers["2v2-random"] ?? 0}</td>
+                                    <td>{(s.matches["1v1"] ?? 0) + (s.matches["2v2-random"] ?? 0)}</td>
+                                    <td>
+                                        {isEditing ? (
+                                            <>
+                                                <button className="primary" onClick={() => saveEdit(s)}>Save</button>{" "}
+                                                <button onClick={() => setEditing(undefined)}>Cancel</button>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <button onClick={() => startEdit(s)}>Edit</button>{" "}
+                                                {s.status !== "closed" && !s.isCurrent && (
+                                                    <button className="danger" onClick={() => close(s)}>Close</button>
+                                                )}
+                                            </>
+                                        )}
+                                    </td>
+                                </tr>
+                            );
+                        })}
                     </tbody>
                 </table>
             </div>
@@ -355,6 +417,7 @@ function PlayersView({ onError }: { onError: (e: string) => void }) {
     const [results, setResults] = useState<PlayerSearchResult[] | undefined>();
     const [selected, setSelected] = useState<PlayerSearchResult | undefined>();
     const [history, setHistory] = useState<PlayerHistory | undefined>();
+    const [info, setInfo] = useState<string | undefined>();
 
     const search = async () => {
         setSelected(undefined);
@@ -379,12 +442,40 @@ function PlayersView({ onError }: { onError: (e: string) => void }) {
             onError(String(e));
         }
     };
+    const refreshSelected = async () => {
+        if (selected) {
+            await open(selected);
+        }
+    };
+    const ban = async (name: string, banned: boolean) => {
+        try {
+            await api.banPlayer(name, banned);
+            await search();
+            await refreshSelected();
+        }
+        catch (e) {
+            onError(String(e));
+        }
+    };
+    const resetStats = async (name: string) => {
+        try {
+            const result = await api.resetPlayerStats(name);
+            await search();
+            await refreshSelected();
+            setInfo(`${result.name}: removed ${result.standingsRemoved} standing(s) and ${result.matchesRemoved} history row(s)`);
+        }
+        catch (e) {
+            onError(String(e));
+        }
+    };
     const standing = selected?.standings.find((s) => s.ladderType === "1v1");
+    const account = history?.account;
     return (
         <div>
             <div className="row">
                 <input placeholder="Player name prefix" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === "Enter" && search()}/>
                 <button className="primary" onClick={search}>Search</button>
+                {info && <span className="win">{info}</span>}
             </div>
             {results && (
                 <div className="card">
@@ -406,7 +497,16 @@ function PlayersView({ onError }: { onError: (e: string) => void }) {
             )}
             {selected && (
                 <div className="card">
-                    <h3>{selected.name}</h3>
+                    <div className="row">
+                        <h3 style={{ margin: 0 }}>{selected.name}</h3>
+                        {account && (
+                            <>
+                                <span className={"badge " + (account.banned ? "closed" : "current")}>{account.banned ? "banned" : "active"}</span>
+                                {account.online && <span className="badge">online</span>}
+                                <span className="muted">account created {fmtTime(account.createdAt)}</span>
+                            </>
+                        )}
+                    </div>
                     {standing && (
                         <div className="row">
                             <span className="muted">1v1:</span>
@@ -416,6 +516,12 @@ function PlayersView({ onError }: { onError: (e: string) => void }) {
                             <span>placement {standing.placementGames}/10</span>
                         </div>
                     )}
+                    <div className="row">
+                        <button className={account?.banned ? "" : "danger"} onClick={() => ban(selected.name, !account?.banned)}>
+                            {account?.banned ? "Unban" : "Ban"}
+                        </button>
+                        <button onClick={() => resetStats(selected.name)}>Reset ladder stats</button>
+                    </div>
                     {history && (
                         <table>
                             <thead><tr><th>Game</th><th>Ladder</th><th>Result</th><th>Map</th><th>Points</th><th>MMR</th><th>When</th></tr></thead>

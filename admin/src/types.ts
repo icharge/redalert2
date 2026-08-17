@@ -70,6 +70,12 @@ export interface PlayerSearchResult {
 
 export interface PlayerHistory {
     name: string;
+    account?: {
+        username: string;
+        banned: boolean;
+        createdAt: number;
+        online: boolean;
+    };
     matches: {
         gameId: string;
         seasonId: number;
