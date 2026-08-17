@@ -402,6 +402,18 @@
     "ts:leave_game": "离开游戏",
     "ts:game_restored": "你的游戏已从浏览器缓存中恢复。\n\n离开期间游戏已暂停。\n\n点击确定继续游戏。",
     "ts:player_reconnecting": "%s 正在重新连接。重新加入后游戏将继续。",
+    "ts:player_reconnected": "%s 已重新加入。",
+    "ts:player_reconnect_timeout": "%s 未能在限定时间内重新连接，已被判定失败。",
+    "ts:player_left": "%s 已离开游戏。",
+    "ts:game_pausing_in": "将在 %d 秒后暂停游戏...",
+    "ts:game_resuming_in": "将在 %d 秒后继续游戏...",
+    "ts:game_pausing_in_chat": "[系统] 游戏将在 %d 秒后暂停...",
+    "ts:game_resuming_in_chat": "[系统] 游戏将在 %d 秒后继续...",
+    "ts:game_paused": "游戏已暂停",
+    "ts:game_resumed": "游戏已继续",
+    "ts:game_no_longer_exists": "你之前的对局已结束或不再存在。",
+    "gui:pause_game": "暂停游戏",
+    "gui:resume_game": "继续游戏",
     "gui:cancel": "取消",
     "gui:quit": "退出"
 }

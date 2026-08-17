@@ -5,8 +5,8 @@ Audience: engineers working on the client (RA2 Web TS port) and the replacement 
 
 ## Implementation status (v1)
 
-Implemented and tested (server: 198 tests incl. reconnect suite; client: 217 tests
-incl. `src/test/rejoinE2E.test.ts` end-to-end reconnect over the real stack):
+Implemented and tested (server: 202 tests; client: 225 tests incl.
+`src/test/rejoinE2E.test.ts` end-to-end reconnect over the real stack):
 
 - Server: loading-phase departure grace (`loadingDepartures` + sweep abort), tickets
   kept valid until instance retire (re-login/rejoin works), mid-game rejoin admission
@@ -21,6 +21,48 @@ incl. `src/test/rejoinE2E.test.ts` end-to-end reconnect over the real stack):
   online join path.
 - Known limits (v1): the catch-up replay runs at CPU speed (long matches take a while
   on the rejoining client); no LAN rejoin yet; no rejoin time-limit policy for ranked.
+
+## Whole-game pause (MOBA-style, v1)
+
+Implemented alongside reconnect (same relay-hold machinery):
+
+- `pause` / `resume` gserv commands; any member can pause/resume. A 3s server-timed
+  countdown runs on both sides (`RPL_GAME_PAUSE_COUNTDOWN/RESUMED`-style broadcasts:
+  `809` pause countdown, `810` paused, `811` resume countdown, `812` resumed). Resume
+  during the pause countdown cancels it; pause during a resume countdown cancels the
+  resume. Per-player pause cooldown (30s).
+- While paused the relay holds (`flushPendingTurns` skips) — every client freezes
+  naturally and the small accumulated backlog (2-3 turns) flushes on resume.
+- Client: "Pause Game"/"Resume Game" button in the in-game menu (MP only), countdown
+  overlay + paused dialog with a Resume button, system messages on resume.
+- Config: `GSERV_PAUSE_COUNTDOWN_MILLIS` (3000), `GSERV_PAUSE_COOLDOWN_MILLIS` (30000),
+  `GSERV_REJOIN_RESUME_COUNTDOWN_MILLIS` (3000), `GSERV_RECONNECT_GRACE_SECONDS` (30).
+- Composes with reconnect: a pause during a disconnect hold just rides on top; on
+  unpause the relay stays held until the departed player returns or their grace
+  expires.
+
+## Reconnect UX (final, per playtest feedback)
+
+- **Disconnect (required player):** server broadcasts `RPL_PLAYER_DISCONNECT` (804,
+  "X has left the game") + `RPL_PLAYER_RECONNECTING` (806) to all members; the relay
+  holds (game pauses). Clients show the connection-info screen (players + ping) after
+  ~2s of stall (original lag behavior) and auto-close it on resume.
+- **Rejoin + ready:** after the rejoiner catches up and signals `ready`, the server
+  runs a short resume countdown (`GSERV_REJOIN_RESUME_COUNTDOWN_MILLIS`, 3s) holding
+  the relay, broadcasting `RPL_GAME_RESUME_COUNTDOWN`/`RESUMED`; clients post
+  per-second `[System] Game resuming in 3/2/1...` chat messages plus the overlay, then
+  the relay resumes and the connection-info screen closes.
+- **Timeout (`GSERV_RECONNECT_GRACE_SECONDS`, 30s):** the departed player's missing
+  submissions are backfilled with a `ResignGame` action (units destroyed, marked
+  defeated) instead of `NO_ACTION` — in a 2-player game the remaining player wins
+  immediately; in 3+ the game continues without them. Clients show "X did not
+  reconnect in time and has been defeated."
+- **Game already ended while away:** the rejoiner's catch-up detects `Ended` and goes
+  straight to the result / score screen instead of entering a frozen game.
+- **Game no longer exists:** a failed reconnect re-entry surfaces a clear
+  "The game you were in has ended or no longer exists." dialog (reconnect-tagged
+  `InstanceNonExistent`).
+- **Loading screen** lists the local player first.
 
 ## 1. Problem statement
 

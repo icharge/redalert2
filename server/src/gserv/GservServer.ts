@@ -46,8 +46,14 @@ const MAX_BINARY_FRAME_BYTES = 64 * 1024;
 const TURN_WINDOW = 8;
 const MAX_PENDING_TURNS = 16;
 const SWEEP_INTERVAL_MS = 30_000;
+const STALE_TURN_LOG_INTERVAL_MS = 5_000;
 
 const NO_ACTION_BLOB = serializePlayerActions([{ id: NO_ACTION_ID, params: new Uint8Array() }]);
+// ActionType.ResignGame (client: src/game/action/ActionType.ts). Injected for a
+// departed player whose rejoin window expires: their assets are destroyed and
+// they are marked defeated, exactly like a normal resign.
+const RESIGN_GAME_ACTION_ID = 3;
+const RESIGN_ACTION_BLOB = serializePlayerActions([{ id: RESIGN_GAME_ACTION_ID, params: new Uint8Array() }]);
 
 interface PendingSubmission {
     playerId: number;
@@ -78,6 +84,18 @@ interface InstanceState {
     // Nicks admitted back into a started instance who have not yet finished
     // catching up (sent "ready"). Their action submissions are ignored.
     rejoiningNicks: Set<string>;
+    // Whole-game pause (MOBA-style). While paused the relay holds and every
+    // client freezes; resume flushes the small accumulated backlog.
+    paused: boolean;
+    pauseCountdownUntil?: number;
+    resumeCountdownUntil?: number;
+    pauseTimer?: ReturnType<typeof setTimeout>;
+    lastPauseByNick: Map<string, number>;
+    lastStaleLogByNick: Map<string, number>;
+    // Latest per-turn state hashes from each client (REQ_BIN_GAME_STATE_HASH);
+    // compared to surface silent desyncs as a fatal error.
+    hashByTurn: Map<number, Map<string, number>>;
+    desyncReported: boolean;
     lastTurnNo: number;
     stats: InstanceStats;
 }
@@ -213,9 +231,10 @@ export class GservServer {
                     // Required player dropped mid-game: open the rejoin grace
                     // window. They stay in requiredNicks so the relay holds and
                     // the game pauses until they rejoin (resync) or the window
-                    // expires (backfill + continue, see expireDeparted).
+                    // expires (resign + continue, see expireDeparted).
                     state.departedAt.set(client.nick, Date.now() + this.config.reconnectGraceSeconds * 1000);
                     this.log.info(`player ${client.nick} dropped mid-game; rejoin window opened for instance ${gameId}`);
+                    this.broadcastLine(client, `:${this.serverName} ${Code.RPL_PLAYER_DISCONNECT} ${client.nick} :${client.nick}`);
                     this.broadcastLine(client, `:${this.serverName} ${Code.RPL_PLAYER_RECONNECTING} ${client.nick} :${client.nick}`);
                 }
                 else {
@@ -297,6 +316,12 @@ export class GservServer {
                 break;
             case "ready":
                 this.handleReady(client, parts);
+                break;
+            case "pause":
+                this.handlePause(client);
+                break;
+            case "resume":
+                this.handleResume(client);
                 break;
             case "loadinfo":
                 this.handleLoadInfo(client);
@@ -432,6 +457,9 @@ export class GservServer {
         members.set(client.nick, client);
         state.departedAt.delete(client.nick);
         state.rejoiningNicks.add(client.nick);
+        // A stuck rejoiner must not hold the relay forever: the sweep expires
+        // them from the rejoin window (backfill + continue) if they never ready.
+        state.departedAt.set(client.nick, Date.now() + this.config.reconnectGraceSeconds * 1000);
         this.log.info(`rejoin instance ${gameId} as ${client.nick} (resync to turn ${state.lastTurnNo})`);
         client.socket.send(`:${this.serverName} ${Code.RPL_INSTANCE_CONNECTED} ${client.nick} :connected\r\n`);
         client.socket.send(`:${this.serverName} ${Code.RPL_NET_RATE} ${client.nick} :${this.config.netRateMs},0\r\n`);
@@ -516,6 +544,11 @@ export class GservServer {
             turnLog: new Map(),
             departedAt: new Map(),
             rejoiningNicks: new Set(),
+            paused: false,
+            lastPauseByNick: new Map(),
+            lastStaleLogByNick: new Map(),
+            hashByTurn: new Map(),
+            desyncReported: false,
             lastTurnNo: -1,
             stats: {
                 windowStart: Date.now(),
@@ -532,11 +565,25 @@ export class GservServer {
 
     private handleActive(client: GservClient, active: boolean): void {
         client.active = active;
-        if (active || !client.instance) {
+        if (!client.instance) {
             return;
         }
         const state = this.instanceStates.get(client.instance.gameId);
         if (!state) {
+            return;
+        }
+        if (active) {
+            // Mirrors the requiredNicks.add() in handleReady: a non-observer
+            // player coming back from passive (e.g. GameAnimationLoop marking
+            // them passive while their tab was backgrounded) must be required
+            // for the relay again, or their turns are permanently rejected as
+            // stale from here on and their input silently stops applying.
+            if (!state.rejoiningNicks.has(client.nick)) {
+                const playerId = state.recorder.playerIdFor(client.nick);
+                if (playerId !== undefined && !state.recorder.isObserver(client.nick)) {
+                    state.requiredNicks.add(client.nick);
+                }
+            }
             return;
         }
         if (!state.requiredNicks.delete(client.nick)) {
@@ -572,14 +619,98 @@ export class GservServer {
             state.requiredNicks.add(client.nick);
         }
         state.departedAt.delete(client.nick);
-        if (rejoining || playerId !== undefined) {
-            this.log.info(`player ${client.nick} rejoined at turn ${turnNo}`);
+        if (rejoining) {
+            this.log.info(`player ${client.nick} rejoined at turn ${turnNo}; resuming in ${this.config.rejoinResumeCountdownMillis}ms`);
             this.broadcastLine(client, `:${this.serverName} ${Code.RPL_PLAYER_RECONNECTED} ${client.nick} :${client.nick}`);
+            // Everyone is synced; run a short countdown before the relay
+            // resumes so all players are ready.
+            state.resumeCountdownUntil = Date.now() + this.config.rejoinResumeCountdownMillis;
+            this.broadcastAll(state, `:${this.serverName} ${Code.RPL_GAME_RESUME_COUNTDOWN} ${client.nick} :${client.nick}`);
+            this.schedulePauseTimer(state, client.instance.gameId, this.config.rejoinResumeCountdownMillis);
         }
     }
 
-    // Ends the rejoin grace windows that have expired: backfills the departed
-    // players' missing submissions with NoAction and removes them from the
+    private handlePause(client: GservClient): void {
+        const state = client.instance ? this.instanceStates.get(client.instance.gameId) : undefined;
+        if (!state || !client.instance) {
+            return;
+        }
+        const now = Date.now();
+        if (state.paused || state.pauseCountdownUntil !== undefined) {
+            return;
+        }
+        const lastPause = state.lastPauseByNick.get(client.nick) ?? 0;
+        if (now - lastPause < this.config.pauseCooldownMillis) {
+            this.log.warn(`pause request from ${client.nick} ignored (cooldown)`);
+            return;
+        }
+        state.lastPauseByNick.set(client.nick, now);
+        if (state.resumeCountdownUntil !== undefined) {
+            this.clearPauseTimer(state);
+            state.resumeCountdownUntil = undefined;
+            this.broadcastAll(state, `:${this.serverName} ${Code.RPL_GAME_PAUSED} ${client.nick} :${client.nick}`);
+            return;
+        }
+        state.pauseCountdownUntil = now + this.config.pauseCountdownMillis;
+        this.log.info(`pause requested by ${client.nick} for instance ${client.instance.gameId}`);
+        this.broadcastAll(state, `:${this.serverName} ${Code.RPL_GAME_PAUSE_COUNTDOWN} ${client.nick} :${client.nick}`);
+        this.schedulePauseTimer(state, client.instance.gameId, this.config.pauseCountdownMillis);
+    }
+
+    private handleResume(client: GservClient): void {
+        const state = client.instance ? this.instanceStates.get(client.instance.gameId) : undefined;
+        if (!state || !client.instance) {
+            return;
+        }
+        if (state.pauseCountdownUntil !== undefined) {
+            // Cancel a pending pause countdown: the game keeps running.
+            this.clearPauseTimer(state);
+            state.pauseCountdownUntil = undefined;
+            this.log.info(`pause countdown cancelled by ${client.nick} for instance ${client.instance.gameId}`);
+            this.broadcastAll(state, `:${this.serverName} ${Code.RPL_GAME_RESUMED} ${client.nick} :${client.nick}`);
+            return;
+        }
+        if (!state.paused || state.resumeCountdownUntil !== undefined) {
+            return;
+        }
+        state.resumeCountdownUntil = Date.now() + this.config.pauseCountdownMillis;
+        this.log.info(`resume requested by ${client.nick} for instance ${client.instance.gameId}`);
+        this.broadcastAll(state, `:${this.serverName} ${Code.RPL_GAME_RESUME_COUNTDOWN} ${client.nick} :${client.nick}`);
+        this.schedulePauseTimer(state, client.instance.gameId, this.config.pauseCountdownMillis);
+    }
+
+    private schedulePauseTimer(state: InstanceState, gameId: string, delayMs: number): void {
+        this.clearPauseTimer(state);
+        state.pauseTimer = setTimeout(() => {
+            state.pauseTimer = undefined;
+            const fresh = this.instanceStates.get(gameId);
+            if (fresh !== state) {
+                return;
+            }
+            if (state.pauseCountdownUntil !== undefined) {
+                state.pauseCountdownUntil = undefined;
+                state.paused = true;
+                this.log.info(`instance ${gameId} paused`);
+                this.broadcastAll(state, `:${this.serverName} ${Code.RPL_GAME_PAUSED} ${gameId} :paused`);
+            }
+            else if (state.resumeCountdownUntil !== undefined) {
+                state.resumeCountdownUntil = undefined;
+                state.paused = false;
+                this.log.info(`instance ${gameId} resumed`);
+                this.flushPendingTurns(state);
+                this.broadcastAll(state, `:${this.serverName} ${Code.RPL_GAME_RESUMED} ${gameId} :resumed`);
+            }
+        }, delayMs);
+    }
+
+    private clearPauseTimer(state: InstanceState): void {
+        if (state.pauseTimer !== undefined) {
+            clearTimeout(state.pauseTimer);
+            state.pauseTimer = undefined;
+        }
+    }
+
+    // Ends the rejoin grace windows that have expired: backfills the departed    // players' missing submissions with NoAction and removes them from the
     // relay requirement so the game can continue.
     private expireDeparted(state: InstanceState, gameId: string, nowMs: number = Date.now()): boolean {
         let expired = false;
@@ -592,14 +723,22 @@ export class GservServer {
             expired = true;
             const playerId = state.recorder.playerIdFor(nick);
             if (playerId !== undefined) {
+                let resignInjected = false;
                 for (const submissions of state.pending.values()) {
                     if (!submissions.has(nick)) {
-                        submissions.set(nick, { playerId, blob: NO_ACTION_BLOB });
+                        // The first pending turn resigns the departed player
+                        // (their assets are destroyed and they are defeated);
+                        // any further pending turns treat them as NoAction.
+                        submissions.set(nick, {
+                            playerId,
+                            blob: resignInjected ? NO_ACTION_BLOB : RESIGN_ACTION_BLOB,
+                        });
+                        resignInjected = true;
                     }
                 }
             }
             state.requiredNicks.delete(nick);
-            this.log.info(`rejoin grace expired for ${nick} in instance ${gameId}; continuing without them`);
+            this.log.info(`rejoin grace expired for ${nick} in instance ${gameId}; resigning them`);
             this.broadcastAll(state, `:${this.serverName} ${Code.RPL_PLAYER_GAVE_UP} ${nick} :${nick}`);
         }
         if (expired) {
@@ -707,6 +846,13 @@ export class GservServer {
         if (data.length < 6 || data[0] !== Code.REQ_BIN_PREFIX) {
             return;
         }
+        if (data[1] === Code.REQ_BIN_GAME_STATE_HASH && data.length >= 10 && client.instance) {
+            const state = this.instanceStates.get(client.instance.gameId);
+            if (state) {
+                this.handleGameStateHash(state, client.instance.gameId, client, data);
+            }
+            return;
+        }
         if (data[1] !== Code.REQ_BIN_GAME_ACTIONS || !client.instance) {
             return;
         }
@@ -735,7 +881,13 @@ export class GservServer {
         }
         const turnNo = new DataView(data.buffer, data.byteOffset, data.byteLength).getUint32(2, true);
         if (turnNo <= state.lastTurnNo) {
-            this.log.debug(`ignoring stale turn ${turnNo} from ${client.nick}`);
+            // A client submitting a turn already relayed is normal lockstep
+            // behavior (a lagging client catching up), so don't spam the log.
+            const now = Date.now();
+            if ((state.lastStaleLogByNick.get(client.nick) ?? 0) + STALE_TURN_LOG_INTERVAL_MS < now) {
+                state.lastStaleLogByNick.set(client.nick, now);
+                this.log.debug(`ignoring stale turn ${turnNo} from ${client.nick}`);
+            }
             return;
         }
         if (turnNo > state.lastTurnNo + TURN_WINDOW) {
@@ -757,7 +909,48 @@ export class GservServer {
         this.flushPendingTurns(state);
     }
 
+    private handleGameStateHash(state: InstanceState, gameId: string, client: GservClient, data: Uint8Array): void {
+        const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+        const turnNo = view.getUint32(2, true);
+        const hash = view.getUint32(6, true);
+        let hashes = state.hashByTurn.get(turnNo);
+        if (!hashes) {
+            hashes = new Map();
+            state.hashByTurn.set(turnNo, hashes);
+        }
+        hashes.set(client.nick, hash);
+        if (hashes.size >= 2) {
+            const values = [...hashes.values()];
+            const first = values[0];
+            if (!state.desyncReported && values.some(value => value !== first)) {
+                state.desyncReported = true;
+                this.log.error(`DESYNC detected in instance ${gameId} at turn ${turnNo}: ` +
+                    [...hashes.entries()].map(([nick, h]) => `${nick}=${h}`).join(" "));
+                for (const member of state.members.values()) {
+                    member.socket.send(`:${this.serverName} ${Code.RPL_GAME_DESYNC} ${member.nick} :desync\r\n`);
+                }
+            }
+            for (const turn of state.hashByTurn.keys()) {
+                if (turn < turnNo - 8) {
+                    state.hashByTurn.delete(turn);
+                }
+            }
+        }
+    }
+
     private flushPendingTurns(state: InstanceState): void {
+        if (state.paused || state.resumeCountdownUntil !== undefined) {
+            return;
+        }
+        // Hold the relay while a non-observer player is still catching up after
+        // a re-join: the resync point must stay stable until they signal ready,
+        // otherwise their first live submissions would be stale (relayed while
+        // they were away) and the relay would wait on a gap turn forever.
+        for (const nick of state.rejoiningNicks) {
+            if (state.recorder.playerIdFor(nick) !== undefined && !state.recorder.isObserver(nick)) {
+                return;
+            }
+        }
         for (const turnNo of [...state.pending.keys()].sort((a, b) => a - b)) {
             const submissions = state.pending.get(turnNo);
             if (submissions && [...state.requiredNicks].every(nick => submissions.has(nick))) {
@@ -793,6 +986,7 @@ export class GservServer {
     }
 
     private finalizeInstance(gameId: string, state: InstanceState): void {
+        this.clearPauseTimer(state);
         this.instanceStates.delete(gameId);
         // Keep the instance metadata (roster, ranked flag) around until the
         // report-window sweep so the game-res report arriving right after the

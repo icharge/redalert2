@@ -93,17 +93,15 @@ export class WorkerHost {
         }
     }
 
-    queueTask(task: (worker: WorkerHandle) => Promise<void>): void {
+    queueTask(task: (worker: WorkerHandle) => Promise<void>): Promise<void> {
         if (this.disposed) {
-            return;
+            return Promise.resolve();
         }
         this.warmUpPool();
-        this.queue.push({
-            run: task,
-            resolve: () => {},
-            reject: () => {},
+        return new Promise<void>((resolve, reject) => {
+            this.queue.push({ run: task, resolve, reject });
+            this.pump();
         });
-        this.pump();
     }
 
     async waitForTasks(): Promise<void> {

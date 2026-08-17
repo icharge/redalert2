@@ -17,6 +17,7 @@ export class LockstepManager {
     private queuedRateChanges: Array<{ rate: number; turnNo: number }> = [];
     private errorState = false;
     private passiveMode = false;
+    private suppressNetworkSends = false;
     private receivedActions = new Map<number, Map<number, Array<{ id: number; params: Uint8Array }>>>();
     private receivedNetworkTurn = 0;
     private commsLagStartTime?: number;
@@ -134,6 +135,14 @@ export class LockstepManager {
         this.gservCon.sendPlayerActive(!passive);
     }
 
+    // While a rejoining client re-simulates the match, its turn submissions and
+    // state hashes are stale (the server ignores them) and only cost CPU/IO
+    // over thousands of turns. Suppress them until the catch-up hands off to
+    // live play.
+    setSuppressNetworkSends(suppress: boolean): void {
+        this.suppressNetworkSends = suppress;
+    }
+
     getTurnMillis(): number {
         return this.gameTurnMillis;
     }
@@ -164,7 +173,7 @@ export class LockstepManager {
                         "for other clients to catch up.");
                 }
                 this.handleCommsLag(false, timestamp);
-                if (!this.passiveMode && this.currentNetworkTurn >= this.receivedNetworkTurn) {
+                if (!this.passiveMode && !this.suppressNetworkSends && this.currentNetworkTurn >= this.receivedNetworkTurn) {
                     this.sendActions();
                 }
                 if (this.currentNetworkTurn >= 2) {
@@ -177,7 +186,7 @@ export class LockstepManager {
                     this._onActionsProcessed.dispatch(undefined as any, this.currentNetworkTurn - 2);
                 }
                 this.game.update();
-                if (!this.passiveMode && this.currentNetworkTurn % this.hashCheckTurnInterval! === 0) {
+                if (!this.passiveMode && !this.suppressNetworkSends && this.currentNetworkTurn % this.hashCheckTurnInterval! === 0) {
                     this.gservCon.sendGameStateHash(this.currentNetworkTurn, this.game.getHash());
                 }
                 if (this.networkTurnMillis > this.gameTurnMillis) {

@@ -6,11 +6,17 @@ export class GameMenu {
     private _onOpen = new EventDispatcher<GameMenu, void>();
     private _onQuit = new EventDispatcher<GameMenu, void>();
     private _onObserve = new EventDispatcher<GameMenu, void>();
+    private _onPause = new EventDispatcher<GameMenu, void>();
     private _onCancel = new EventDispatcher<GameMenu, void>();
     private _onToggleAlliance = new EventDispatcher<GameMenu, any>();
     private _onSendMessage = new EventDispatcher<GameMenu, any>();
     private disposables = new CompositeDisposable();
     private controller?: GameMenuController;
+    private paused = false;
+    setPaused(paused: boolean): void {
+        this.paused = paused;
+    }
+    private isPaused = () => this.paused;
     get onOpen() {
         return this._onOpen.asEvent();
     }
@@ -19,6 +25,9 @@ export class GameMenu {
     }
     get onObserve() {
         return this._onObserve.asEvent();
+    }
+    get onPause() {
+        return this._onPause.asEvent();
     }
     get onCancel() {
         return this._onCancel.asEvent();
@@ -49,6 +58,12 @@ export class GameMenu {
                 this.localPlayer === undefined ||
                 this.localPlayer.isObserver ||
                 this.localPlayer.defeated),
+            pauseAllowed: !this.isSinglePlayer && Boolean(this.gservCon) && !this.localPlayer?.isObserver,
+            isPaused: this.isPaused,
+            onPause: () => {
+                this.controller!.close();
+                this._onPause.dispatch(this);
+            },
             onQuit: async () => {
                 this.controller!.close();
                 this._onQuit.dispatch(this);
