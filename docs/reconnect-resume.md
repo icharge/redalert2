@@ -5,7 +5,7 @@ Audience: engineers working on the client (RA2 Web TS port) and the replacement 
 
 ## Implementation status (v1)
 
-Implemented and tested (server: 202 tests; client: 225 tests incl.
+Implemented and tested (server: 208 tests; client: 240 tests incl.
 `src/test/rejoinE2E.test.ts` end-to-end reconnect over the real stack):
 
 - Server: loading-phase departure grace (`loadingDepartures` + sweep abort), tickets
@@ -63,6 +63,47 @@ Implemented alongside reconnect (same relay-hold machinery):
   "The game you were in has ended or no longer exists." dialog (reconnect-tagged
   `InstanceNonExistent`).
 - **Loading screen** lists the local player first.
+
+## Post-v1 playtest fixes (2026-08-17/18)
+
+Real 2-human + 1-bot playtests surfaced a desync that only ever fired right after a
+mid-game reconnect. Root-caused and fixed:
+
+- **Bots and map triggers never activated for a live-joined player.** `Game.status`
+  (`src/game/Game.ts`) was declared but never initialized in the constructor, so it was
+  `undefined` rather than `GameStatus.NotStarted` (`0`). The live-join guard in
+  `GameScreen.ts` (`if (game.status === GameStatus.NotStarted) game.start()`) therefore
+  never passed — `game.start()`, and with it `botManager.init()` / `triggers.init()`,
+  silently never ran. Both connected clients played the whole match with an inert bot
+  (identical broken state on both sides, so desync hashes still matched — nothing
+  flagged). The *only* place that ever called `game.start()` unconditionally was
+  `runRejoinCatchUp`, so a reconnecting client would be the first to ever actually
+  create the bot, mid-match — instantly diverging from the peer that never got one.
+  Fixed by initializing `this.status = GameStatus.NotStarted` in the `Game` constructor.
+- **A player who went passive (e.g. a backgrounded browser tab) never came back.**
+  `GameAnimationLoop` correctly calls `gameTurnMgr.setPassiveMode(true)` when the tab is
+  hidden (this is original upstream behavior, not a port bug) — but `GservServer.
+  handleActive` only handled the `active: false` half: it removed the nick from
+  `requiredNicks` and never re-added it when `active: true` came back in. From that
+  point on the player's turns were permanently rejected as stale
+  (`ignoring stale turn N from <nick>`, forever) even though their connection never
+  dropped. Fixed by mirroring `handleReady`'s re-admission logic for the `active: true`
+  case.
+- **The desync statedump/lockstep-log export was fully dead**, across four stacked
+  bugs, so a repro never actually produced a diagnostic bundle: `debugGameState`
+  (`ConsoleVars`) always defaulted to `false` regardless of `config.ini` (`Gui.ts` never
+  forced the config value onto the pre-existing `MockConsoleVars` BoxedVar);
+  `GameScreen.handleGameError` accepted a `debugDataProvider` callback but never called
+  it (upstream hands this to Sentry, which this fork mocks out as a no-op); the export
+  closure disposed the single `WorkerHost` shared for the whole app-session lifetime,
+  permanently breaking it (and future map loads) after the first desync; and
+  `WorkerHost.queueTask` silently discarded task rejections (no-op `resolve`/`reject`
+  stubs), so a failing compression step looked identical to success. Separately,
+  `compressFile`'s `7z-wasm` init was missing the `locateFile` override
+  `GameResImporter.ts` already needed for the same library, so the wasm binary failed
+  to load inside the worker. All fixed: a desync now downloads a single
+  `desync-debug.7z` (bundled statedump + lockstep log in one file, to avoid browsers'
+  multi-download blocker) instead of silently producing nothing.
 
 ## 1. Problem statement
 
