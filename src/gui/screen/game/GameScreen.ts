@@ -38,6 +38,8 @@ import { ChatTypingHandler } from '@/gui/screen/game/ChatTypingHandler';
 import { ConnectionInfoScreen } from '@/gui/screen/game/gameMenu/ConnectionInfoScreen';
 import { DataStream } from '@/data/DataStream';
 import { CON_INFO_THRESH_MILLIS, LAN_LOAD_TIMEOUT_MILLIS } from '@/network/gservConfig';
+
+const REJOIN_RESYNC_TIMEOUT_MILLIS = 30_000;
 import { GameRes } from '@/network/gameres/GameRes';
 import { Task } from '@puzzl/core/lib/async/Task';
 import { IrcConnection } from '@/network/IrcConnection';
@@ -87,6 +89,7 @@ export class GameScreen extends RootScreen {
     private sidebarModel?: any;
     private loadingScreenApi?: any;
     private lagState = false;
+    private rejoinHoldActive = false;
     private chatTypingHandler?: any;
     private chatNetHandler?: any;
     private lanMatchSession?: LanMatchSession;
@@ -332,9 +335,38 @@ export class GameScreen extends RootScreen {
             const rateChangeHandler = (rate: number) => this.gameTurnMgr.setRate(rate);
             this.gservCon.onRateChange.subscribe(rateChangeHandler);
             this.disposables.add(() => this.gservCon.onRateChange.unsubscribe(rateChangeHandler));
-            this.gservCon.onGameStart.subscribe(startGameHandler);
-            this.disposables.add(() => this.gservCon.onGameStart.unsubscribe(startGameHandler));
+            const reconnectingHandler = (nick: string) => {
+                if (nick !== playerName) {
+                    this.rejoinHoldActive = true;
+                    uiInitResult.messageList?.addSystemMessage?.(this.strings.get('ts:player_reconnecting', nick), 'grey');
+                }
+            };
+            const rejoinEndHandler = (nick: string) => {
+                if (nick !== playerName) {
+                    this.rejoinHoldActive = false;
+                }
+            };
+            this.gservCon.onPlayerReconnecting.subscribe(reconnectingHandler);
+            this.gservCon.onPlayerReconnected.subscribe(rejoinEndHandler);
+            this.gservCon.onPlayerGaveUp.subscribe(rejoinEndHandler);
+            this.disposables.add(
+                () => this.gservCon.onPlayerReconnecting.unsubscribe(reconnectingHandler),
+                () => this.gservCon.onPlayerReconnected.unsubscribe(rejoinEndHandler),
+                () => this.gservCon.onPlayerGaveUp.unsubscribe(rejoinEndHandler),
+            );
             this.gservCon.sendLoadedPercent(100);
+            const rejoinLog = this.gservCon.getResyncLog();
+            if (rejoinLog) {
+                await this.runRejoinCatchUp(rejoinLog, cancellationToken);
+                if (cancellationToken.isCancelled()) {
+                    return;
+                }
+                this.onGameStart(localPlayer, game, uiInitResult, actionQueue, actionFactory, replay);
+            }
+            else {
+                this.gservCon.onGameStart.subscribe(startGameHandler);
+                this.disposables.add(() => this.gservCon.onGameStart.unsubscribe(startGameHandler));
+            }
         }
     }
 
@@ -737,7 +769,7 @@ export class GameScreen extends RootScreen {
             if (lagState) {
                 connectionInfoTimer = new Task(async (token: any) => {
                     await sleep(CON_INFO_THRESH_MILLIS, token);
-                    if (!token.isCancelled()) {
+                    if (!token.isCancelled() && !this.rejoinHoldActive) {
                         this.menu?.openConnectionInfo(game.getCombatants(), this.gservCon, this.chatNetHandler);
                     }
                 });
@@ -1168,9 +1200,10 @@ export class GameScreen extends RootScreen {
         const gameEndHandler = () => this.onGameEnd(game, localPlayer, eva, replay);
         game.onEnd.subscribe(gameEndHandler);
         this.disposables.add(() => game.onEnd.unsubscribe(gameEndHandler));
-        game.start?.();
-        if (this.usesServerConnection()) {
-            this.initNetStats(localPlayer);
+        if (game.status !== GameStatus.Started) {
+            game.start?.();
+        }
+        if (this.usesServerConnection()) {            this.initNetStats(localPlayer);
         }
         this.gameAnimationLoop = new GameAnimationLoop(localPlayer, this.renderer, this.sound, this.gameTurnMgr, {
             skipFrames: true,
@@ -1256,6 +1289,61 @@ export class GameScreen extends RootScreen {
                 this.pausedAtSpeed = undefined;
             }
         });
+    }
+    private async runRejoinCatchUp(rejoinLog: { turnCount: number; frames: Map<number, Uint8Array> }, cancellationToken: any): Promise<void> {
+        const lockstepManager = this.gameTurnMgr;
+        const lastTurnNo = rejoinLog.turnCount;
+        if (lastTurnNo < 0) {
+            // No turns relayed yet: the live relay starts at turn 0 like a
+            // fresh join, so there is nothing to replay.
+            this.gservCon.sendReady(-1);
+            return;
+        }
+        const deadline = Date.now() + REJOIN_RESYNC_TIMEOUT_MILLIS;
+        while (rejoinLog.frames.size < lastTurnNo + 1) {
+            if (cancellationToken.isCancelled()) {
+                return;
+            }
+            if (Date.now() > deadline) {
+                this.handleError(new Error('Resync log incomplete'), this.strings.get('TS:ConnectFailed'));
+                return;
+            }
+            await sleep(25);
+        }
+        this.game?.start();
+        // Replay every turn except the last two at full speed. The pipeline
+        // naturally stops at lastTurnNo+1 (waiting on lastTurnNo-1), which is
+        // exactly where the live lockstep must resume: the last two turns are
+        // preloaded below and applied at their canonical ticks by the live
+        // loop, keeping the simulation aligned with the other clients.
+        for (let turnNo = 0; turnNo <= lastTurnNo - 2; turnNo++) {
+            const payload = rejoinLog.frames.get(turnNo);
+            if (payload) {
+                lockstepManager.feedActionsPayload(payload);
+            }
+        }
+        while (lockstepManager.getCurrentNetworkTurn() < lastTurnNo + 1) {
+            if (cancellationToken.isCancelled()) {
+                return;
+            }
+            if (!lockstepManager.doGameTurn(performance.now())) {
+                break;
+            }
+            this.loadingScreenApi?.onLoadProgress(Math.floor((lockstepManager.getCurrentNetworkTurn() / (lastTurnNo + 1)) * 100));
+            await sleep(0);
+        }
+        if (lastTurnNo >= 1) {
+            const secondLast = rejoinLog.frames.get(lastTurnNo - 1);
+            if (secondLast) {
+                lockstepManager.feedActionsPayload(secondLast);
+            }
+        }
+        const last = rejoinLog.frames.get(lastTurnNo);
+        if (last) {
+            lockstepManager.feedActionsPayload(last);
+        }
+        console.log('[GameScreen] rejoin catch-up finished at turn', lastTurnNo);
+        this.gservCon.sendReady(lastTurnNo);
     }
     private initGameMenuEvents(menu: any, eva: any, game: any, localPlayer: any, actionQueue: any, actionFactory: any): void {
         menu.onOpen.subscribe(() => {

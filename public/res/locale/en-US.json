@@ -422,5 +422,7 @@
     "ts:leave_game_confirm": "You are currently in an active game. Leaving now will disconnect you from this match and your current progress will be lost.\n\nAre you sure you want to leave?",
     "ts:leave_game": "Leave Game",
     "ts:game_restored": "Your game was restored from the browser cache.\n\nThe game was paused while you were away.\n\nClick OK to continue playing.",
-    "gui:cancel": "Cancel"
+    "ts:player_reconnecting": "%s is reconnecting. The game will resume when they rejoin.",
+    "gui:cancel": "Cancel",
+    "gui:quit": "Quit"
 }

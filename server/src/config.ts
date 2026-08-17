@@ -58,6 +58,8 @@ export interface ServerConfig {
     maxPayloadBytes: number;
     instanceTtlSeconds: number;
     startTimeoutSeconds: number;
+    reconnectGraceSeconds: number;
+    loadingDepartureGraceSeconds: number;
     gservRateLimitEnabled: boolean;
     gservStatsIntervalSeconds: number;
     loginMaxPerMin: number;
@@ -115,6 +117,12 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
         maxPayloadBytes: Number(env.MAX_PAYLOAD_BYTES ?? 256 * 1024),
         instanceTtlSeconds: Number(env.GSERV_INSTANCE_TTL_SECONDS ?? 600),
         startTimeoutSeconds: Number(env.GSERV_START_TIMEOUT_SECONDS ?? 180),
+        // How long the relay holds (game pauses) for a departed player to rejoin
+        // mid-game before their turns are backfilled and play continues.
+        reconnectGraceSeconds: Number(env.GSERV_RECONNECT_GRACE_SECONDS ?? 30),
+        // How long a player who dropped during the loading phase has to rejoin
+        // before the instance is aborted for the remaining players.
+        loadingDepartureGraceSeconds: Number(env.GSERV_LOADING_DEPARTURE_GRACE_SECONDS ?? 90),
         // Disable per-connection flood limiting on the match relay (testing
         // only): set GSERV_RATE_LIMIT=disabled to turn it off.
         gservRateLimitEnabled: env.GSERV_RATE_LIMIT !== "disabled",

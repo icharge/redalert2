@@ -142,6 +142,9 @@ describe("GservServer action relay", () => {
         server.handleClose(alice.client);
         server.handleClose(bob.client);
 
+        // The replay is finalized once both players' rejoin windows expire.
+        server.runSweepPass(Date.now() + config.reconnectGraceSeconds * 1000 + 1);
+
         const files = readDir(replaysDir);
         expect(files.length).toBe(1);
         const text = readFileSync(files[0], "utf8");

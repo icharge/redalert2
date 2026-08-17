@@ -33,6 +33,10 @@ export interface GservInstance {
     // Unix seconds at which the first player joined the instance; used to
     // abort instances that never gather the full roster and start.
     loadingSince?: number;
+    // Nick -> grace expiry (unix seconds) for players who dropped during the
+    // loading phase. The instance waits for them to rejoin; on expiry the
+    // remaining players are aborted instead of waiting forever.
+    loadingDepartures: Map<string, number>;
 }
 
 export interface TicketInfo {
@@ -68,6 +72,7 @@ export class GservManager {
             players: [...players],
             ranked: options.ranked,
             ladderType: options.ranked ? options.ladderType : undefined,
+            loadingDepartures: new Map(),
         };
         for (const nick of players) {
             const ticket = randomHex(16);

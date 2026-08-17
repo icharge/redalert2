@@ -28,8 +28,13 @@ export class GservConnection {
     private _onChatMessage = new EventDispatcher<GservConnection, ChatMessage>();
     private _onTaunt = new EventDispatcher<GservConnection, { from: string; tauntNo: number }>();
     private _onPlayerDisconnect = new EventDispatcher<GservConnection, string>();
+    private _onPlayerReconnecting = new EventDispatcher<GservConnection, string>();
+    private _onPlayerReconnected = new EventDispatcher<GservConnection, string>();
+    private _onPlayerGaveUp = new EventDispatcher<GservConnection, string>();
+    private _onResyncLogComplete = new EventDispatcher<GservConnection>();
     private _onPrivMsgNotAllowed = new EventDispatcher<GservConnection>();
-
+    private resyncTurnCount?: number;
+    private resyncFrames = new Map<number, Uint8Array>();
     get onError() {
         return this.con.onError;
     }
@@ -59,6 +64,15 @@ export class GservConnection {
     }
     get onPlayerDisconnect() {
         return this._onPlayerDisconnect.asEvent();
+    }
+    get onPlayerReconnecting() {
+        return this._onPlayerReconnecting.asEvent();
+    }
+    get onPlayerReconnected() {
+        return this._onPlayerReconnected.asEvent();
+    }
+    get onPlayerGaveUp() {
+        return this._onPlayerGaveUp.asEvent();
     }
     get onPrivMsgNotAllowed() {
         return this._onPrivMsgNotAllowed.asEvent();
@@ -112,12 +126,28 @@ export class GservConnection {
                 else if (parts[1] === "" + GservCode.RPL_PLAYER_DISCONNECT) {
                     this._onPlayerDisconnect.dispatch(this, parts[3].replace(/^:/, ""));
                 }
+                else if (parts[1] === "" + GservCode.RPL_PLAYER_RECONNECTING) {
+                    this._onPlayerReconnecting.dispatch(this, parts[3].replace(/^:/, ""));
+                }
+                else if (parts[1] === "" + GservCode.RPL_PLAYER_RECONNECTED) {
+                    this._onPlayerReconnected.dispatch(this, parts[3].replace(/^:/, ""));
+                }
+                else if (parts[1] === "" + GservCode.RPL_PLAYER_GAVE_UP) {
+                    this._onPlayerGaveUp.dispatch(this, parts[3].replace(/^:/, ""));
+                }
+                else if (parts[1] === "" + GservCode.RPL_RESYNC) {
+                    this.resyncTurnCount = Number(parts[3]?.replace(/^:/, "") ?? -1);
+                    this.resyncFrames.clear();
+                }
                 else if (parts[1] === "" + GservCode.RPL_PRIVMSG_NOT_ALLOWED) {
                     this._onPrivMsgNotAllowed.dispatch(this);
                 }
             }
             else if (message[0] === GservCode.RPL_BIN_GAME_ACTIONS) {
                 this.handlePlayerActions(message.subarray(1));
+            }
+            else if (message[0] === GservCode.RPL_BIN_RESYNC) {
+                this.handleResyncActions(message.subarray(1));
             }
         };
         this.con = con;
@@ -254,6 +284,32 @@ export class GservConnection {
 
     private handlePlayerActions(actions: Uint8Array): void {
         this._onGameActions.dispatch(this, actions);
+    }
+
+    private handleResyncActions(payload: Uint8Array): void {
+        const turnNo = new DataView(payload.buffer, payload.byteOffset, payload.byteLength).getUint32(0, true);
+        this.resyncFrames.set(turnNo, payload.slice(4));
+        if (this.resyncTurnCount !== undefined && this.resyncFrames.size >= this.resyncTurnCount + 1) {
+            this._onResyncLogComplete.dispatch(this);
+        }
+    }
+
+    get onResyncLogComplete() {
+        return this._onResyncLogComplete.asEvent();
+    }
+
+    getResyncLog(): { turnCount: number; frames: Map<number, Uint8Array> } | undefined {
+        if (this.resyncTurnCount === undefined) {
+            return undefined;
+        }
+        return {
+            turnCount: this.resyncTurnCount,
+            frames: this.resyncFrames,
+        };
+    }
+
+    sendReady(turnNo: number): void {
+        this.con.sendMessage("ready " + turnNo);
     }
 
     sayChannel(message: string): void {

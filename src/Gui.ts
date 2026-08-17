@@ -402,6 +402,28 @@ export class Gui {
             hasShownDialog = true;
         }
         await this.navigateToMainMenu();
+        const storedConnection = this.localPrefs.getItem(StorageKey.LastConnection);
+        if (storedConnection) {
+            let reconnectParams: any;
+            try {
+                reconnectParams = JSON.parse(storedConnection);
+            }
+            catch (error) {
+                console.error('[Gui] Unable to decode game params string', storedConnection);
+            }
+            if (reconnectParams) {
+                const shouldReconnect = await this.messageBoxApi.confirm(
+                    this.strings.get('ts:reconnectprompt'),
+                    this.strings.get('ts:reconnect'),
+                    this.strings.get('gui:quit')
+                );
+                if (shouldReconnect) {
+                    this.rootController!.goToScreen(ScreenType.Game, reconnectParams);
+                    return;
+                }
+                this.localPrefs.removeItem(StorageKey.LastConnection);
+            }
+        }
     }
     private async navigateToMainMenu(): Promise<void> {
         console.log('[Gui] Navigating to main menu');

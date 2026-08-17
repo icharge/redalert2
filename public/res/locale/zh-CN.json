@@ -401,5 +401,7 @@
     "ts:leave_game_confirm": "你正在进行一局游戏，离开将断开与当前对局的连接，当前进度将丢失。\n\n确定要离开吗？",
     "ts:leave_game": "离开游戏",
     "ts:game_restored": "你的游戏已从浏览器缓存中恢复。\n\n离开期间游戏已暂停。\n\n点击确定继续游戏。",
-    "gui:cancel": "取消"
+    "ts:player_reconnecting": "%s 正在重新连接。重新加入后游戏将继续。",
+    "gui:cancel": "取消",
+    "gui:quit": "退出"
 }

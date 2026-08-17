@@ -3,7 +3,7 @@ import { GservServer, GservClient } from "../src/gserv/GservServer";
 import { GservManager, GservInstance } from "../src/gserv/GservManager";
 import { loadConfig } from "../src/config";
 import { FakeSocket } from "./helpers";
-import { serializePlayerActions } from "../src/gserv/replay/gameoptCodec";
+import { serializePlayerActions, parseAllPlayerActions } from "../src/gserv/replay/gameoptCodec";
 
 function buildGameOpts(names: string[]): string {
     const optionsPart = "0,0,0,10000,50,0,0,0,1,0,0,0,SXNsYW5kIFdhcg==,8,1,100,mpdefault,abc,1,0,0,1,0";
@@ -76,16 +76,22 @@ describe("GservManager lifecycle", () => {
     });
 
     test("instances are retired on game end and removed after the report window", () => {
-        const { manager, server } = setup();
+        const { config, manager, server } = setup();
         const instance = manager.create(["alice"], "ws://gserv");
         instance.gameopts = buildGameOpts(["alice"]);
         const alice = join(server, manager, instance, "alice");
         server.handleMessage(alice.client, "loaded 100");
 
-        // Game ended: solo player disconnects. The instance stays resolvable
-        // (with endedAt set) so the game-res report can still be validated,
-        // and is removed once the report window closes.
+        // Game ended: solo player disconnects. The rejoin window opens; once it
+        // expires with nobody left, the instance is retired (endedAt set) so
+        // the game-res report can still be validated, and is removed once the
+        // report window closes.
         server.handleClose(alice.client);
+        const retained = manager.get(instance.gameId);
+        expect(retained).toBeDefined();
+        expect(retained!.endedAt).toBeUndefined();
+        const graceMs = config.reconnectGraceSeconds * 1000;
+        server.runSweepPass(Date.now() + graceMs + 1);
         const retired = manager.get(instance.gameId);
         expect(retired).toBeDefined();
         expect(retired!.endedAt).toBeDefined();
@@ -118,18 +124,30 @@ describe("GservManager lifecycle", () => {
         expect(bobLines).toContain(" 700 ");
     });
 
-    test("loading instance is aborted when a player disconnects before start", () => {
-        const { manager, server } = setup();
+    test("loading instance is aborted when a player disconnects before start and never rejoins", () => {
+        const { config, manager, server } = setup();
         const instance = manager.create(["alice", "bob"], "ws://gserv");
         instance.gameopts = buildGameOpts(["alice", "bob"]);
         const alice = join(server, manager, instance, "alice");
         const bob = join(server, manager, instance, "bob");
         server.handleMessage(alice.client, "loaded 100");
 
-        // Bob drops while the game is still loading: the game can never start,
-        // so the remaining players must be bounced back instead of waiting on a
-        // frozen loading screen.
+        // Bob drops while the game is still loading. A rejoin grace window
+        // opens instead of an instant abort, so alice is NOT bounced yet.
         server.handleClose(bob.client);
+        expect(alice.socket.readyState).toBe(1);
+        expect(manager.get(instance.gameId)).toBeDefined();
+        expect(instance.loadingDepartures.has("bob")).toBe(true);
+
+        // Within the window bob can rejoin with the same ticket.
+        const bobRejoin = join(server, manager, instance, "bob");
+        expect(instance.loadingDepartures.has("bob")).toBe(false);
+        expect(bobRejoin.client.instance).toBe(instance);
+
+        // Bob drops again and never comes back: once the grace window expires
+        // the remaining players are bounced instead of waiting forever.
+        server.handleClose(bobRejoin.client);
+        server.runSweepPass(Date.now() + (config.loadingDepartureGraceSeconds + 1) * 1000);
         expect(alice.socket.readyState).toBe(3);
         expect(manager.get(instance.gameId)).toBeUndefined();
         expect(manager.validateTicket(instance.tickets.get("alice")!)).toBeUndefined();
@@ -246,6 +264,99 @@ describe("GservServer loading screen info", () => {
         aliceLines = alice.socket.sent.filter((data): data is string => typeof data === "string").join("\n");
         const pushedLoadInfo = aliceLines.split("\n").filter((line) => line.includes(" 600 ")).at(-1);
         expect(pushedLoadInfo).toContain("bob,1,42,0,0,0");
+    });
+});
+
+describe("GservServer mid-game reconnect", () => {
+    const noop = () => serializePlayerActions([{ id: 0, params: new Uint8Array() }]);
+    const countBinary = (socket: FakeSocket) => socket.sent.filter((data): data is Uint8Array => data instanceof Uint8Array).length;
+
+    function startGame() {
+        const { config, manager, server } = setup();
+        const instance = manager.create(["alice", "bob"], "ws://gserv");
+        instance.gameopts = buildGameOpts(["alice", "bob"]);
+        const alice = join(server, manager, instance, "alice");
+        const bob = join(server, manager, instance, "bob");
+        server.handleMessage(alice.client, "loaded 100");
+        server.handleMessage(bob.client, "loaded 100");
+        return { config, manager, server, instance, alice, bob };
+    }
+
+    test("mid-game drop opens a rejoin window that holds the relay until rejoin", () => {
+        const { manager, server, instance, alice, bob } = startGame();
+        expect(instance.started).toBe(true);
+
+        // Turn 0 relays normally.
+        server.handleMessage(alice.client, buildRequestFrame(0, noop()));
+        server.handleMessage(bob.client, buildRequestFrame(0, noop()));
+        expect(countBinary(alice.socket)).toBe(1);
+
+        // Bob drops: the relay must hold (no backfill), others are notified.
+        server.handleClose(bob.client);
+        const aliceLines = alice.socket.lines().join("\n");
+        expect(aliceLines).toContain(" 806 ");
+        server.handleMessage(alice.client, buildRequestFrame(1, noop()));
+        expect(countBinary(alice.socket)).toBe(1);
+
+        // Bob rejoins with the same ticket: resync log + resume.
+        const bobRejoin = join(server, manager, instance, "bob");
+        const bobLines = bobRejoin.socket.lines().join("\n");
+        expect(bobLines).toContain(" 701 ");
+        const resyncFrames = bobRejoin.socket.sent.filter((data): data is Uint8Array => data instanceof Uint8Array);
+        expect(resyncFrames.length).toBe(1);
+        expect(new DataView(resyncFrames[0].buffer, resyncFrames[0].byteOffset, resyncFrames[0].byteLength).getUint32(2, true)).toBe(0);
+
+        // Bob signals ready; the relay resumes once both submit turn 1.
+        server.handleMessage(bobRejoin.client, "ready 0");
+        server.handleMessage(bobRejoin.client, buildRequestFrame(1, noop()));
+        expect(countBinary(alice.socket)).toBe(2);
+        expect(countBinary(bobRejoin.socket)).toBe(2);
+        expect(alice.socket.lines().join("\n")).toContain(" 807 ");
+    });
+
+    test("mid-game rejoin window expiry backfills the player and play resumes", () => {
+        const { config, server, alice, bob } = startGame();
+        server.handleMessage(alice.client, buildRequestFrame(0, noop()));
+        server.handleMessage(bob.client, buildRequestFrame(0, noop()));
+        expect(countBinary(alice.socket)).toBe(1);
+
+        server.handleClose(bob.client);
+        server.handleMessage(alice.client, buildRequestFrame(1, noop()));
+        expect(countBinary(alice.socket)).toBe(1);
+
+        server.runSweepPass(Date.now() + config.reconnectGraceSeconds * 1000 + 1);
+        expect(countBinary(alice.socket)).toBe(2);
+        expect(alice.socket.lines().join("\n")).toContain(" 808 ");
+    });
+
+    test("tickets stay valid after start so a departed player can re-login", () => {
+        const { manager, server, instance, alice } = startGame();
+        expect(manager.validateTicket(instance.tickets.get("bob")!)?.nick).toBe("bob");
+        server.handleClose(alice.client);
+        const rejoin = join(server, manager, instance, "bob");
+        expect(rejoin.client.instance).toBe(instance);
+    });
+
+    test("resync log covers every relayed turn in order", () => {
+        const { manager, server, instance, alice, bob } = startGame();
+        for (let turnNo = 0; turnNo < 3; turnNo++) {
+            server.handleMessage(alice.client, buildRequestFrame(turnNo, noop()));
+            server.handleMessage(bob.client, buildRequestFrame(turnNo, noop()));
+        }
+        expect(countBinary(alice.socket)).toBe(3);
+
+        server.handleClose(bob.client);
+        const bobRejoin = join(server, manager, instance, "bob");
+        const resyncFrames = bobRejoin.socket.sent.filter((data): data is Uint8Array => data instanceof Uint8Array);
+        expect(resyncFrames.length).toBe(3);
+        const turnNos = resyncFrames.map(frame => new DataView(frame.buffer, frame.byteOffset, frame.byteLength).getUint32(2, true));
+        expect(turnNos).toEqual([0, 1, 2]);
+        // Each frame carries a payload parseable as all-player actions.
+        for (const frame of resyncFrames) {
+            expect(frame[0]).toBe(2);
+            expect(frame[1]).toBe(2);
+            expect(parseAllPlayerActions(frame.subarray(6)).size).toBe(2);
+        }
     });
 });
 

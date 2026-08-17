@@ -86,6 +86,21 @@ export class LockstepManager {
         return this.currentNetworkTurn < 2 || this.receivedActions.has(this.currentNetworkTurn - 2);
     }
 
+    getCurrentNetworkTurn(): number {
+        return this.currentNetworkTurn;
+    }
+
+    // Feeds a relayed actions payload ([u32 turnNo][all-player blobs]) straight
+    // into the pipeline without waiting for a live relay. Used by the resync
+    // catch-up when a player rejoins a running match.
+    feedActionsPayload(payload: Uint8Array): void {
+        const stream = new DataStream(payload);
+        const turnNo = stream.readUint32();
+        const allActions = this.gameoptParser.parseAllPlayerActions(stream);
+        this.receivedNetworkTurn = turnNo;
+        this.receivedActions.set(turnNo, allActions);
+    }
+
     setErrorState(): void {
         this.errorState = true;
     }
