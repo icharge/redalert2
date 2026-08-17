@@ -111,29 +111,96 @@ export class BuildSpaceCache {
             return [];
         }
         type Candidate = {
-            pos: Vector2;
+            x: number;
+            y: number;
             value: number;
+            bucketX: number;
+            bucketY: number;
+            seq: number;
         };
-        const candidates: Candidate[] = [];
+        // Spatial-hash the candidates into buckets of `tiles` size. Any two
+        // candidates closer than `tiles` must land in the same or adjacent
+        // buckets, so we only ever inspect a constant-sized neighbourhood
+        // instead of scanning the whole candidate list (which is O(cells^2)
+        // on open maps and stalls the game for hundreds of ms).
+        const bucketSize = Math.max(1, Math.ceil(tiles));
+        const maxDistanceSquared = tiles * tiles;
+        // Numeric keys avoid per-cell string allocation (which dominated the
+        // cost on open maps due to GC pressure).
+        const buckets = new Map<number, Candidate[]>();
+        const bucketKey = (bx: number, by: number) => (bx << 12) | (by & 0xFFF);
+        let nextSeq = 0;
+        const removeCandidate = (candidate: Candidate) => {
+            const list = buckets.get(bucketKey(candidate.bucketX, candidate.bucketY));
+            if (!list) {
+                return;
+            }
+            const index = list.indexOf(candidate);
+            if (index >= 0) {
+                list.splice(index, 1);
+            }
+            if (list.length === 0) {
+                buckets.delete(bucketKey(candidate.bucketX, candidate.bucketY));
+            }
+        };
+        const addCandidate = (candidate: Candidate) => {
+            const key = bucketKey(candidate.bucketX, candidate.bucketY);
+            let list = buckets.get(key);
+            if (!list) {
+                list = [];
+                buckets.set(key, list);
+            }
+            list.push(candidate);
+        };
         this.distanceTransformCache.forEach((x, y, cell) => {
             if (cell.lastUpdatedTick === null) {
                 return;
             }
             // we know it has a value if the scan is 'finished'
             const liveValue = cell.value.liveValue!;
-            if (liveValue >= tiles) {
-                // if there's a candidate within `tiles` distance, use the higher of the two
-                const vec = new Vector2(x, y);
-                const otherCandidateIdx = candidates.findIndex((c) => c.pos.distanceTo(vec) < tiles);
-                if (otherCandidateIdx >= 0) {
-                    if (candidates[otherCandidateIdx].value < liveValue) {
-                        candidates[otherCandidateIdx] = { pos: vec, value: liveValue };
+            if (liveValue < tiles) {
+                return;
+            }
+            const bucketX = Math.floor(x / bucketSize);
+            const bucketY = Math.floor(y / bucketSize);
+            // If there's a candidate within `tiles` distance, keep the highest
+            // of the two. To stay exactly equivalent to the previous linear
+            // scan, ties on distance are resolved by insertion order (the
+            // earliest-added candidate wins the comparison).
+            let matched: Candidate | undefined;
+            let matchedSeq = Number.POSITIVE_INFINITY;
+            for (let by = bucketY - 1; by <= bucketY + 1; by++) {
+                for (let bx = bucketX - 1; bx <= bucketX + 1; bx++) {
+                    const list = buckets.get(bucketKey(bx, by));
+                    if (!list) {
+                        continue;
                     }
-                } else {
-                    candidates.push({ pos: vec, value: liveValue });
+                    for (const candidate of list) {
+                        const dx = candidate.x - x;
+                        const dy = candidate.y - y;
+                        if (dx * dx + dy * dy < maxDistanceSquared && candidate.seq < matchedSeq) {
+                            matched = candidate;
+                            matchedSeq = candidate.seq;
+                        }
+                    }
                 }
             }
+            if (!matched) {
+                addCandidate({ x, y, value: liveValue, bucketX, bucketY, seq: nextSeq++ });
+            }
+            else if (matched.value < liveValue) {
+                removeCandidate(matched);
+                // Keep the original candidate's insertion order so later cells
+                // resolve "first match" identically to the old linear scan.
+                addCandidate({ x, y, value: liveValue, bucketX, bucketY, seq: matched.seq });
+            }
         });
-        return candidates.map(({ pos }) => pos);
+        const candidates: Vector2[] = [];
+        for (const list of buckets.values()) {
+            for (const candidate of list) {
+                candidates.push(new Vector2(candidate.x, candidate.y));
+            }
+        }
+        return candidates;
     }
 }

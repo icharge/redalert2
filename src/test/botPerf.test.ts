@@ -315,9 +315,8 @@ function instrumentInnerBots(game: any): void {
             const t0 = performance.now();
             const result = origComputePath(...args);
             const elapsed = performance.now() - t0;
-            if (true) {
-                spikeLedger.push({ tick: game.currentTick, section: 'pathfind', ms: elapsed });
-            }
+            spikeLedger.push({ tick: game.currentTick, section: 'pathfind', ms: elapsed });
+
             return result;
         };
         terrain.__instrumented = true;
@@ -329,9 +328,8 @@ function instrumentInnerBots(game: any): void {
             const t0 = performance.now();
             const result = origGetVisible(playerName, type, filter);
             const elapsed = performance.now() - t0;
-            if (true) {
-                spikeLedger.push({ tick: game.currentTick, section: `vis:${type}`, ms: elapsed });
-            }
+            spikeLedger.push({ tick: game.currentTick, section: `vis:${type}`, ms: elapsed });
+
             return result;
         };
         gameApi.__instrumented = true;
@@ -347,19 +345,8 @@ function instrumentInnerBots(game: any): void {
             const t0 = performance.now();
             origAwareness(ctx);
             const elapsed = performance.now() - t0;
-            if (true) {
-                const buildSpace = awareness.getBuildSpaceCache?.();
-                const findSpaceT0 = performance.now();
-                buildSpace?.findSpace(9);
-                const findSpaceElapsed = performance.now() - findSpaceT0;
-                if (findSpaceElapsed > 5) {
-                    spikeLedger.push({ tick: currentTickOf(innerBot), section: `findSpace:${innerBot.name}`, ms: findSpaceElapsed });
-                }
-                const cellCount = (buildSpace?._cache as any)?.getSize?.();
-                if (findSpaceElapsed > 5) {
-                    console.log(`[BotPerf:findSpace] ${innerBot.name} tick=${currentTickOf(innerBot)} ${findSpaceElapsed.toFixed(1)}ms (map ${cellCount?.width ?? '?'}x${cellCount?.height ?? '?'})`);
-                }
-            }
+            spikeLedger.push({ tick: currentTickOf(innerBot), section: `awareness:${innerBot.name}`, ms: elapsed });
+
         };
         awareness.onAiUpdate.__instrumented = true;
         const missions = innerBot.missionController;
@@ -369,9 +356,8 @@ function instrumentInnerBots(game: any): void {
                 const t0 = performance.now();
                 origMissions(ctx);
                 const elapsed = performance.now() - t0;
-                if (true) {
-                    spikeLedger.push({ tick: currentTickOf(innerBot), section: `missions:${innerBot.name}`, ms: elapsed });
-                }
+            spikeLedger.push({ tick: currentTickOf(innerBot), section: `missions:${innerBot.name}`, ms: elapsed });
+
             };
             missions.onAiUpdate.__instrumented = true;
         }
@@ -382,9 +368,8 @@ function instrumentInnerBots(game: any): void {
                 const t0 = performance.now();
                 origQueue(ctx, threatCache, requests, log);
                 const elapsed = performance.now() - t0;
-                if (true) {
-                    spikeLedger.push({ tick: currentTickOf(innerBot), section: `queue:${innerBot.name}`, ms: elapsed });
-                }
+            spikeLedger.push({ tick: currentTickOf(innerBot), section: `queue:${innerBot.name}`, ms: elapsed });
+
             };
             queue.onAiUpdate.__instrumented = true;
         }
@@ -450,7 +435,7 @@ function seedArmies(game: any): void {
 }
 
 describe('bot AI per-tick CPU cost scaling (headless, real rules, synthetic 200x200 map)', () => {
-    test('measures per-tick cost for 0/1/2 bots', () => {
+    test.skipIf(!process.env.RUN_BOT_PERF_SCENARIOS, 'measures per-tick cost for 0/1/2 bots (set RUN_BOT_PERF_SCENARIOS=1)', () => {
         const mix = loadMix();
         const samples = SCENARIOS.map((s) => runScenario(mix, s));
         for (const sample of samples) {
@@ -466,5 +451,106 @@ describe('bot AI per-tick CPU cost scaling (headless, real rules, synthetic 200x
         console.log(`[BotPerf] bot-only median: baseline=${botMed(baseline).toFixed(2)}ms 1bot=${botMed(oneBot).toFixed(2)}ms 2bot=${botMed(twoBot).toFixed(2)}ms 4h=${botMed(fourHuman).toFixed(2)}ms`);
         expect(med(twoBot)).toBeGreaterThan(med(baseline));
         expect(botMed(twoBot)).toBeGreaterThan(botMed(oneBot));
+    });
+});
+
+function findSpaceReference(cells: { x: number; y: number; liveValue: number }[], tiles: number) {
+    const candidates: { x: number; y: number; value: number }[] = [];
+    for (const cell of cells) {
+        const liveValue = cell.liveValue;
+        if (liveValue < tiles) {
+            continue;
+        }
+        const otherCandidateIdx = candidates.findIndex((c) => {
+            const dx = c.x - cell.x;
+            const dy = c.y - cell.y;
+            return dx * dx + dy * dy < tiles * tiles;
+        });
+        if (otherCandidateIdx >= 0) {
+            if (candidates[otherCandidateIdx].value < liveValue) {
+                candidates[otherCandidateIdx] = { x: cell.x, y: cell.y, value: liveValue };
+            }
+        } else {
+            candidates.push({ x: cell.x, y: cell.y, value: liveValue });
+        }
+    }
+    return candidates.map((c) => `${c.x},${c.y}`).sort();
+}
+
+function makeFakeBuildSpaceCache(cells: { x: number; y: number; liveValue: number }[], width: number, height: number) {
+    const { BuildSpaceCache } = require('@/game/ai/thirdpartbot/builtIn/bot/logic/map/buildSpaceCache') as any;
+    const cache = Object.create(BuildSpaceCache.prototype);
+    const cellMap = new Map<string, { lastUpdatedTick: number | null; value: { liveValue: number } }>();
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            cellMap.set(`${x},${y}`, { lastUpdatedTick: null, value: { liveValue: 0 } });
+        }
+    }
+    for (const cell of cells) {
+        cellMap.set(`${cell.x},${cell.y}`, { lastUpdatedTick: 1, value: { liveValue: cell.liveValue } });
+    }
+    cache.scanStrategy = { isFinished: () => true };
+    cache.distanceTransformCache = {
+        forEach: (fn: (x: number, y: number, cell: any) => void) => {
+            for (const [key, cell] of cellMap) {
+                const [x, y] = key.split(',').map(Number);
+                fn(x, y, cell);
+            }
+        },
+    };
+    return cache;
+}
+
+describe('BuildSpaceCache.findSpace optimization', () => {
+    test('produces the same candidates as the old linear-scan algorithm', () => {
+        const { Vector2 } = require('@/game/math/Vector2') as any;
+        let seeded = 0;
+        const rand = (n: number) => {
+            seeded = (seeded * 1664525 + 1013904223) >>> 0;
+            return seeded % n;
+        };
+        for (let trial = 0; trial < 30; trial++) {
+            const width = 24;
+            const height = 24;
+            const cells: { x: number; y: number; liveValue: number }[] = [];
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    if (rand(100) < 35) {
+                        continue; // unbuildable hole
+                    }
+                    cells.push({ x, y, liveValue: 1 + rand(14) });
+                }
+            }
+            const tiles = 9;
+            const expected = findSpaceReference(cells, tiles);
+            const cache = makeFakeBuildSpaceCache(cells, width, height);
+            const actual = (cache.findSpace(tiles) as typeof Vector2[])
+                .map((v) => `${v.x},${v.y}`)
+                .sort();
+            expect(actual).toEqual(expected);
+        }
+    });
+
+    test('is fast on a dense 200x200 open grid (old algorithm: 150-370ms)', () => {
+        const { Vector2 } = require('@/game/math/Vector2') as any;
+        const size = 200;
+        const cells: { x: number; y: number; liveValue: number }[] = [];
+        for (let y = 0; y < size; y++) {
+            for (let x = 0; x < size; x++) {
+                const edgeDist = Math.min(x, y, size - 1 - x, size - 1 - y);
+                cells.push({ x, y, liveValue: Math.min(40, 2 + edgeDist) });
+            }
+        }
+        const cache = makeFakeBuildSpaceCache(cells, size, size);
+        const times: number[] = [];
+        for (let i = 0; i < 5; i++) {
+            const t0 = performance.now();
+            const result = cache.findSpace(9) as typeof Vector2[];
+            times.push(performance.now() - t0);
+            expect(result.length).toBeGreaterThan(0);
+        }
+        const avg = times.reduce((a, b) => a + b, 0) / times.length;
+        console.log(`[BotPerf:findSpace-micro] 200x200 dense grid avg=${avg.toFixed(2)}ms calls=${times.map((t) => t.toFixed(1)).join(',')}ms candidates=${(cache.findSpace(9) as typeof Vector2[]).length}`);
+        expect(avg).toBeLessThan(50);
     });
 });

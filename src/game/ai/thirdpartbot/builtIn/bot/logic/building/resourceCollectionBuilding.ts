@@ -32,8 +32,10 @@ export class ResourceCollectionBuilding extends BasicBuilding {
         var closeOreDist: number | undefined;
         let selectedLocation: Vector2 = conyardVectors[0];
 
+        // The resource data is independent of the conyard, so compute it once
+        // instead of re-scanning the whole world for every conyard.
+        const allTileResourceData = game.mapApi.getAllTilesResourceData();
         for (const conyard of conyardVectors) {
-            let allTileResourceData = game.mapApi.getAllTilesResourceData();
             for (let i = 0; i < allTileResourceData.length; ++i) {
                 let tileResourceData = allTileResourceData[i];
                 if (tileResourceData.spawnsOre) {
