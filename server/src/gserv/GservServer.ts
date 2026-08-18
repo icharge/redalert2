@@ -47,6 +47,11 @@ const TURN_WINDOW = 8;
 const MAX_PENDING_TURNS = 16;
 const SWEEP_INTERVAL_MS = 30_000;
 const STALE_TURN_LOG_INTERVAL_MS = 5_000;
+// Sentinel departedAt deadline for abandonedInstanceTimeoutSeconds <= 0
+// ("hold indefinitely"). A real (finite) timestamp rather than Infinity so it
+// still round-trips through the LOAD_INFO wire format as an ordinary number;
+// it's simply so far in the future expireDeparted never reaches it.
+const ABANDONED_HOLD_INDEFINITELY_DEADLINE = Number.MAX_SAFE_INTEGER;
 
 const NO_ACTION_BLOB = serializePlayerActions([{ id: NO_ACTION_ID, params: new Uint8Array() }]);
 // ActionType.ResignGame (client: src/game/action/ActionType.ts). Injected for a
@@ -84,9 +89,19 @@ interface InstanceState {
     // Nicks admitted back into a started instance who have not yet finished
     // catching up (sent "ready"). Their action submissions are ignored.
     rejoiningNicks: Set<string>;
+    // Nicks that voluntarily left (handleLeave) rather than just dropping.
+    // Unlike a dropped/timed-out player, tickets and instance.players are
+    // unchanged, so without this a "leave" would be silently undone by a
+    // later join with the same ticket — handleRejoin checks this and refuses.
+    leftNicks: Set<string>;
     // Whole-game pause (MOBA-style). While paused the relay holds and every
     // client freezes; resume flushes the small accumulated backlog.
     paused: boolean;
+    // Set to Date.now() when `paused` becomes true, cleared on resume. Used to
+    // shift departedAt deadlines forward by the paused duration so a manual
+    // pause doesn't silently burn through a departed player's rejoin grace
+    // window (see schedulePauseTimer).
+    pausedAt?: number;
     pauseCountdownUntil?: number;
     resumeCountdownUntil?: number;
     pauseTimer?: ReturnType<typeof setTimeout>;
@@ -243,6 +258,7 @@ export class GservServer {
                     this.broadcastLine(client, `:${this.serverName} ${Code.RPL_PLAYER_DISCONNECT} ${client.nick} :${client.nick}`);
                 }
                 state.rejoiningNicks.delete(client.nick);
+                this.extendAbandonedInstanceDeadlines(state, gameId);
             }
             else {
                 // Loading phase: grant the departed player a grace window to
@@ -331,6 +347,9 @@ export class GservServer {
                 break;
             case "taunt":
                 this.handleTaunt(client, parts);
+                break;
+            case "leave":
+                this.handleLeave(client);
                 break;
             case "privmsg":
                 this.handlePrivmsg(client, line);
@@ -448,6 +467,14 @@ export class GservServer {
             client.socket.send(`:${this.serverName} ${Code.RPL_INSTANCE_NONEXISTENT} ${client.nick} :no such instance\r\n`);
             return;
         }
+        if (state.leftNicks.has(client.nick)) {
+            // Voluntarily left (handleLeave): permanent, unlike a drop/timeout
+            // — the ticket and roster entry are deliberately left intact for
+            // those cases, but a deliberate leave must not be reversible by
+            // simply reconnecting with the same ticket.
+            client.socket.send(`:${this.serverName} ${Code.RPL_INSTANCE_NOT_ALLOWED} ${client.nick} :left the game\r\n`);
+            return;
+        }
         client.instance = instance;
         let members = this.instanceMembers.get(gameId);
         if (!members) {
@@ -544,6 +571,7 @@ export class GservServer {
             turnLog: new Map(),
             departedAt: new Map(),
             rejoiningNicks: new Set(),
+            leftNicks: new Set(),
             paused: false,
             lastPauseByNick: new Map(),
             lastStaleLogByNick: new Map(),
@@ -599,6 +627,38 @@ export class GservServer {
             }
         }
         this.flushPendingTurns(state);
+    }
+
+    // Sent by a client that is deliberately quitting ("Abort Mission"), right
+    // before it closes the connection. Unlike an accidental disconnect
+    // (handleClose), this nick must not get a rejoin grace window: it is
+    // removed from requiredNicks immediately and for good, exactly like a
+    // timed-out rejoin (expireDeparted), just without waiting for the timeout.
+    private handleLeave(client: GservClient): void {
+        if (!client.instance) {
+            return;
+        }
+        const state = this.instanceStates.get(client.instance.gameId);
+        if (!state) {
+            return;
+        }
+        state.departedAt.delete(client.nick);
+        state.rejoiningNicks.delete(client.nick);
+        state.leftNicks.add(client.nick);
+        if (!state.requiredNicks.delete(client.nick)) {
+            return;
+        }
+        this.log.info(`player ${client.nick} left instance ${client.instance.gameId} voluntarily; resigning them`);
+        const playerId = state.recorder.playerIdFor(client.nick);
+        if (playerId !== undefined) {
+            for (const submissions of state.pending.values()) {
+                if (!submissions.has(client.nick)) {
+                    submissions.set(client.nick, { playerId, blob: NO_ACTION_BLOB });
+                }
+            }
+        }
+        this.flushPendingTurns(state);
+        this.broadcastAll(state, `:${this.serverName} ${Code.RPL_PLAYER_GAVE_UP} ${client.nick} :${client.nick}`);
     }
 
     private handleReady(client: GservClient, parts: string[]): void {
@@ -690,12 +750,24 @@ export class GservServer {
             if (state.pauseCountdownUntil !== undefined) {
                 state.pauseCountdownUntil = undefined;
                 state.paused = true;
+                state.pausedAt = Date.now();
                 this.log.info(`instance ${gameId} paused`);
                 this.broadcastAll(state, `:${this.serverName} ${Code.RPL_GAME_PAUSED} ${gameId} :paused`);
             }
             else if (state.resumeCountdownUntil !== undefined) {
                 state.resumeCountdownUntil = undefined;
                 state.paused = false;
+                if (state.pausedAt !== undefined) {
+                    // A departed player's rejoin grace window must not run out
+                    // just because everyone else sat on a manual pause: push
+                    // every pending deadline out by however long the game was
+                    // actually paused.
+                    const elapsed = Date.now() - state.pausedAt;
+                    for (const [nick, expiry] of state.departedAt) {
+                        state.departedAt.set(nick, expiry + elapsed);
+                    }
+                    state.pausedAt = undefined;
+                }
                 this.log.info(`instance ${gameId} resumed`);
                 this.flushPendingTurns(state);
                 this.broadcastAll(state, `:${this.serverName} ${Code.RPL_GAME_RESUMED} ${gameId} :resumed`);
@@ -707,6 +779,30 @@ export class GservServer {
         if (state.pauseTimer !== undefined) {
             clearTimeout(state.pauseTimer);
             state.pauseTimer = undefined;
+        }
+    }
+
+    // Called after a disconnect. If that was the last connected human (bots
+    // have no socket, so they never appear in `members`), every pending
+    // rejoin deadline is extended to the longer, configurable
+    // abandonedInstanceTimeoutSeconds instead of the shorter per-player
+    // reconnectGraceSeconds that was used when they dropped — nobody is left
+    // to be inconvenienced by a longer hold, and a short config elsewhere
+    // shouldn't cut an unattended bot match off before anyone even has a
+    // chance to come back. The instance is also marked paused; a returning
+    // player's normal rejoin (handleReady) naturally un-pauses it.
+    private extendAbandonedInstanceDeadlines(state: InstanceState, gameId: string): void {
+        if (state.members.size > 0 || state.departedAt.size === 0) {
+            return;
+        }
+        if (!state.paused) {
+            state.paused = true;
+            this.log.info(`instance ${gameId} paused: no human players remain`);
+        }
+        const timeoutSeconds = this.config.abandonedInstanceTimeoutSeconds;
+        const deadline = timeoutSeconds > 0 ? Date.now() + timeoutSeconds * 1000 : ABANDONED_HOLD_INDEFINITELY_DEADLINE;
+        for (const nick of state.departedAt.keys()) {
+            state.departedAt.set(nick, deadline);
         }
     }
 
@@ -789,12 +885,14 @@ export class GservServer {
 
     private sendLoadInfo(instance: GservInstance, target: GservClient): void {
         const members = this.instanceMembers.get(instance.gameId);
+        const state = this.instanceStates.get(instance.gameId);
         const lines: string[] = [];
         for (const nick of instance.players) {
             const member = members?.get(nick);
             const status = member ? 1 : 0;
             const loaded = member?.loaded ?? 0;
-            lines.push(`${nick},${status},${loaded},0,0,0`);
+            const timeoutAt = state?.departedAt.get(nick) ?? 0;
+            lines.push(`${nick},${status},${loaded},0,0,${timeoutAt}`);
         }
         target.socket.send(`:${this.serverName} ${Code.RPL_LOAD_INFO} ${target.nick} :${lines.join(",")}\r\n`);
     }

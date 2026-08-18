@@ -362,6 +362,14 @@ export class GservConnection {
         this.con.sendMessage("resume");
     }
 
+    // Voluntary quit ("Abort Mission"): tells the server this nick is gone for
+    // good, distinct from an accidental disconnect, so it skips the rejoin
+    // grace window entirely instead of holding a slot for a reconnect that
+    // will never come.
+    sendLeave(): void {
+        this.con.sendMessage("leave");
+    }
+
     sayChannel(message: string): void {
         this.privmsg([RECIPIENT_ALL], message);
     }

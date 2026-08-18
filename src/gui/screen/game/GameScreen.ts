@@ -335,7 +335,13 @@ export class GameScreen extends RootScreen {
             this.disposables.add(() => this.gservCon.onRateChange.unsubscribe(rateChangeHandler));
             const playerNoticeHandler = (nick: string, key: string) => {
                 if (nick !== playerName) {
-                    uiInitResult.messageList?.addSystemMessage?.(this.strings.get(key, nick), 'grey');
+                    const text = this.strings.get(key, nick);
+                    uiInitResult.messageList?.addSystemMessage?.(text, 'grey');
+                    // Also reach the Connection Info screen's chat box, which
+                    // renders chatHistory rather than the HUD's messageList —
+                    // players watching a reconnect from that screen otherwise
+                    // see nothing.
+                    uiInitResult.chatHistory?.addChatMessage?.({ text });
                 }
             };
             const reconnectingHandler = (nick: string) => playerNoticeHandler(nick, 'ts:player_reconnecting');
@@ -355,6 +361,7 @@ export class GameScreen extends RootScreen {
             const pauseCountdownHandler = () => {
                 this.showPauseCountdown(
                     uiInitResult.messageList,
+                    uiInitResult.chatHistory,
                     this.strings.get('ts:game_pausing_in_chat'),
                     this.strings.get('ts:game_pausing_in'),
                 );
@@ -362,6 +369,7 @@ export class GameScreen extends RootScreen {
             const resumeCountdownHandler = () => {
                 this.showPauseCountdown(
                     uiInitResult.messageList,
+                    uiInitResult.chatHistory,
                     this.strings.get('ts:game_resuming_in_chat'),
                     this.strings.get('ts:game_resuming_in'),
                 );
@@ -369,6 +377,7 @@ export class GameScreen extends RootScreen {
             const pausedHandler = () => {
                 this.gamePaused = true;
                 this.menu?.setPaused(true);
+                this.clearPauseCountdown();
                 this.messageBoxApi.show(
                     this.strings.get('ts:game_paused'),
                     this.strings.get('gui:resume_game'),
@@ -380,7 +389,9 @@ export class GameScreen extends RootScreen {
                 this.menu?.setPaused(false);
                 this.clearPauseCountdown();
                 this.messageBoxApi.destroy();
-                uiInitResult.messageList?.addSystemMessage?.(this.strings.get('ts:game_resumed'), 'grey');
+                const text = this.strings.get('ts:game_resumed');
+                uiInitResult.messageList?.addSystemMessage?.(text, 'grey');
+                uiInitResult.chatHistory?.addChatMessage?.({ text });
             };
             this.gservCon.onPauseCountdown.subscribe(pauseCountdownHandler);
             this.gservCon.onPaused.subscribe(pausedHandler);
@@ -452,6 +463,7 @@ export class GameScreen extends RootScreen {
 
     async onLeave(): Promise<void> {
         this.pointer.unlock();
+        this.clearPauseCountdown();
         const hadGameAnimationLoop = Boolean(this.gameAnimationLoop);
         if (this.gameAnimationLoop) {
             this.gameAnimationLoop.destroy();
@@ -1459,18 +1471,31 @@ export class GameScreen extends RootScreen {
         this.gservCon.sendReady(lastTurnNo);
         return this.game?.status === GameStatus.Ended;
     }
-    private showPauseCountdown(messageList: any, chatLabel: string, tickLabel: string): void {
+    private showPauseCountdown(messageList: any, chatHistory: any, chatLabel: string, tickLabel: string): void {
         this.clearPauseCountdown();
         const countdownSeconds = 3;
         const startedAt = Date.now();
         let lastPosted = -1;
         const update = () => {
             const remaining = Math.max(0, Math.ceil(countdownSeconds - (Date.now() - startedAt) / 1000));
-            this.messageBoxApi.updateText(tickLabel.replace('%d', String(remaining)));
+            const text = tickLabel.replace('%d', String(remaining));
+            // First tick: no dialog is showing yet (or the previous one, e.g.
+            // "Game paused", needs replacing), so `show()` is required —
+            // `updateText()` silently no-ops against a component that was
+            // never shown. Later ticks reuse the same dialog via updateText
+            // to avoid tearing it down and recreating it every 500ms.
+            if (lastPosted === -1) {
+                this.messageBoxApi.show(text);
+            }
+            else {
+                this.messageBoxApi.updateText(text);
+            }
             if (remaining !== lastPosted) {
                 lastPosted = remaining;
                 if (remaining > 0) {
-                    messageList?.addSystemMessage?.(chatLabel.replace('%d', String(remaining)), 'grey');
+                    const chatText = chatLabel.replace('%d', String(remaining));
+                    messageList?.addSystemMessage?.(chatText, 'grey');
+                    chatHistory?.addChatMessage?.({ text: chatText });
                 }
             }
         };
@@ -1532,6 +1557,10 @@ export class GameScreen extends RootScreen {
             if (this.usesServerConnection()) {
                 try {
                     this.gservCon.onClose.unsubscribe(this.onGservClose);
+                    // Deliberate quit: tell gserv this nick is gone for good
+                    // before closing, so it skips the rejoin grace window
+                    // instead of treating this like an accidental drop.
+                    this.gservCon.sendLeave();
                     this.gservCon.close();
                 }
                 catch (e) {

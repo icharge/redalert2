@@ -82,15 +82,17 @@ describe("GservManager lifecycle", () => {
         const alice = join(server, manager, instance, "alice");
         server.handleMessage(alice.client, "loaded 100");
 
-        // Game ended: solo player disconnects. The rejoin window opens; once it
-        // expires with nobody left, the instance is retired (endedAt set) so
-        // the game-res report can still be validated, and is removed once the
-        // report window closes.
+        // Game ended: solo player disconnects. The rejoin window opens; since
+        // they were the last human, it's immediately extended to the longer
+        // abandoned-instance timeout (see "abandoned instance" tests below).
+        // Once it expires with nobody left, the instance is retired (endedAt
+        // set) so the game-res report can still be validated, and is removed
+        // once the report window closes.
         server.handleClose(alice.client);
         const retained = manager.get(instance.gameId);
         expect(retained).toBeDefined();
         expect(retained!.endedAt).toBeUndefined();
-        const graceMs = config.reconnectGraceSeconds * 1000;
+        const graceMs = config.abandonedInstanceTimeoutSeconds * 1000;
         server.runSweepPass(Date.now() + graceMs + 1);
         const retired = manager.get(instance.gameId);
         expect(retired).toBeDefined();
@@ -264,6 +266,30 @@ describe("GservServer loading screen info", () => {
         aliceLines = alice.socket.sent.filter((data): data is string => typeof data === "string").join("\n");
         const pushedLoadInfo = aliceLines.split("\n").filter((line) => line.includes(" 600 ")).at(-1);
         expect(pushedLoadInfo).toContain("bob,1,42,0,0,0");
+    });
+
+    test("loadinfo reports a departed player's rejoin deadline as the last field", () => {
+        const config = loadConfig({ GSERV_NET_RATE_MS: "33", GSERV_RECONNECT_GRACE_SECONDS: "30" });
+        const manager = new GservManager({ id: "gs1", url: "ws://test.local/gserv" });
+        const server = new GservServer(config, manager);
+        const instance = manager.create(["alice", "bob"], "ws://gserv");
+        instance.gameopts = buildGameOpts(["alice", "bob"]);
+        const alice = join(server, manager, instance, "alice");
+        const bob = join(server, manager, instance, "bob");
+        server.handleMessage(alice.client, "loaded 100");
+        server.handleMessage(bob.client, "loaded 100");
+
+        // Alice stays connected, so bob's drop uses the plain per-player grace
+        // window, not the abandoned-instance extension.
+        server.handleClose(bob.client);
+        server.handleMessage(alice.client, "loadinfo");
+        const lines = alice.socket.sent.filter((data): data is string => typeof data === "string").join("\n");
+        const loadInfoLine = lines.split("\n").filter((line) => line.includes(" 600 ")).at(-1)!;
+        const match = loadInfoLine.match(/bob,0,0,0,0,(\d+)/);
+        expect(match).not.toBeNull();
+        const timeoutAt = Number(match![1]);
+        expect(timeoutAt).toBeGreaterThan(Date.now());
+        expect(timeoutAt).toBeLessThanOrEqual(Date.now() + config.reconnectGraceSeconds * 1000 + 5);
     });
 });
 
@@ -490,6 +516,40 @@ describe("GservServer whole-game pause", () => {
         await Bun.sleep(50);
         expect(alice.socket.lines().join("\n")).not.toContain(" 810 ");
     });
+
+    test("a manual pause freezes a departed player's rejoin deadline and shifts it forward on resume", async () => {
+        const config = loadConfig({ GSERV_NET_RATE_MS: "33", GSERV_PAUSE_COUNTDOWN_MILLIS: "5", GSERV_RECONNECT_GRACE_SECONDS: "30" });
+        const manager = new GservManager({ id: "gs1", url: "ws://test.local/gserv" });
+        const server = new GservServer(config, manager);
+        const instance = manager.create(["alice", "bob", "carol"], "ws://gserv");
+        instance.gameopts = buildGameOpts(["alice", "bob", "carol"]);
+        const alice = join(server, manager, instance, "alice");
+        const bob = join(server, manager, instance, "bob");
+        const carol = join(server, manager, instance, "carol");
+        server.handleMessage(alice.client, "loaded 100");
+        server.handleMessage(bob.client, "loaded 100");
+        server.handleMessage(carol.client, "loaded 100");
+
+        // Bob drops: a 30s rejoin window opens, unrelated to the pause below.
+        server.handleClose(bob.client);
+        const state = (server as any).instanceStates.get(instance.gameId);
+        const deadlineAtDrop = state.departedAt.get("bob");
+
+        // Alice and carol pause the game for a while.
+        server.handleMessage(alice.client, "pause");
+        await Bun.sleep(20);
+        expect(alice.socket.lines().join("\n")).toContain(" 810 ");
+        await Bun.sleep(100);
+        server.handleMessage(carol.client, "resume");
+        await Bun.sleep(20);
+        expect(alice.socket.lines().join("\n")).toContain(" 812 ");
+
+        // Bob's deadline must be pushed out by roughly the paused duration,
+        // not silently eaten by it.
+        const deadlineAfterResume = state.departedAt.get("bob");
+        expect(deadlineAfterResume).toBeGreaterThan(deadlineAtDrop);
+        expect(deadlineAfterResume - deadlineAtDrop).toBeGreaterThan(80);
+    });
 });
 
 describe("GservServer in-game chat", () => {
@@ -578,5 +638,119 @@ describe("GservServer per-instance stats logging", () => {
         expect(second[0]).toContain("0 ticks/s");
         expect(second[0]).toContain("0 frames/s");
         expect(second[0]).toContain("()");
+    });
+});
+
+describe("GservServer voluntary leave", () => {
+    const noop = () => serializePlayerActions([{ id: 0, params: new Uint8Array() }]);
+    const countBinary = (socket: FakeSocket) => socket.sent.filter((data): data is Uint8Array => data instanceof Uint8Array).length;
+
+    function startGame() {
+        const config = loadConfig({ GSERV_NET_RATE_MS: "33" });
+        const manager = new GservManager({ id: "gs1", url: "ws://test.local/gserv" });
+        const server = new GservServer(config, manager);
+        const instance = manager.create(["alice", "bob"], "ws://gserv");
+        instance.gameopts = buildGameOpts(["alice", "bob"]);
+        const alice = join(server, manager, instance, "alice");
+        const bob = join(server, manager, instance, "bob");
+        server.handleMessage(alice.client, "loaded 100");
+        server.handleMessage(bob.client, "loaded 100");
+        return { manager, server, instance, alice, bob };
+    }
+
+    test("leave resigns immediately with no rejoin grace window", () => {
+        const { server, instance, alice, bob } = startGame();
+        server.handleMessage(alice.client, buildRequestFrame(0, noop()));
+        server.handleMessage(bob.client, buildRequestFrame(0, noop()));
+        expect(countBinary(alice.socket)).toBe(1);
+
+        server.handleMessage(bob.client, "leave");
+        const aliceLines = alice.socket.lines().join("\n");
+        expect(aliceLines).toContain(" 808 "); // RPL_PLAYER_GAVE_UP
+        expect(aliceLines).not.toContain(" 806 "); // never treated as "reconnecting"
+
+        const state = (server as any).instanceStates.get(instance.gameId);
+        expect(state.departedAt.has("bob")).toBe(false);
+        expect(state.requiredNicks.has("bob")).toBe(false);
+
+        // The relay no longer waits on bob for future turns.
+        server.handleMessage(alice.client, buildRequestFrame(1, noop()));
+        expect(countBinary(alice.socket)).toBe(2);
+    });
+
+    test("a player who left cannot rejoin even with a still-valid ticket", () => {
+        const { manager, server, instance, bob } = startGame();
+        server.handleMessage(bob.client, "leave");
+
+        const bobRejoin = join(server, manager, instance, "bob");
+        expect(bobRejoin.client.instance).toBeUndefined();
+        expect(bobRejoin.socket.lines().join("\n")).toContain(" 402 "); // RPL_INSTANCE_NOT_ALLOWED
+    });
+});
+
+describe("GservServer abandoned instance (all humans gone)", () => {
+    function startGame(extraEnv: Record<string, string> = {}) {
+        const config = loadConfig({ GSERV_NET_RATE_MS: "33", GSERV_RECONNECT_GRACE_SECONDS: "5", GSERV_REJOIN_RESUME_COUNTDOWN_MILLIS: "5", ...extraEnv });
+        const manager = new GservManager({ id: "gs1", url: "ws://test.local/gserv" });
+        const server = new GservServer(config, manager);
+        const instance = manager.create(["alice", "bob"], "ws://gserv");
+        instance.gameopts = buildGameOpts(["alice", "bob"]);
+        const alice = join(server, manager, instance, "alice");
+        const bob = join(server, manager, instance, "bob");
+        server.handleMessage(alice.client, "loaded 100");
+        server.handleMessage(bob.client, "loaded 100");
+        return { config, manager, server, instance, alice, bob };
+    }
+
+    test("last human disconnecting pauses the instance and extends every deadline past the short per-player grace", () => {
+        const { config, manager, server, instance, alice, bob } = startGame({ GSERV_ABANDONED_TIMEOUT_SECONDS: "120" });
+
+        server.handleClose(alice.client);
+        server.handleClose(bob.client);
+
+        const state = (server as any).instanceStates.get(instance.gameId);
+        expect(state.paused).toBe(true);
+        for (const nick of ["alice", "bob"]) {
+            expect(state.departedAt.get(nick)).toBeGreaterThan(Date.now() + config.reconnectGraceSeconds * 1000);
+        }
+
+        // The short per-player grace passing must not resign anyone yet.
+        server.runSweepPass(Date.now() + config.reconnectGraceSeconds * 1000 + 1);
+        expect(manager.get(instance.gameId)).toBeDefined();
+        expect(state.requiredNicks.has("alice")).toBe(true);
+
+        // Once the longer abandoned-instance timeout passes, it resigns
+        // everyone and finalizes exactly like a normal expiry.
+        server.runSweepPass(Date.now() + 120_000 + 1);
+        expect(state.requiredNicks.size).toBe(0);
+    });
+
+    test("GSERV_ABANDONED_TIMEOUT_SECONDS=0 holds the instance indefinitely", () => {
+        const { config, manager, server, instance, alice, bob } = startGame({ GSERV_ABANDONED_TIMEOUT_SECONDS: "0" });
+        server.handleClose(alice.client);
+        server.handleClose(bob.client);
+
+        const state = (server as any).instanceStates.get(instance.gameId);
+        expect(state.paused).toBe(true);
+
+        // Sweeping far past any realistic per-player or abandoned timeout must
+        // never expire either player.
+        server.runSweepPass(Date.now() + config.reconnectGraceSeconds * 1000 + 1);
+        server.runSweepPass(Date.now() + 365 * 24 * 60 * 60 * 1000);
+        expect(state.requiredNicks.size).toBe(2);
+        expect(manager.get(instance.gameId)).toBeDefined();
+    });
+
+    test("a human reconnecting into an abandoned (auto-paused) instance un-pauses it", async () => {
+        const { manager, server, instance, alice, bob } = startGame({ GSERV_ABANDONED_TIMEOUT_SECONDS: "120" });
+        server.handleClose(alice.client);
+        server.handleClose(bob.client);
+        const state = (server as any).instanceStates.get(instance.gameId);
+        expect(state.paused).toBe(true);
+
+        const aliceRejoin = join(server, manager, instance, "alice");
+        server.handleMessage(aliceRejoin.client, "ready 0");
+        await Bun.sleep(20);
+        expect(state.paused).toBe(false);
     });
 });

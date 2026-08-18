@@ -28,6 +28,7 @@ interface ChatHistory {
         subscribe(handler: (message: ChatMessage) => void): void;
         unsubscribe(handler: (message: ChatMessage) => void): void;
     };
+    getAll(): ChatMessage[];
     lastComposeTarget?: {
         value: {
             type: any;
@@ -115,6 +116,14 @@ export class ConnectionInfoScreen extends GameMenuScreen {
                 }
             }, 1000);
             this.disposables.add(() => clearInterval(interval));
+            // Backfill messages that already fired before this screen opened.
+            // It auto-opens a few seconds after lag is first detected (see
+            // GameScreen's onLagStateChange), so a "X is reconnecting"
+            // notice — broadcast the instant the drop happens — has usually
+            // already landed in chatHistory by the time anyone sees this
+            // screen; without this it would only have flashed by as a HUD
+            // toast and be gone.
+            this.messages.push(...params.chatHistory.getAll());
             params.chatHistory.onNewMessage.subscribe(this.handleChatMessage);
             this.disposables.add(() => {
                 this.messages.length = 0;

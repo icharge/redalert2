@@ -435,7 +435,11 @@ function seedArmies(game: any): void {
 }
 
 describe('bot AI per-tick CPU cost scaling (headless, real rules, synthetic 200x200 map)', () => {
-    test.skipIf(!process.env.RUN_BOT_PERF_SCENARIOS, 'measures per-tick cost for 0/1/2 bots (set RUN_BOT_PERF_SCENARIOS=1)', () => {
+    // 4 scenarios x 4500 ticks of real bot AI takes on the order of 30s;
+    // bun's 5000ms default would always mark this failed before the sync
+    // simulation loop below ever returns.
+    const SCENARIO_TIMEOUT_MS = 120_000;
+    test.skipIf(!process.env.RUN_BOT_PERF_SCENARIOS)('measures per-tick cost for 0/1/2 bots (set RUN_BOT_PERF_SCENARIOS=1)', () => {
         const mix = loadMix();
         const samples = SCENARIOS.map((s) => runScenario(mix, s));
         for (const sample of samples) {
@@ -446,12 +450,18 @@ describe('bot AI per-tick CPU cost scaling (headless, real rules, synthetic 200x
         const oneBot = byLabel.get('2h+1b')!;
         const twoBot = byLabel.get('2h+2b')!;
         const fourHuman = byLabel.get('4h+0b (player-count control)')!;
-        const med = (s: PerfSample) => percentile([...s.totalMs].sort((a, b) => a - b), 50);
-        const botMed = (s: PerfSample) => percentile([...s.botMs].sort((a, b) => a - b), 50);
-        console.log(`[BotPerf] bot-only median: baseline=${botMed(baseline).toFixed(2)}ms 1bot=${botMed(oneBot).toFixed(2)}ms 2bot=${botMed(twoBot).toFixed(2)}ms 4h=${botMed(fourHuman).toFixed(2)}ms`);
-        expect(med(twoBot)).toBeGreaterThan(med(baseline));
-        expect(botMed(twoBot)).toBeGreaterThan(botMed(oneBot));
-    });
+        // The cost of bot AI is dominated by occasional heavy ticks (pathfind
+        // retries, periodic awareness rescans), not a shifted median — the
+        // p50 across 4500 mostly-idle ticks is 0.00ms even with bots active.
+        // p95 and the heavy-tick count are what actually separate the
+        // scenarios, so assert on those instead of the median.
+        const p95 = (s: PerfSample) => percentile([...s.totalMs].sort((a, b) => a - b), 95);
+        const botP95 = (s: PerfSample) => percentile([...s.botMs].sort((a, b) => a - b), 95);
+        console.log(`[BotPerf] bot-only p95: baseline=${botP95(baseline).toFixed(2)}ms 1bot=${botP95(oneBot).toFixed(2)}ms 2bot=${botP95(twoBot).toFixed(2)}ms 4h=${botP95(fourHuman).toFixed(2)}ms`);
+        expect(p95(twoBot)).toBeGreaterThan(p95(baseline));
+        expect(botP95(twoBot)).toBeGreaterThan(botP95(oneBot));
+        expect(twoBot.heavyTicks).toBeGreaterThan(baseline.heavyTicks);
+    }, SCENARIO_TIMEOUT_MS);
 });
 
 function findSpaceReference(cells: { x: number; y: number; liveValue: number }[], tiles: number) {

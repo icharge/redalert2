@@ -433,6 +433,7 @@
     "ts:game_paused": "Game paused",
     "ts:game_resumed": "Game resumed",
     "ts:game_no_longer_exists": "The game you were in has ended or no longer exists.",
+    "ts:reconnect_time_remaining": "Time remaining for this player to reconnect before they are defeated.",
     "gui:pause_game": "Pause Game",
     "gui:resume_game": "Resume Game",
     "gui:cancel": "Cancel",

@@ -16,7 +16,6 @@ export class GameMenu {
     setPaused(paused: boolean): void {
         this.paused = paused;
     }
-    private isPaused = () => this.paused;
     get onOpen() {
         return this._onOpen.asEvent();
     }
@@ -59,7 +58,7 @@ export class GameMenu {
                 this.localPlayer.isObserver ||
                 this.localPlayer.defeated),
             pauseAllowed: !this.isSinglePlayer && Boolean(this.gservCon) && !this.localPlayer?.isObserver,
-            isPaused: this.isPaused,
+            isPaused: this.paused,
             onPause: () => {
                 this.controller!.close();
                 this._onPause.dispatch(this);

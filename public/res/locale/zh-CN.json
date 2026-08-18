@@ -412,6 +412,7 @@
     "ts:game_paused": "游戏已暂停",
     "ts:game_resumed": "游戏已继续",
     "ts:game_no_longer_exists": "你之前的对局已结束或不再存在。",
+    "ts:reconnect_time_remaining": "该玩家重新连接的剩余时间，超时后将被判定失败。",
     "gui:pause_game": "暂停游戏",
     "gui:resume_game": "继续游戏",
     "gui:cancel": "取消",
