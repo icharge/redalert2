@@ -11,6 +11,7 @@ import { ReplayStorageFileSystem } from '../../replay/ReplayStorageFileSystem';
 import { ModManager } from '../mainMenu/modSel/ModManager';
 import { LocalPrefs } from '../../../LocalPrefs';
 import { resetGameFiles, resetAllGameFilesAndSettings } from '../../../engine/gameRes/resetGameFiles';
+import { MainMenuScreenType } from '../ScreenType';
 interface ReplayMeta {
     id: string;
     name: string;
@@ -244,6 +245,12 @@ export class ManageGameScreen extends MainMenuScreen {
     private updateSidebarButtons(): void {
         const hasSelection = this.selectedReplayIds.size > 0 || this.selectedMapNames.size > 0 || this.selectedModIds.size > 0;
         this.controller?.setSidebarButtons([
+            {
+                label: this.strings.get('GUI:Storage') || 'Storage',
+                onClick: () => {
+                    this.controller?.pushScreen(MainMenuScreenType.OptionsStorage, {});
+                },
+            },
             {
                 label: this.strings.get('GUI:DeleteSelected') || 'Delete Selected',
                 disabled: !hasSelection,

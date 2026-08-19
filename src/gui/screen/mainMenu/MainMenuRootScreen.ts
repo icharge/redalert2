@@ -206,7 +206,7 @@ export class MainMenuRootScreen extends RootScreen {
             screen = new screenClass(this.strings, this.jsxRenderer);
         }
         else if (screenType === MainMenuScreenType.Options) {
-            screen = new screenClass(this.strings, this.jsxRenderer, this.generalOptions, this.localPrefs, this.fullScreen, false, true);
+            screen = new screenClass(this.strings, this.jsxRenderer, this.generalOptions, this.localPrefs, this.fullScreen, false);
         }
         else if (screenType === MainMenuScreenType.OptionsSound) {
             screen = new screenClass(this.strings, this.jsxRenderer, this.mixer, this.music, this.localPrefs);
