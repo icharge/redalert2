@@ -2,7 +2,8 @@ import React from 'react';
 import classNames from 'classnames';
 import { HtmlReactElement } from '../HtmlReactElement';
 import { Dialog, type DialogProps } from './Dialog';
-import { GameResForm, type GameResFormProps } from './GameResForm';
+import type { GameResFormProps } from './GameResForm';
+import { GameResFormWin98 } from './GameResFormWin98';
 import { FileSystemUtil } from '../../engine/gameRes/FileSystemUtil';
 import type { Viewport } from '../Viewport';
 import type { Strings } from '../../data/Strings';
@@ -11,6 +12,11 @@ interface FsAccessLibraryShim {
     showDirectoryPicker: (options?: any) => Promise<FileSystemDirectoryHandle>;
 }
 export type GameResSourceSelection = FileSystemDirectoryHandle | FileSystemFileHandle | URL | undefined;
+export interface GameResPromptHandle {
+    selection: GameResSourceSelection;
+    reportProgress: (text?: string, percent?: number) => void;
+    close: () => void;
+}
 export class GameResBoxApi {
     private viewport: Viewport;
     private strings: Strings;
@@ -22,59 +28,71 @@ export class GameResBoxApi {
         this.rootEl = rootEl;
         this.fsAccessLib = fsAccessLib;
     }
-    async promptForGameRes(defaultArchiveUrl?: string, closable?: boolean): Promise<GameResSourceSelection> {
+    async promptForGameRes(defaultArchiveUrl?: string, closable?: boolean): Promise<GameResPromptHandle> {
         await this.fsAccessLib.polyfillDataTransferItem();
-        return new Promise<GameResSourceSelection>((resolve) => {
+        return new Promise<GameResPromptHandle>((resolve) => {
             let dialogElement: HtmlReactElement<DialogProps> | undefined;
-            const handleResolve = (selection: GameResSourceSelection) => {
-                cleanup();
-                resolve(selection);
+            let resolved = false;
+            const baseFormProps = (): GameResFormProps => ({
+                defaultArchiveUrl: defaultArchiveUrl,
+                closable: closable,
+                strings: this.strings,
+                onDrop: async (dataTransfer: DataTransfer) => {
+                    if (dataTransfer.items && dataTransfer.items.length > 0) {
+                        try {
+                            const handle = await (dataTransfer.items[0] as any).getAsFileSystemHandle();
+                            if (!handle)
+                                return;
+                            handleSelection(handle as FileSystemDirectoryHandle | FileSystemFileHandle);
+                        }
+                        catch (e) {
+                            console.error("Error getting handle from drop:", e);
+                        }
+                    }
+                },
+                onBrowseFolder: async () => {
+                    try {
+                        const handle = await this.fsAccessLib.showDirectoryPicker({ _preferPolyfill: true });
+                        handleSelection(handle);
+                    }
+                    catch (e) {
+                        console.error("Error browsing folder:", e);
+                    }
+                },
+                onBrowseArchive: async () => {
+                    try {
+                        const handle = await FileSystemUtil.showArchivePicker(this.fsAccessLib as any);
+                        handleSelection(handle as FileSystemFileHandle);
+                    }
+                    catch (e) {
+                        console.error("Error browsing archive:", e);
+                    }
+                },
+                onDownloadArchive: async (url: URL) => {
+                    handleSelection(url);
+                },
+                onClose: () => {
+                    handleSelection(undefined);
+                },
+            });
+            const reportProgress = (text?: string, percent?: number) => {
+                dialogElement?.applyOptions((props) => {
+                    props.children = React.createElement(GameResFormWin98, {
+                        ...baseFormProps(),
+                        installProgress: { text, percent },
+                    } as GameResFormProps);
+                });
+            };
+            const handleSelection = (selection: GameResSourceSelection) => {
+                if (resolved)
+                    return;
+                resolved = true;
+                resolve({ selection, reportProgress, close: cleanup });
             };
             const dialogProps: DialogProps = {
-                className: classNames("game-res-box"),
+                className: classNames("game-res-box", "game-res-box-win98"),
                 buttons: [] as any[],
-                children: React.createElement(GameResForm, {
-                    defaultArchiveUrl: defaultArchiveUrl,
-                    closable: closable,
-                    strings: this.strings,
-                    onDrop: async (dataTransfer: DataTransfer) => {
-                        if (dataTransfer.items && dataTransfer.items.length > 0) {
-                            try {
-                                const handle = await (dataTransfer.items[0] as any).getAsFileSystemHandle();
-                                if (!handle)
-                                    return;
-                                handleResolve(handle as FileSystemDirectoryHandle | FileSystemFileHandle);
-                            }
-                            catch (e) {
-                                console.error("Error getting handle from drop:", e);
-                            }
-                        }
-                    },
-                    onBrowseFolder: async () => {
-                        try {
-                            const handle = await this.fsAccessLib.showDirectoryPicker({ _preferPolyfill: true });
-                            handleResolve(handle);
-                        }
-                        catch (e) {
-                            console.error("Error browsing folder:", e);
-                        }
-                    },
-                    onBrowseArchive: async () => {
-                        try {
-                            const handle = await FileSystemUtil.showArchivePicker(this.fsAccessLib as any);
-                            handleResolve(handle as FileSystemFileHandle);
-                        }
-                        catch (e) {
-                            console.error("Error browsing archive:", e);
-                        }
-                    },
-                    onDownloadArchive: async (url: URL) => {
-                        handleResolve(url);
-                    },
-                    onClose: () => {
-                        handleResolve(undefined);
-                    },
-                } as GameResFormProps),
+                children: React.createElement(GameResFormWin98, baseFormProps() as GameResFormProps),
                 viewport: this.viewport.value,
                 zIndex: 101,
             };
@@ -114,12 +132,13 @@ export class GameResBoxApi {
                 }
                 else {
                     console.error("GameResBoxApi: Dialog element not created for appending.");
-                    handleResolve(undefined);
+                    handleSelection(undefined);
                 }
             }
             else {
                 console.error("GameResBoxApi: Dialog could not be created.");
-                handleResolve(undefined);
+                resolved = true;
+                resolve({ selection: undefined, reportProgress: () => {}, close: () => {} });
             }
         });
     }

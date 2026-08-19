@@ -57,7 +57,7 @@ function wrapFsOpen(originalFsOpen: any, prefilledContents: Map<string, Uint8Arr
         return stream;
     };
 }
-export type ImportProgressCallback = (text?: string, backgroundImage?: Blob | string) => void;
+export type ImportProgressCallback = (text?: string, backgroundImage?: Blob | string, percent?: number) => void;
 export type ImportSource = URL | File | FileSystemDirectoryHandle | FileSystemFileHandle;
 export class GameResImporter {
     private appConfig: Config;
@@ -138,10 +138,11 @@ export class GameResImporter {
                     const buffer = await new HttpRequest().fetchBinary(effectiveUrl, undefined, {
                         onProgress: (delta, total) => {
                             downloadedBytes += delta;
+                            const percent = total ? (downloadedBytes / total) * 100 : undefined;
                             const progressText = total
-                                ? S.get("ts:downloadingpgsize", downloadedBytes / 1024 / 1024, total / 1024 / 1024, (downloadedBytes / total) * 100)
+                                ? S.get("ts:downloadingpgsize", downloadedBytes / 1024 / 1024, total / 1024 / 1024, percent)
                                 : S.get("ts:downloadingpgunkn", downloadedBytes / 1024 / 1024);
-                            onProgress(progressText);
+                            onProgress(progressText, undefined, percent);
                         },
                     });
                     archiveData = new Uint8Array(buffer);
@@ -344,7 +345,7 @@ export class GameResImporter {
         if (isThemeMix) {
             const musicDirName = Engine.rfsSettings.musicDir;
             const targetMusicDir = await targetRfsRootDir.getOrCreateDirectory(musicDirName, true);
-            await this.importMusic(mixVirtualFile, targetMusicDir, (percent) => onProgress(S.get("ts:import_importing_pg", mixFileNameLower, percent.toFixed(0))));
+            await this.importMusic(mixVirtualFile, targetMusicDir, (percent) => onProgress(S.get("ts:import_importing_pg", mixFileNameLower, percent.toFixed(0)), undefined, percent));
         }
         else if (mixFileNameLower.match(/language\.mix$/)) {
             onProgress(S.get("ts:import_importing_long", mixFileNameLower));

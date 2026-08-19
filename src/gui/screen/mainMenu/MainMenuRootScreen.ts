@@ -438,6 +438,10 @@ export class MainMenuRootScreen extends RootScreen {
             const engineModHash = Engine.getActiveMod?.() ?? '';
             screen = new screenClass(engineVersion, engineModHash, undefined, undefined, this.rootController, this.strings, this.jsxRenderer, errorHandler, this.messageBoxApi, replayManager, this.uiScene, rules);
         }
+        else if (screenType === MainMenuScreenType.OptionsManageGame) {
+            const replayManager = (this as any).replayManager;
+            screen = new screenClass(this.strings, this.jsxRenderer, this.messageBoxApi, replayManager, this.localPrefs);
+        }
         else if (screenType === MainMenuScreenType.LanSetup) {
             const { ErrorHandler } = await import('../../../ErrorHandler.js');
             const { Rules } = await import('../../../game/rules/Rules.js');

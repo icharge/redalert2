@@ -8,6 +8,7 @@ import { MainMenuRootScreen } from './gui/screen/mainMenu/MainMenuRootScreen.js'
 import { HomeScreen } from './gui/screen/mainMenu/main/HomeScreen.js';
 import { LanSetupScreen } from './gui/screen/mainMenu/lan/LanSetupScreen.js';
 import { StorageScreen } from './gui/screen/options/StorageScreen.js';
+import { ManageGameScreen } from './gui/screen/options/ManageGameScreen.js';
 import { Config } from './Config.js';
 import { Strings } from './data/Strings.js';
 import { Engine } from './engine/Engine.js';
@@ -435,6 +436,7 @@ export class Gui {
         const subScreens = new Map<MainMenuScreenType, any>();
         subScreens.set(MainMenuScreenType.Home, HomeScreen);
         subScreens.set(MainMenuScreenType.OptionsStorage, StorageScreen);
+        subScreens.set(MainMenuScreenType.OptionsManageGame, ManageGameScreen);
         const { SkirmishScreen } = await import('./gui/screen/mainMenu/lobby/SkirmishScreen.js');
         subScreens.set(MainMenuScreenType.Skirmish, SkirmishScreen);
         const { MapSelScreen } = await import('./gui/screen/mainMenu/mapSel/MapSelScreen.js');

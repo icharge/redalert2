@@ -4,6 +4,14 @@ import { FileNotFoundError } from "./FileNotFoundError";
 import { IOError } from "./IOError";
 import { NameNotAllowedError } from "./NameNotAllowedError";
 import { VirtualFile } from "./VirtualFile";
+// Chrome's File System Access API sends each write() as a single Mojo IPC
+// message to the browser process. Writing a large extracted resource file
+// (RA2's mix archives run into the hundreds of MB) in one write() call has
+// been observed to exceed Chrome's IPC message handling and kill the
+// renderer with RESULT_CODE_KILLED_BAD_MESSAGE. Chunking keeps every
+// individual write() well under any size that's triggered that.
+const WRITE_CHUNK_BYTES = 32 * 1024 * 1024;
+
 export class RealFileSystemDir {
     private handle: FileSystemDirectoryHandle;
     public caseSensitive: boolean;
@@ -142,7 +150,11 @@ export class RealFileSystemDir {
             const fileHandle = await this.handle.getFileHandle(finalFilename, { create: true });
             const writable = await fileHandle.createWritable();
             try {
-                await writable.write(virtualFile.getBytes() as any);
+                const bytes = virtualFile.getBytes();
+                for (let offset = 0; offset < bytes.byteLength; offset += WRITE_CHUNK_BYTES) {
+                    const chunk = bytes.subarray(offset, offset + WRITE_CHUNK_BYTES);
+                    await writable.write(chunk as any);
+                }
                 await writable.close();
             }
             catch (writeError) {

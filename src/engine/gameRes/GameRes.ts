@@ -51,7 +51,8 @@ interface InitResult {
     configToPersist?: GameResConfig;
     cdnResLoader?: CdnResourceLoader;
 }
-type LoadProgressCallback = (loadingText?: string, backgroundImage?: string | Blob) => void;
+type LoadProgressCallback = (loadingText?: string, backgroundImage?: string | Blob, percent?: number) => void;
+type InstallProgressReporter = (text?: string, percent?: number) => void;
 type FatalErrorCallback = (error: Error, strings: Strings) => Promise<void>;
 type ImportErrorCallback = (error: Error, strings: Strings) => Promise<void>;
 export class GameRes {
@@ -84,7 +85,12 @@ export class GameRes {
         let configRequiresSave = false;
         let createdBlobUrl: string | undefined;
         let cdnResourceLoader: CdnResourceLoader | undefined = undefined;
-        const updateSplashScreen: LoadProgressCallback = (text, image) => {
+        let activeInstallReporter: InstallProgressReporter | undefined;
+        const updateSplashScreen: LoadProgressCallback = (text, image, percent) => {
+            if (activeInstallReporter) {
+                activeInstallReporter(text, percent);
+                return;
+            }
             if (text)
                 this.splashScreen.setLoadingText(text);
             if (image) {
@@ -206,7 +212,8 @@ export class GameRes {
                 createdBlobUrl = undefined;
             }
             console.log('[GameRes] Calling gameResBoxApi.promptForGameRes');
-            const userSelection = await gameResBoxApi.promptForGameRes(archiveUrlFallback, !!this.appConfig.gameresBaseUrl && !this.modName);
+            const promptResult = await gameResBoxApi.promptForGameRes(archiveUrlFallback, !!this.appConfig.gameresBaseUrl && !this.modName);
+            const userSelection = promptResult.selection;
             console.log('[GameRes] User selection from prompt:', userSelection);
             currentConfig = new GameResConfig(this.appConfig.gameresBaseUrl ?? "");
             configRequiresSave = true;
@@ -235,6 +242,7 @@ export class GameRes {
             }
             currentConfig.source = selectedSource;
             if (selectedSource !== GameResSource.Cdn) {
+                activeInstallReporter = (text, percent) => promptResult.reportProgress(text, percent);
                 try {
                     if (!rfs) {
                         if (selectedSource === GameResSource.Local && userSelection && !(userSelection instanceof URL) && userSelection.kind === 'directory') {
@@ -248,8 +256,8 @@ export class GameRes {
                     const rootDir = rfs.getRootDirectory();
                     if (!rootDir)
                         throw new Error("RFS root directory not available for import");
-                    await new GameResImporter(this.appConfig, this.strings, this.sentry).import(userSelection, rootDir, (text, image) => {
-                        updateSplashScreen(text, image);
+                    await new GameResImporter(this.appConfig, this.strings, this.sentry).import(userSelection, rootDir, (text, image, percent) => {
+                        updateSplashScreen(text, image, percent);
                         if (text)
                             console.info(text);
                     });
@@ -264,17 +272,19 @@ export class GameRes {
                         originalError: e.originalError,
                         userSelection: userSelection
                     });
-                    this.splashScreen.setLoadingText("");
-                    this.splashScreen.setBackgroundImage("");
+                    activeInstallReporter = undefined;
+                    promptResult.close();
                     await onImportError(e, this.strings);
                     continue;
                 }
-                finally {
-                    this.splashScreen.setLoadingText("");
-                }
+            }
+            else {
+                promptResult.close();
             }
             try {
-                this.splashScreen.setLoadingText(this.strings.get("GUI:LoadingEx"));
+                if (!activeInstallReporter) {
+                    this.splashScreen.setLoadingText(this.strings.get("GUI:LoadingEx"));
+                }
                 cdnResourceLoader = await this.loadResources(rfs, currentConfig, updateSplashScreen);
                 resourcesLoadedSuccessfully = true;
             }
@@ -290,6 +300,10 @@ export class GameRes {
                 this.splashScreen.setLoadingText("");
                 this.splashScreen.setBackgroundImage("");
                 await onFatalError(e, this.strings);
+            }
+            finally {
+                activeInstallReporter = undefined;
+                promptResult.close();
             }
         }
         if (createdBlobUrl)

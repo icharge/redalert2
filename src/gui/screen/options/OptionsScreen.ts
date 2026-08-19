@@ -89,6 +89,14 @@ export class OptionsScreen {
                 },
             });
         }
+        if (this.controller instanceof MainMenuController) {
+            buttons.push({
+                label: this.strings.get("GUI:ManageGame"),
+                onClick: () => {
+                    (this.controller as MainMenuController).pushScreen(MainMenuScreenType.OptionsManageGame, {});
+                },
+            });
+        }
         buttons.push({
             label: this.strings.get("GUI:Back"),
             isBottom: true,

@@ -1,5 +1,5 @@
-import { IniFile } from "data/IniFile";
-import { RouteHelper } from "RouteHelper";
+import { IniFile } from "@/data/IniFile";
+import { RouteHelper } from "@/RouteHelper";
 import { Mod } from "@/gui/screen/mainMenu/modSel/Mod";
 import { ModMeta } from "@/gui/screen/mainMenu/modSel/ModMeta";
 interface Directory {
@@ -54,7 +54,8 @@ export class ModManager {
             throw new Error(ModManager.remoteListFileName + " is missing the [General] section");
         }
         const mods: ModMeta[] = [];
-        for (const modId of generalSection.entries.values()) {
+        for (const rawModId of generalSection.entries.values()) {
+            const modId = Array.isArray(rawModId) ? rawModId[0] : rawModId;
             const modSection = iniFile.getSection(modId);
             if (modSection) {
                 const modMeta = new ModMeta().fromIniSection(modSection);

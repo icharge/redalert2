@@ -30,6 +30,9 @@ export class MapList {
     add(manifest: MapManifest): void {
         this.manifests.push(manifest);
     }
+    remove(manifest: MapManifest): void {
+        this.manifests = this.manifests.filter((m) => m.fileName.toLowerCase() !== manifest.fileName.toLowerCase());
+    }
     addFromMapFile(mapFile: VirtualFile): void {
         this.add(new MapManifest().fromMapFile(mapFile, this.gameModes.getAll()));
     }
