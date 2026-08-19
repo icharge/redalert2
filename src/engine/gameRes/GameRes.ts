@@ -87,12 +87,6 @@ export class GameRes {
         let cdnResourceLoader: CdnResourceLoader | undefined = undefined;
         let activeInstallReporter: InstallProgressReporter | undefined;
         const updateSplashScreen: LoadProgressCallback = (text, image, percent) => {
-            if (activeInstallReporter) {
-                activeInstallReporter(text, percent);
-                return;
-            }
-            if (text)
-                this.splashScreen.setLoadingText(text);
             if (image) {
                 let imageUrl: string;
                 if (typeof image === 'string') {
@@ -106,6 +100,12 @@ export class GameRes {
                 }
                 this.splashScreen.setBackgroundImage(imageUrl);
             }
+            if (activeInstallReporter) {
+                activeInstallReporter(text, percent);
+                return;
+            }
+            if (text)
+                this.splashScreen.setLoadingText(text);
         };
         let nativeFsHandle: FileSystemDirectoryHandle | undefined;
         try {

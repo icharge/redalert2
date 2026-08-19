@@ -349,7 +349,7 @@ export class GameResImporter {
         }
         else if (mixFileNameLower.match(/language\.mix$/)) {
             onProgress(S.get("ts:import_importing_long", mixFileNameLower));
-            await this.importVideo(mixVirtualFile, targetRfsRootDir);
+            await this.importVideo(mixVirtualFile, targetRfsRootDir, onProgress);
         }
         else if (mixFileNameLower.match(/ra2\.mix$/)) {
             const splashImageBlob = await this.importSplashImage(mixVirtualFile, targetRfsRootDir);
@@ -419,7 +419,8 @@ export class GameResImporter {
             }
         }
     }
-    private async importVideo(languageMixVirtualFile: VirtualFile, targetRfsRootDir: RealFileSystemDir): Promise<void> {
+    private async importVideo(languageMixVirtualFile: VirtualFile, targetRfsRootDir: RealFileSystemDir, onProgress?: ImportProgressCallback): Promise<void> {
+        const S = this.strings;
         let ffmpeg: FFmpeg;
         try {
             ffmpeg = await this.createFFmpeg();
@@ -473,6 +474,13 @@ export class GameResImporter {
         }
         console.log(`[GameResImporter] Using video file: "${actualVideoFileName}"`);
         const binkFileEntry = langMix.openFile(actualVideoFileName);
+        const languageMixFileName = languageMixVirtualFile.filename.toLowerCase();
+        const progressHandler = ({ progress, time }: { progress: number; time: number }) => {
+            const percent = Math.max(0, Math.min(100, progress * 100));
+            console.log(`[GameResImporter] Video conversion progress: ${percent.toFixed(1)}% (${(time / 1e6).toFixed(1)}s transcoded)`);
+            onProgress?.(S.get("ts:import_importing_pg", languageMixFileName, percent.toFixed(0)), undefined, percent);
+        };
+        (ffmpeg as any).on?.("progress", progressHandler);
         let webmBuffer: Uint8Array;
         try {
             webmBuffer = await new VideoConverter().convertBinkVideo(ffmpeg, binkFileEntry);
@@ -481,6 +489,9 @@ export class GameResImporter {
             this.sentry?.captureException(new Error(`Bink to WebM conversion failed for ${actualVideoFileName}`), { extra: { error: e } });
             console.error("Bink video conversion failed, skipping menu video.", e);
             return;
+        }
+        finally {
+            (ffmpeg as any).off?.("progress", progressHandler);
         }
         const webmBlob = new Blob([webmBuffer as any], { type: "video/webm" });
         const virtualWebmFile = VirtualFile.fromBytes(webmBuffer, webmFileName);
@@ -494,6 +505,7 @@ export class GameResImporter {
             throw new Error('FFmpeg class is not available from @ffmpeg/ffmpeg module');
         }
         const ffmpeg = new FFmpegClass();
+        (ffmpeg as any).on?.("log", ({ message }: { message: string }) => console.log("[ffmpeg]", message));
         const originalDefine = (window as any).define;
         (window as any).define = undefined;
         try {
