@@ -100,6 +100,7 @@ export class CustomGameScreen extends MainMenuScreen {
     private gameBrowser?: any;
     private refreshTimeoutId?: number;
     private ranksUpdateTask?: Task<void>;
+    private cancellationToken?: CancellationToken;
     constructor(engineModHash: string, strings: any, wolCon: any, wolService: WolService, wladderService: WladderService, jsxRenderer: JsxRenderer, sound: Sound, serverRegions: ServerRegions, mapList: MapList, errorHandler: ErrorHandler, sessionService: SessionService) {
         super();
         this.engineModHash = engineModHash;
@@ -296,6 +297,13 @@ export class CustomGameScreen extends MainMenuScreen {
                 },
             },
             {
+                label: this.strings.get("GUI:Options") || "Options",
+                tooltip: this.strings.get("STT:MainButtonOptions") || "Game options and settings",
+                onClick: () => {
+                    this.controller?.pushScreen(MainMenuScreenType.Options);
+                },
+            },
+            {
                 label: this.strings.get("GUI:Back"),
                 tooltip: this.strings.get("STT:LobbyButtonBack"),
                 isBottom: true,
@@ -357,6 +365,7 @@ export class CustomGameScreen extends MainMenuScreen {
         const tokenSource = new CancellationTokenSource();
         this.disposables.add(() => tokenSource.cancel());
         const cancellationToken = tokenSource.token;
+        this.cancellationToken = cancellationToken;
         if (this.wolCon.getCurrentUser()) {
             await this.loadChannel(cancellationToken);
         }
@@ -436,6 +445,29 @@ export class CustomGameScreen extends MainMenuScreen {
         this.playerProfiles.clear();
         this.games = [];
         this.selectedGame = undefined;
+        this.cancellationToken = undefined;
+    }
+    async onStack(): Promise<void> {
+        if (this.refreshTimeoutId) {
+            clearInterval(this.refreshTimeoutId);
+            this.refreshTimeoutId = undefined;
+        }
+        if (this.ranksUpdateTask) {
+            this.ranksUpdateTask.cancel();
+            this.ranksUpdateTask = undefined;
+        }
+        this.gameBrowser = undefined;
+        await this.controller.hideSidebarButtons();
+    }
+    onUnstack(): void {
+        if (!this.wolCon.isOpen() || !this.channelName || !this.cancellationToken || this.cancellationToken.isCancelled()) {
+            this.onWolClose();
+            return;
+        }
+        const cancellationToken = this.cancellationToken;
+        this.initView(cancellationToken);
+        this.refreshGames(cancellationToken);
+        this.refreshTimeoutId = setInterval(() => this.refreshGames(cancellationToken), 5000);
     }
     private async createGame() {
         this.controller.goToScreen(MainMenuScreenType.Lobby, { create: true });
