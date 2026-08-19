@@ -44,6 +44,7 @@ interface Game {
         destroyableBridges: boolean;
         multiEngineer: boolean;
         noDogEngiKills: boolean;
+        lockAlliances?: boolean;
     };
     rules: {
         mpDialogSettings: {
@@ -212,7 +213,8 @@ export class DiploScreen extends GameMenuScreen {
                 singlePlayer: isSinglePlayer,
                 alliancesAllowed: !isSinglePlayer &&
                     game.rules.mpDialogSettings.alliesAllowed &&
-                    game.rules.mpDialogSettings.allyChangeAllowed,
+                    game.rules.mpDialogSettings.allyChangeAllowed &&
+                    !game.gameOpts.lockAlliances,
                 mapName: game.gameOpts.mapTitle,
                 messages: params.chatHistory?.getAll(),
                 chatHistory: params.chatHistory,
@@ -243,6 +245,7 @@ export class DiploScreen extends GameMenuScreen {
             player: player,
             muted: this.mutedPlayers.has(player.name),
             allianceToggleable: !!localPlayer &&
+                !game.gameOpts.lockAlliances &&
                 game.alliances.canRequestAlliance(player) &&
                 game.alliances.canFormAlliance(localPlayer, player),
             alliance: alliances?.find((alliance) => alliance.players.first === player || alliance.players.second === player),

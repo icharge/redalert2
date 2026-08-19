@@ -39,6 +39,7 @@ export class Serializer {
             Number(gameOpts.noDogEngiKills),
             Number(gameOpts.instantCapture),
             Number(gameOpts.delayedOils),
+            Number(gameOpts.lockAlliances ?? false),
             ...(gameOpts.unknown ? [gameOpts.unknown] : [])
         ].join(',');
         const playersPart = gameOpts.humanPlayers

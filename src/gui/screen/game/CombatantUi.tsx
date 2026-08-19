@@ -591,6 +591,9 @@ export class CombatantUi {
             if (!settings.alliesAllowed || !settings.allyChangeAllowed) {
                 return;
             }
+            if (this.game.gameOpts.lockAlliances) {
+                return;
+            }
             const targetPlayer = unitSelectionHandler.getSelectedUnits()[0]?.owner;
             if (targetPlayer &&
                 targetPlayer !== this.player &&

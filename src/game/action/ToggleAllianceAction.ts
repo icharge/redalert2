@@ -31,6 +31,9 @@ export class ToggleAllianceAction extends Action {
         if (!mpSettings.alliesAllowed || !mpSettings.allyChangeAllowed) {
             return;
         }
+        if (this.game.gameOpts.lockAlliances) {
+            return;
+        }
         const player = this.player;
         const targetPlayer = this.toPlayer;
         const toggle = this.toggle;

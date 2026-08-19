@@ -40,6 +40,7 @@ export interface GameOpts {
     noDogEngiKills: boolean;
     instantCapture: boolean;
     delayedOils: boolean;
+    lockAlliances?: boolean;
     mapName: string;
     mapTitle: string;
     mapDigest: string;

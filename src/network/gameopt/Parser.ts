@@ -36,6 +36,7 @@ export class Parser {
         gameOpts.noDogEngiKills = Boolean(Number(parts.shift() ?? '0'));
         gameOpts.instantCapture = Boolean(Number(parts.shift() ?? '1'));
         gameOpts.delayedOils = Boolean(Number(parts.shift() ?? '0'));
+        gameOpts.lockAlliances = Boolean(Number(parts.shift() ?? '0'));
         gameOpts.unknown = parts.length ? parts.join(',') : undefined;
         gameOpts.humanPlayers = this.parsePlayerOpts(playersPart);
         gameOpts.aiPlayers = this.parseAiOpts(aiPart?.slice(0, -1));

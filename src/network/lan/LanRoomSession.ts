@@ -197,6 +197,7 @@ function cloneGameOpts(gameOpts: GameOpts): GameOpts {
         noDogEngiKills: gameOpts.noDogEngiKills,
         instantCapture: gameOpts.instantCapture,
         delayedOils: gameOpts.delayedOils,
+        lockAlliances: gameOpts.lockAlliances,
         mapName: gameOpts.mapName,
         mapTitle: gameOpts.mapTitle,
         mapDigest: gameOpts.mapDigest,

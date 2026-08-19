@@ -249,7 +249,7 @@ export class MatchmakingBot {
             ranked: a.ranked && b.ranked,
             ladderType: ladderTypeForChannelType(a.channelType),
         });
-        instance.gameopts = this.buildDefaultGameOpts(players);
+        instance.gameopts = this.buildDefaultGameOpts(a, b);
         this.log.info(`instance ${instance.gameId} created${a.ranked && b.ranked ? ` (ranked ${instance.ladderType})` : ""} for ${players.join(", ")}`);
 
         const matched = { gameKey: key, players };
@@ -322,11 +322,24 @@ export class MatchmakingBot {
         return stripBuildSuffix(version) === stripBuildSuffix(expected);
     }
 
-    private buildDefaultGameOpts(players: string[]): string {
+    // Builds the authoritative gameopts for a quick-match/ranked instance.
+    // The two matched sides are pinned to team 0 and team 1 so a 1v1 plays as a
+    // normal fight (each team has one member -> no pre-formed alliance) and a
+    // 2v2 forms the expected two-man teams. lockAlliances=1 disables in-game
+    // diplomacy so players can neither re-team nor betray their side.
+    private buildDefaultGameOpts(a: QueueEntry, b: QueueEntry): string {
+        const players = [...a.players, ...b.players];
+        const teamOf = new Map<string, number>();
+        for (const nick of a.players) {
+            teamOf.set(nick, 0);
+        }
+        for (const nick of b.players) {
+            teamOf.set(nick, 1);
+        }
         const mapTitle = Buffer.from("Default Map", "utf16le").toString("base64");
-        const playersPart = players.map((name, index) => `${name},0,0,${index},0,0,0,0`).join(",");
+        const playersPart = players.map((name, index) => `${name},0,0,${index},${teamOf.get(name) ?? 0},0,0,0`).join(",");
         const aiPart = new Array(8).fill("0,-1,-1,-1,-1").join(",");
-        return `0,0,2,10000,100,0,0,1,1,0,1,0,${mapTitle},${players.length},1,1000,mpdefault,abc123,1,0,0,1,0:${playersPart}:@:${aiPart},`;
+        return `0,0,2,10000,100,0,0,1,1,0,1,0,${mapTitle},${players.length},1,1000,mpdefault,abc123,1,0,0,1,0,1:${playersPart}:@:${aiPart},`;
     }
 
     private reply(user: ServerUser, text: string): void {
