@@ -31,10 +31,15 @@ export class GservConnection {
     private _onPlayerReconnecting = new EventDispatcher<GservConnection, string>();
     private _onPlayerReconnected = new EventDispatcher<GservConnection, string>();
     private _onPlayerGaveUp = new EventDispatcher<GservConnection, string>();
+    private _onPauseCountdown = new EventDispatcher<GservConnection>();
+    private _onPaused = new EventDispatcher<GservConnection>();
+    private _onResumeCountdown = new EventDispatcher<GservConnection>();
+    private _onResumed = new EventDispatcher<GservConnection>();
     private _onResyncLogComplete = new EventDispatcher<GservConnection>();
     private _onPrivMsgNotAllowed = new EventDispatcher<GservConnection>();
     private resyncTurnCount?: number;
     private resyncFrames = new Map<number, Uint8Array>();
+    private lastNetRate?: { rate: number; turnNo: number };
     get onError() {
         return this.con.onError;
     }
@@ -74,6 +79,18 @@ export class GservConnection {
     get onPlayerGaveUp() {
         return this._onPlayerGaveUp.asEvent();
     }
+    get onPauseCountdown() {
+        return this._onPauseCountdown.asEvent();
+    }
+    get onPaused() {
+        return this._onPaused.asEvent();
+    }
+    get onResumeCountdown() {
+        return this._onResumeCountdown.asEvent();
+    }
+    get onResumed() {
+        return this._onResumed.asEvent();
+    }
     get onPrivMsgNotAllowed() {
         return this._onPrivMsgNotAllowed.asEvent();
     }
@@ -112,6 +129,10 @@ export class GservConnection {
                 }
                 else if (parts[1] === "" + GservCode.RPL_NET_RATE) {
                     const [rate, turnNo] = parts[3].slice(1).split(",");
+                    this.lastNetRate = {
+                        rate: Number(rate),
+                        turnNo: Number(turnNo),
+                    };
                     this._onRateChange.dispatch(this, {
                         rate: Number(rate),
                         turnNo: Number(turnNo),
@@ -134,6 +155,18 @@ export class GservConnection {
                 }
                 else if (parts[1] === "" + GservCode.RPL_PLAYER_GAVE_UP) {
                     this._onPlayerGaveUp.dispatch(this, parts[3].replace(/^:/, ""));
+                }
+                else if (parts[1] === "" + GservCode.RPL_GAME_PAUSE_COUNTDOWN) {
+                    this._onPauseCountdown.dispatch(this);
+                }
+                else if (parts[1] === "" + GservCode.RPL_GAME_PAUSED) {
+                    this._onPaused.dispatch(this);
+                }
+                else if (parts[1] === "" + GservCode.RPL_GAME_RESUME_COUNTDOWN) {
+                    this._onResumeCountdown.dispatch(this);
+                }
+                else if (parts[1] === "" + GservCode.RPL_GAME_RESUMED) {
+                    this._onResumed.dispatch(this);
                 }
                 else if (parts[1] === "" + GservCode.RPL_RESYNC) {
                     this.resyncTurnCount = Number(parts[3]?.replace(/^:/, "") ?? -1);
@@ -288,7 +321,9 @@ export class GservConnection {
 
     private handleResyncActions(payload: Uint8Array): void {
         const turnNo = new DataView(payload.buffer, payload.byteOffset, payload.byteLength).getUint32(0, true);
-        this.resyncFrames.set(turnNo, payload.slice(4));
+        // Keep the [u32 turnNo][all-player blobs] payload intact so the resync
+        // catch-up can feed it through the same parser as a live relay frame.
+        this.resyncFrames.set(turnNo, payload);
         if (this.resyncTurnCount !== undefined && this.resyncFrames.size >= this.resyncTurnCount + 1) {
             this._onResyncLogComplete.dispatch(this);
         }
@@ -308,8 +343,31 @@ export class GservConnection {
         };
     }
 
+    // The most recent net-rate the server announced. The rejoin path needs it
+    // because the server sends RPL_NET_RATE immediately after a re-join, before
+    // the game screen subscribes to onRateChange.
+    getLastNetRate(): { rate: number; turnNo: number } | undefined {
+        return this.lastNetRate;
+    }
+
     sendReady(turnNo: number): void {
         this.con.sendMessage("ready " + turnNo);
+    }
+
+    sendPause(): void {
+        this.con.sendMessage("pause");
+    }
+
+    sendResume(): void {
+        this.con.sendMessage("resume");
+    }
+
+    // Voluntary quit ("Abort Mission"): tells the server this nick is gone for
+    // good, distinct from an accidental disconnect, so it skips the rejoin
+    // grace window entirely instead of holding a slot for a reconnect that
+    // will never come.
+    sendLeave(): void {
+        this.con.sendMessage("leave");
     }
 
     sayChannel(message: string): void {

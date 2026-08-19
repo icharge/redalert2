@@ -419,7 +419,10 @@ export class Gui {
                     this.strings.get('gui:quit')
                 );
                 if (shouldReconnect) {
-                    this.rootController!.goToScreen(ScreenType.Game, reconnectParams);
+                    this.rootController!.goToScreen(ScreenType.Game, {
+                        ...reconnectParams,
+                        reconnect: true,
+                    });
                     return;
                 }
                 this.localPrefs.removeItem(StorageKey.LastConnection);
@@ -803,6 +806,11 @@ export class Gui {
             perfWorldSoundLoopCache: performanceOptions.worldSoundLoopCache,
             perfTelemetry: performanceOptions.telemetry,
         });
+        // config.ini is the source of truth for this flag, but Application.ts's
+        // MockConsoleVars already constructs a debugGameState BoxedVar(false)
+        // before Gui runs, so the `??` default above never sees it as missing.
+        // Force the config value on regardless of whether the BoxedVar pre-existed.
+        this.runtimeVars.debugGameState.value = this.config.debugGameState;
         debugRoot.runtimeVars = this.runtimeVars;
         installPerformanceDebugApi(debugRoot);
         console.log('[Gui] Runtime vars ready', Object.keys(this.runtimeVars));

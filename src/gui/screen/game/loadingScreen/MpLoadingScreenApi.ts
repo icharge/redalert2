@@ -134,6 +134,17 @@ export class MpLoadingScreenApi implements LoadingScreenApi {
             }
         }
     }
+    setSynchronizing(percent: number): void {
+        if (!this.localPlayerName || !this.playerLoadInfo || !this.loadingScreen) {
+            return;
+        }
+        const roundedPercent = Math.min(100, Math.max(0, Math.floor(percent)));
+        const updated = this.playerLoadInfo.map((info) => info.name === this.localPlayerName
+            ? { ...info, loadPercent: roundedPercent }
+            : info);
+        this.playerLoadInfo = updated;
+        this.updateLoadingScreen(updated);
+    }
     private createFallbackLoadInfos(loadPercent: number): LoadInfo[] {
         return (this.players ?? []).map((player) => ({
             name: player.name,
@@ -197,12 +208,18 @@ export class MpLoadingScreenApi implements LoadingScreenApi {
         })
             .filter((info): info is NonNullable<typeof info> => info !== undefined);
         if (hasTeams) {
-            return extendedInfos.sort((a, b) => {
+            extendedInfos.sort((a, b) => {
                 if (Boolean(a.country) === Boolean(b.country)) {
                     return a.team - b.team;
                 }
                 return Number(b.country !== undefined) - Number(a.country !== undefined);
             });
+        }
+        // The local player must always be listed first on the loading screen.
+        const localIndex = extendedInfos.findIndex(info => info.name === this.localPlayerName);
+        if (localIndex > 0) {
+            const [localInfo] = extendedInfos.splice(localIndex, 1);
+            extendedInfos.unshift(localInfo!);
         }
         return extendedInfos;
     }

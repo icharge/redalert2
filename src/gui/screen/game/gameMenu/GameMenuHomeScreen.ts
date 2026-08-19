@@ -10,6 +10,9 @@ interface GameMenuHomeParams {
     onQuit?: () => void;
     onObserve?: () => void;
     observeAllowed?: boolean;
+    onPause?: () => void;
+    pauseAllowed?: boolean;
+    isPaused?: boolean;
 }
 interface SidebarButton {
     label: string;
@@ -55,6 +58,12 @@ export class GameMenuHomeScreen extends GameMenuScreen {
                 disabled: !this.fullScreen.isAvailable(),
                 onClick: () => this.fullScreen.toggle(),
             },
+            ...(params.pauseAllowed && params.onPause
+                ? [{
+                        label: params.isPaused ? strings.get("gui:resume_game") : strings.get("gui:pause_game"),
+                        onClick: params.onPause,
+                    }]
+                : []),
             {
                 label: strings.get("GUI:AbortMission"),
                 onClick: () => {

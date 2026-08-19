@@ -60,6 +60,10 @@ export interface ServerConfig {
     startTimeoutSeconds: number;
     reconnectGraceSeconds: number;
     loadingDepartureGraceSeconds: number;
+    abandonedInstanceTimeoutSeconds: number;
+    pauseCountdownMillis: number;
+    pauseCooldownMillis: number;
+    rejoinResumeCountdownMillis: number;
     gservRateLimitEnabled: boolean;
     gservStatsIntervalSeconds: number;
     loginMaxPerMin: number;
@@ -123,6 +127,20 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
         // How long a player who dropped during the loading phase has to rejoin
         // before the instance is aborted for the remaining players.
         loadingDepartureGraceSeconds: Number(env.GSERV_LOADING_DEPARTURE_GRACE_SECONDS ?? 90),
+        // When the last connected human leaves an instance that still has
+        // bots (or other departed-but-not-yet-expired humans) in it, every
+        // pending rejoin deadline is extended to this many seconds instead of
+        // the shorter per-player reconnectGraceSeconds, since nobody is left
+        // to notice the match ending early. 0 holds the instance indefinitely
+        // (never auto-finalizes; only an explicit rejoin or admin action ends
+        // it).
+        abandonedInstanceTimeoutSeconds: Number(env.GSERV_ABANDONED_TIMEOUT_SECONDS ?? 120),
+        // MOBA-style whole-game pause countdown and per-player cooldown.
+        pauseCountdownMillis: Number(env.GSERV_PAUSE_COUNTDOWN_MILLIS ?? 3000),
+        pauseCooldownMillis: Number(env.GSERV_PAUSE_COOLDOWN_MILLIS ?? 30000),
+        // Countdown between a rejoining player signalling ready and the relay
+        // resuming, so everyone is ready to continue.
+        rejoinResumeCountdownMillis: Number(env.GSERV_REJOIN_RESUME_COUNTDOWN_MILLIS ?? 3000),
         // Disable per-connection flood limiting on the match relay (testing
         // only): set GSERV_RATE_LIMIT=disabled to turn it off.
         gservRateLimitEnabled: env.GSERV_RATE_LIMIT !== "disabled",

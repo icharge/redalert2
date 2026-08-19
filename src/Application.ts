@@ -180,7 +180,7 @@ export class Application {
     private async loadConfig(): Promise<void> {
         console.log('[Application] Attempting to load config.ini...');
         try {
-            const response = await fetch('/config.ini');
+            const response = await fetch('/config.ini', { cache: 'no-cache' });
             if (!response.ok) {
                 throw new Error(`Failed to fetch config.ini: ${response.status} ${response.statusText}`);
             }

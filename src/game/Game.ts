@@ -110,6 +110,13 @@ export class Game {
         this.nextObjectId = nextObjectId;
         this.objectFactory = objectFactory;
         this.botManager = botManager;
+        // Explicit default: callers gate game.start() on `status === NotStarted`
+        // (GameScreen.ts), and NotStarted happens to be enum value 0 — but an
+        // uninitialized field is `undefined`, not 0, so that check silently
+        // failed and start() (bot creation, trigger init) never ran for a live
+        // join. Only the unconditional game.start() in the rejoin catch-up path
+        // ever set this, which is why bots stayed inert until reconnect.
+        this.status = GameStatus.NotStarted;
     }
     addPlayer(player: any) {
         this.playerList.addPlayer(player);

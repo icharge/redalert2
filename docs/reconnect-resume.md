@@ -5,8 +5,8 @@ Audience: engineers working on the client (RA2 Web TS port) and the replacement 
 
 ## Implementation status (v1)
 
-Implemented and tested (server: 198 tests incl. reconnect suite; client: 217 tests
-incl. `src/test/rejoinE2E.test.ts` end-to-end reconnect over the real stack):
+Implemented and tested (server: 208 tests; client: 240 tests incl.
+`src/test/rejoinE2E.test.ts` end-to-end reconnect over the real stack):
 
 - Server: loading-phase departure grace (`loadingDepartures` + sweep abort), tickets
   kept valid until instance retire (re-login/rejoin works), mid-game rejoin admission
@@ -21,6 +21,89 @@ incl. `src/test/rejoinE2E.test.ts` end-to-end reconnect over the real stack):
   online join path.
 - Known limits (v1): the catch-up replay runs at CPU speed (long matches take a while
   on the rejoining client); no LAN rejoin yet; no rejoin time-limit policy for ranked.
+
+## Whole-game pause (MOBA-style, v1)
+
+Implemented alongside reconnect (same relay-hold machinery):
+
+- `pause` / `resume` gserv commands; any member can pause/resume. A 3s server-timed
+  countdown runs on both sides (`RPL_GAME_PAUSE_COUNTDOWN/RESUMED`-style broadcasts:
+  `809` pause countdown, `810` paused, `811` resume countdown, `812` resumed). Resume
+  during the pause countdown cancels it; pause during a resume countdown cancels the
+  resume. Per-player pause cooldown (30s).
+- While paused the relay holds (`flushPendingTurns` skips) — every client freezes
+  naturally and the small accumulated backlog (2-3 turns) flushes on resume.
+- Client: "Pause Game"/"Resume Game" button in the in-game menu (MP only), countdown
+  overlay + paused dialog with a Resume button, system messages on resume.
+- Config: `GSERV_PAUSE_COUNTDOWN_MILLIS` (3000), `GSERV_PAUSE_COOLDOWN_MILLIS` (30000),
+  `GSERV_REJOIN_RESUME_COUNTDOWN_MILLIS` (3000), `GSERV_RECONNECT_GRACE_SECONDS` (30).
+- Composes with reconnect: a pause during a disconnect hold just rides on top; on
+  unpause the relay stays held until the departed player returns or their grace
+  expires.
+
+## Reconnect UX (final, per playtest feedback)
+
+- **Disconnect (required player):** server broadcasts `RPL_PLAYER_DISCONNECT` (804,
+  "X has left the game") + `RPL_PLAYER_RECONNECTING` (806) to all members; the relay
+  holds (game pauses). Clients show the connection-info screen (players + ping) after
+  ~2s of stall (original lag behavior) and auto-close it on resume.
+- **Rejoin + ready:** after the rejoiner catches up and signals `ready`, the server
+  runs a short resume countdown (`GSERV_REJOIN_RESUME_COUNTDOWN_MILLIS`, 3s) holding
+  the relay, broadcasting `RPL_GAME_RESUME_COUNTDOWN`/`RESUMED`; clients post
+  per-second `[System] Game resuming in 3/2/1...` chat messages plus the overlay, then
+  the relay resumes and the connection-info screen closes.
+- **Timeout (`GSERV_RECONNECT_GRACE_SECONDS`, 30s):** the departed player's missing
+  submissions are backfilled with a `ResignGame` action (units destroyed, marked
+  defeated) instead of `NO_ACTION` — in a 2-player game the remaining player wins
+  immediately; in 3+ the game continues without them. Clients show "X did not
+  reconnect in time and has been defeated."
+- **Game already ended while away:** the rejoiner's catch-up detects `Ended` and goes
+  straight to the result / score screen instead of entering a frozen game.
+- **Game no longer exists:** a failed reconnect re-entry surfaces a clear
+  "The game you were in has ended or no longer exists." dialog (reconnect-tagged
+  `InstanceNonExistent`).
+- **Loading screen** lists the local player first.
+
+## Post-v1 playtest fixes (2026-08-17/18)
+
+Real 2-human + 1-bot playtests surfaced a desync that only ever fired right after a
+mid-game reconnect. Root-caused and fixed:
+
+- **Bots and map triggers never activated for a live-joined player.** `Game.status`
+  (`src/game/Game.ts`) was declared but never initialized in the constructor, so it was
+  `undefined` rather than `GameStatus.NotStarted` (`0`). The live-join guard in
+  `GameScreen.ts` (`if (game.status === GameStatus.NotStarted) game.start()`) therefore
+  never passed — `game.start()`, and with it `botManager.init()` / `triggers.init()`,
+  silently never ran. Both connected clients played the whole match with an inert bot
+  (identical broken state on both sides, so desync hashes still matched — nothing
+  flagged). The *only* place that ever called `game.start()` unconditionally was
+  `runRejoinCatchUp`, so a reconnecting client would be the first to ever actually
+  create the bot, mid-match — instantly diverging from the peer that never got one.
+  Fixed by initializing `this.status = GameStatus.NotStarted` in the `Game` constructor.
+- **A player who went passive (e.g. a backgrounded browser tab) never came back.**
+  `GameAnimationLoop` correctly calls `gameTurnMgr.setPassiveMode(true)` when the tab is
+  hidden (this is original upstream behavior, not a port bug) — but `GservServer.
+  handleActive` only handled the `active: false` half: it removed the nick from
+  `requiredNicks` and never re-added it when `active: true` came back in. From that
+  point on the player's turns were permanently rejected as stale
+  (`ignoring stale turn N from <nick>`, forever) even though their connection never
+  dropped. Fixed by mirroring `handleReady`'s re-admission logic for the `active: true`
+  case.
+- **The desync statedump/lockstep-log export was fully dead**, across four stacked
+  bugs, so a repro never actually produced a diagnostic bundle: `debugGameState`
+  (`ConsoleVars`) always defaulted to `false` regardless of `config.ini` (`Gui.ts` never
+  forced the config value onto the pre-existing `MockConsoleVars` BoxedVar);
+  `GameScreen.handleGameError` accepted a `debugDataProvider` callback but never called
+  it (upstream hands this to Sentry, which this fork mocks out as a no-op); the export
+  closure disposed the single `WorkerHost` shared for the whole app-session lifetime,
+  permanently breaking it (and future map loads) after the first desync; and
+  `WorkerHost.queueTask` silently discarded task rejections (no-op `resolve`/`reject`
+  stubs), so a failing compression step looked identical to success. Separately,
+  `compressFile`'s `7z-wasm` init was missing the `locateFile` override
+  `GameResImporter.ts` already needed for the same library, so the wasm binary failed
+  to load inside the worker. All fixed: a desync now downloads a single
+  `desync-debug.7z` (bundled statedump + lockstep log in one file, to avoid browsers'
+  multi-download blocker) instead of silently producing nothing.
 
 ## 1. Problem statement
 

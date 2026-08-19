@@ -40,9 +40,11 @@ import { DataStream } from '@/data/DataStream';
 import { CON_INFO_THRESH_MILLIS, LAN_LOAD_TIMEOUT_MILLIS } from '@/network/gservConfig';
 
 const REJOIN_RESYNC_TIMEOUT_MILLIS = 30_000;
+const REJOIN_CATCHUP_STALL_LIMIT = 32;
 import { GameRes } from '@/network/gameres/GameRes';
 import { Task } from '@puzzl/core/lib/async/Task';
 import { IrcConnection } from '@/network/IrcConnection';
+import { GservError } from '@/network/GservError';
 import { CancellationTokenSource, OperationCanceledError } from '@puzzl/core/lib/async/cancellation';
 import { MusicType } from '@/engine/sound/Music';
 import { ActionType } from '@/game/action/ActionType';
@@ -89,7 +91,9 @@ export class GameScreen extends RootScreen {
     private sidebarModel?: any;
     private loadingScreenApi?: any;
     private lagState = false;
-    private rejoinHoldActive = false;
+    private gamePaused = false;
+    private pauseCountdownInterval?: any;
+    private isReconnect = false;
     private chatTypingHandler?: any;
     private chatNetHandler?: any;
     private lanMatchSession?: LanMatchSession;
@@ -143,6 +147,7 @@ export class GameScreen extends RootScreen {
         const playerName = this.playerName = lanLaunch?.localPlayerName ?? params.playerName;
         const isSinglePlayer = this.isSinglePlayer = params.create && params.singlePlayer;
         const isLanGame = this.isLanGame = Boolean(lanLaunch);
+        this.isReconnect = Boolean(params.reconnect);
         if (isSinglePlayer) {
             gameOpts = params.gameOpts;
         }
@@ -289,13 +294,6 @@ export class GameScreen extends RootScreen {
                     throw error;
                 }
             }
-            else {
-                this.disposables.add(game.events.subscribe(EventType.PlayerDefeated, (event: any) => {
-                    if (event.target === localPlayer && localPlayer.isObserver) {
-                        this.gameTurnMgr.setPassiveMode?.(true);
-                    }
-                }));
-            }
         }
         this.gameTurnMgr.init();
         const startGameHandler = () => {
@@ -335,39 +333,113 @@ export class GameScreen extends RootScreen {
             const rateChangeHandler = (rate: number) => this.gameTurnMgr.setRate(rate);
             this.gservCon.onRateChange.subscribe(rateChangeHandler);
             this.disposables.add(() => this.gservCon.onRateChange.unsubscribe(rateChangeHandler));
-            const reconnectingHandler = (nick: string) => {
+            const playerNoticeHandler = (nick: string, key: string) => {
                 if (nick !== playerName) {
-                    this.rejoinHoldActive = true;
-                    uiInitResult.messageList?.addSystemMessage?.(this.strings.get('ts:player_reconnecting', nick), 'grey');
+                    const text = this.strings.get(key, nick);
+                    uiInitResult.messageList?.addSystemMessage?.(text, 'grey');
+                    // Also reach the Connection Info screen's chat box, which
+                    // renders chatHistory rather than the HUD's messageList —
+                    // players watching a reconnect from that screen otherwise
+                    // see nothing.
+                    uiInitResult.chatHistory?.addChatMessage?.({ text });
                 }
             };
-            const rejoinEndHandler = (nick: string) => {
-                if (nick !== playerName) {
-                    this.rejoinHoldActive = false;
-                }
-            };
+            const reconnectingHandler = (nick: string) => playerNoticeHandler(nick, 'ts:player_reconnecting');
+            const reconnectedHandler = (nick: string) => playerNoticeHandler(nick, 'ts:player_reconnected');
+            const gaveUpHandler = (nick: string) => playerNoticeHandler(nick, 'ts:player_reconnect_timeout');
+            const disconnectHandler = (nick: string) => playerNoticeHandler(nick, 'ts:player_left');
             this.gservCon.onPlayerReconnecting.subscribe(reconnectingHandler);
-            this.gservCon.onPlayerReconnected.subscribe(rejoinEndHandler);
-            this.gservCon.onPlayerGaveUp.subscribe(rejoinEndHandler);
+            this.gservCon.onPlayerReconnected.subscribe(reconnectedHandler);
+            this.gservCon.onPlayerGaveUp.subscribe(gaveUpHandler);
+            this.gservCon.onPlayerDisconnect.subscribe(disconnectHandler);
             this.disposables.add(
                 () => this.gservCon.onPlayerReconnecting.unsubscribe(reconnectingHandler),
-                () => this.gservCon.onPlayerReconnected.unsubscribe(rejoinEndHandler),
-                () => this.gservCon.onPlayerGaveUp.unsubscribe(rejoinEndHandler),
+                () => this.gservCon.onPlayerReconnected.unsubscribe(reconnectedHandler),
+                () => this.gservCon.onPlayerGaveUp.unsubscribe(gaveUpHandler),
+                () => this.gservCon.onPlayerDisconnect.unsubscribe(disconnectHandler),
+            );
+            const pauseCountdownHandler = () => {
+                this.showPauseCountdown(
+                    uiInitResult.messageList,
+                    uiInitResult.chatHistory,
+                    this.strings.get('ts:game_pausing_in_chat'),
+                    this.strings.get('ts:game_pausing_in'),
+                );
+            };
+            const resumeCountdownHandler = () => {
+                this.showPauseCountdown(
+                    uiInitResult.messageList,
+                    uiInitResult.chatHistory,
+                    this.strings.get('ts:game_resuming_in_chat'),
+                    this.strings.get('ts:game_resuming_in'),
+                );
+            };
+            const pausedHandler = () => {
+                this.gamePaused = true;
+                this.menu?.setPaused(true);
+                this.clearPauseCountdown();
+                this.messageBoxApi.show(
+                    this.strings.get('ts:game_paused'),
+                    this.strings.get('gui:resume_game'),
+                    () => this.gservCon.sendResume(),
+                );
+            };
+            const resumedHandler = () => {
+                this.gamePaused = false;
+                this.menu?.setPaused(false);
+                this.clearPauseCountdown();
+                this.messageBoxApi.destroy();
+                const text = this.strings.get('ts:game_resumed');
+                uiInitResult.messageList?.addSystemMessage?.(text, 'grey');
+                uiInitResult.chatHistory?.addChatMessage?.({ text });
+            };
+            this.gservCon.onPauseCountdown.subscribe(pauseCountdownHandler);
+            this.gservCon.onPaused.subscribe(pausedHandler);
+            this.gservCon.onResumeCountdown.subscribe(resumeCountdownHandler);
+            this.gservCon.onResumed.subscribe(resumedHandler);
+            this.disposables.add(
+                () => this.gservCon.onPauseCountdown.unsubscribe(pauseCountdownHandler),
+                () => this.gservCon.onPaused.unsubscribe(pausedHandler),
+                () => this.gservCon.onResumeCountdown.unsubscribe(resumeCountdownHandler),
+                () => this.gservCon.onResumed.unsubscribe(resumedHandler),
             );
             this.gservCon.sendLoadedPercent(100);
             const rejoinLog = this.gservCon.getResyncLog();
             if (rejoinLog) {
-                await this.runRejoinCatchUp(rejoinLog, cancellationToken);
+                const endedDuringCatchUp = await this.runRejoinCatchUp(rejoinLog, cancellationToken);
                 if (cancellationToken.isCancelled()) {
                     return;
                 }
+                if (endedDuringCatchUp) {
+                    // The match already ended while the player was away: skip
+                    // entering the game and go straight to the result / score
+                    // screen.
+                    console.log('[GameScreen] game already ended during rejoin; showing result');
+                    this.loadingScreenApi?.dispose();
+                    this.onGameEnd(game, localPlayer, undefined, replay);
+                    return;
+                }
+                // Subscribed after the catch-up so replayed defeat/observe
+                // events cannot mark the rejoiner passive mid-sync.
+                this.subscribePassiveOnDefeat(game, localPlayer);
                 this.onGameStart(localPlayer, game, uiInitResult, actionQueue, actionFactory, replay);
             }
             else {
+                this.subscribePassiveOnDefeat(game, localPlayer);
                 this.gservCon.onGameStart.subscribe(startGameHandler);
                 this.disposables.add(() => this.gservCon.onGameStart.unsubscribe(startGameHandler));
             }
         }
+    }
+    private subscribePassiveOnDefeat(game: any, localPlayer: any): void {
+        if (localPlayer.isObserver) {
+            return;
+        }
+        this.disposables.add(game.events.subscribe(EventType.PlayerDefeated, (event: any) => {
+            if (event.target === localPlayer && localPlayer.isObserver) {
+                this.gameTurnMgr.setPassiveMode?.(true);
+            }
+        }));
     }
 
     private async waitForLanPlayersLoaded(cancellationToken: any): Promise<void> {
@@ -391,6 +463,7 @@ export class GameScreen extends RootScreen {
 
     async onLeave(): Promise<void> {
         this.pointer.unlock();
+        this.clearPauseCountdown();
         const hadGameAnimationLoop = Boolean(this.gameAnimationLoop);
         if (this.gameAnimationLoop) {
             this.gameAnimationLoop.destroy();
@@ -410,6 +483,7 @@ export class GameScreen extends RootScreen {
         this.lanMatchSession = undefined;
         this.disposables.dispose();
         this.activeWorldScene = undefined;
+        this.localPrefs.removeItem(StorageKey.LastConnection);
         if (hadGameAnimationLoop) {
             this.uiAnimationLoop.start();
         }
@@ -701,6 +775,7 @@ export class GameScreen extends RootScreen {
     }
     private initOnlineLockstep(game: any, localPlayer: any, actionFactory: any, actionQueue: any, replayRecorder: any): any {
         const debugGameState = this.runtimeVars.debugGameState?.value ?? false;
+        console.log(`[GameScreen] debugGameState=${debugGameState} (desync-debug.7z will ${debugGameState ? "" : "NOT "}be downloaded on desync)`);
         let stateDumpBuffer: DataStream | undefined;
         const debugLogger = debugGameState
             ? (message: string) => {
@@ -730,27 +805,37 @@ export class GameScreen extends RootScreen {
                     game,
                     debugGameState
                         ? async () => {
-                            let stateDump: any;
-                            let debugLog: any;
+                            // Bundled into a single archive and downloaded as one file:
+                            // triggering two synthetic downloads back-to-back (no real
+                            // user gesture behind either) is exactly the pattern
+                            // browsers' multi-download blockers suppress, often without
+                            // any visible failure.
+                            let debugBundle: any;
                             try {
-                                const stateDumpJson = JSON.stringify(lockstepManager.debugGameStateHistory, undefined, 2);
-                                this.workerHostApi.queueTask(async (worker: any) => {
-                                    stateDump = await worker.compressFile(stateDumpJson, "statedump.json");
+                                const lockstepLog = stateDumpBuffer
+                                    ? new TextDecoder().decode(new Uint8Array(stateDumpBuffer.buffer, 0, stateDumpBuffer.byteLength))
+                                    : "";
+                                const bundleJson = JSON.stringify({
+                                    stateDump: lockstepManager.debugGameStateHistory,
+                                    lockstepLog,
                                 });
-                                this.workerHostApi.queueTask(async (worker: any) => {
-                                    debugLog = await worker.compressFile(
-                                        new Uint8Array(stateDumpBuffer!.buffer, 0, stateDumpBuffer!.byteLength),
-                                        "lockstep.log");
+                                await this.workerHostApi.queueTask(async (worker: any) => {
+                                    debugBundle = await worker.compressFile(bundleJson, "desync-debug.json");
                                 });
-                                await this.workerHostApi.waitForTasks();
                             }
                             catch (error) {
                                 console.error("Failed to export debug data", error);
                             }
-                            finally {
-                                this.workerHostApi.dispose();
-                            }
-                            return { stateDump, debugLog };
+                            // Deliberately not disposing workerHostApi: it's a single
+                            // shared WorkerHost registered once for the GameScreen's
+                            // whole app-session lifetime (Gui.ts registers GameScreen
+                            // once and reuses it for every game played in the tab,
+                            // including map loading via the shared GameLoader).
+                            // WorkerHost.dispose() is permanent and makes queueTask a
+                            // silent no-op afterward, which would kill map loading for
+                            // the rest of the session and silently blank out every
+                            // subsequent desync export with no error at all.
+                            return { debugBundle };
                         }
                         : undefined,
                 );
@@ -769,7 +854,7 @@ export class GameScreen extends RootScreen {
             if (lagState) {
                 connectionInfoTimer = new Task(async (token: any) => {
                     await sleep(CON_INFO_THRESH_MILLIS, token);
-                    if (!token.isCancelled() && !this.rejoinHoldActive) {
+                    if (!token.isCancelled()) {
                         this.menu?.openConnectionInfo(game.getCombatants(), this.gservCon, this.chatNetHandler);
                     }
                 });
@@ -789,7 +874,9 @@ export class GameScreen extends RootScreen {
         return lockstepManager;
     }
     private onGameStart(localPlayer: any, game: any, uiInitResult: any, actionQueue: any, actionFactory: any, replay: any): void {
-        this.localPrefs.removeItem(StorageKey.LastConnection);
+        // LastConnection is deliberately kept while the game runs: a page
+        // refresh mid-game must still offer "Reconnect to the previous game?"
+        // (the rejoin + resync flow). It is cleared when the screen is left.
         this.loadingScreenApi?.dispose();
         this.music?.play(MusicType.Normal);
         const evaSpecs = new EvaSpecs(localPlayer.country?.side ?? SideType.GDI).readIni(Engine.getIni('eva.ini'));
@@ -1200,7 +1287,7 @@ export class GameScreen extends RootScreen {
         const gameEndHandler = () => this.onGameEnd(game, localPlayer, eva, replay);
         game.onEnd.subscribe(gameEndHandler);
         this.disposables.add(() => game.onEnd.unsubscribe(gameEndHandler));
-        if (game.status !== GameStatus.Started) {
+        if (game.status === GameStatus.NotStarted) {
             game.start?.();
         }
         if (this.usesServerConnection()) {            this.initNetStats(localPlayer);
@@ -1290,27 +1377,37 @@ export class GameScreen extends RootScreen {
             }
         });
     }
-    private async runRejoinCatchUp(rejoinLog: { turnCount: number; frames: Map<number, Uint8Array> }, cancellationToken: any): Promise<void> {
+    private async runRejoinCatchUp(rejoinLog: { turnCount: number; frames: Map<number, Uint8Array> }, cancellationToken: any): Promise<boolean> {
         const lockstepManager = this.gameTurnMgr;
+        // The server announces the net rate immediately on re-join (before the
+        // onRateChange subscription is set up), so apply the cached value or
+        // doGameTurn throws "Network turn rate should be set by now."
+        const lastNetRate = this.gservCon.getLastNetRate();
+        if (lastNetRate) {
+            lockstepManager.setRate(lastNetRate);
+        }
+        lockstepManager.setSuppressNetworkSends(true);
         const lastTurnNo = rejoinLog.turnCount;
         if (lastTurnNo < 0) {
             // No turns relayed yet: the live relay starts at turn 0 like a
             // fresh join, so there is nothing to replay.
+            lockstepManager.setSuppressNetworkSends(false);
             this.gservCon.sendReady(-1);
-            return;
+            return this.game?.status === GameStatus.Ended;
         }
         const deadline = Date.now() + REJOIN_RESYNC_TIMEOUT_MILLIS;
         while (rejoinLog.frames.size < lastTurnNo + 1) {
             if (cancellationToken.isCancelled()) {
-                return;
+                return false;
             }
             if (Date.now() > deadline) {
                 this.handleError(new Error('Resync log incomplete'), this.strings.get('TS:ConnectFailed'));
-                return;
+                return false;
             }
             await sleep(25);
         }
         this.game?.start();
+        console.log('[GameScreen] rejoin catch-up starting; replaying', lastTurnNo + 1, 'turns');
         // Replay every turn except the last two at full speed. The pipeline
         // naturally stops at lastTurnNo+1 (waiting on lastTurnNo-1), which is
         // exactly where the live lockstep must resume: the last two turns are
@@ -1322,16 +1419,44 @@ export class GameScreen extends RootScreen {
                 lockstepManager.feedActionsPayload(payload);
             }
         }
-        while (lockstepManager.getCurrentNetworkTurn() < lastTurnNo + 1) {
+        const targetTurn = lastTurnNo + 1;
+        let noAdvanceCount = 0;
+        let chunkStart = performance.now();
+        const updateProgress = () => {
+            this.loadingScreenApi?.setSynchronizing?.(Math.floor((lockstepManager.getCurrentNetworkTurn() / targetTurn) * 100));
+        };
+        while (lockstepManager.getCurrentNetworkTurn() < targetTurn) {
             if (cancellationToken.isCancelled()) {
-                return;
+                return false;
             }
+            const before = lockstepManager.getCurrentNetworkTurn();
             if (!lockstepManager.doGameTurn(performance.now())) {
                 break;
             }
-            this.loadingScreenApi?.onLoadProgress(Math.floor((lockstepManager.getCurrentNetworkTurn() / (lastTurnNo + 1)) * 100));
-            await sleep(0);
+            if (this.game?.status === GameStatus.Ended) {
+                break;
+            }
+            if (lockstepManager.getCurrentNetworkTurn() === before) {
+                noAdvanceCount += 1;
+                if (noAdvanceCount > REJOIN_CATCHUP_STALL_LIMIT) {
+                    console.warn('[GameScreen] rejoin catch-up stalled; proceeding to live play');
+                    break;
+                }
+            }
+            else {
+                noAdvanceCount = 0;
+            }
+            // Run the re-simulation at full speed, yielding only every ~50ms
+            // so the loading bar stays responsive without per-turn scheduling
+            // overhead (which dominated the wall-clock time).
+            if (performance.now() - chunkStart > 50) {
+                updateProgress();
+                await sleep(0);
+                chunkStart = performance.now();
+            }
         }
+        updateProgress();
+        lockstepManager.setSuppressNetworkSends(false);
         if (lastTurnNo >= 1) {
             const secondLast = rejoinLog.frames.get(lastTurnNo - 1);
             if (secondLast) {
@@ -1344,8 +1469,54 @@ export class GameScreen extends RootScreen {
         }
         console.log('[GameScreen] rejoin catch-up finished at turn', lastTurnNo);
         this.gservCon.sendReady(lastTurnNo);
+        return this.game?.status === GameStatus.Ended;
+    }
+    private showPauseCountdown(messageList: any, chatHistory: any, chatLabel: string, tickLabel: string): void {
+        this.clearPauseCountdown();
+        const countdownSeconds = 3;
+        const startedAt = Date.now();
+        let lastPosted = -1;
+        const update = () => {
+            const remaining = Math.max(0, Math.ceil(countdownSeconds - (Date.now() - startedAt) / 1000));
+            const text = tickLabel.replace('%d', String(remaining));
+            // First tick: no dialog is showing yet (or the previous one, e.g.
+            // "Game paused", needs replacing), so `show()` is required —
+            // `updateText()` silently no-ops against a component that was
+            // never shown. Later ticks reuse the same dialog via updateText
+            // to avoid tearing it down and recreating it every 500ms.
+            if (lastPosted === -1) {
+                this.messageBoxApi.show(text);
+            }
+            else {
+                this.messageBoxApi.updateText(text);
+            }
+            if (remaining !== lastPosted) {
+                lastPosted = remaining;
+                if (remaining > 0) {
+                    const chatText = chatLabel.replace('%d', String(remaining));
+                    messageList?.addSystemMessage?.(chatText, 'grey');
+                    chatHistory?.addChatMessage?.({ text: chatText });
+                }
+            }
+        };
+        update();
+        this.pauseCountdownInterval = setInterval(update, 500);
+    }
+    private clearPauseCountdown(): void {
+        if (this.pauseCountdownInterval !== undefined) {
+            clearInterval(this.pauseCountdownInterval);
+            this.pauseCountdownInterval = undefined;
+        }
     }
     private initGameMenuEvents(menu: any, eva: any, game: any, localPlayer: any, actionQueue: any, actionFactory: any): void {
+        menu.onPause.subscribe(() => {
+            if (this.gamePaused) {
+                this.gservCon?.sendResume();
+            }
+            else {
+                this.gservCon?.sendPause();
+            }
+        });
         menu.onOpen.subscribe(() => {
             this.pointer.unlock();
             this.playerUi.worldInteraction.setEnabled(false);
@@ -1386,6 +1557,10 @@ export class GameScreen extends RootScreen {
             if (this.usesServerConnection()) {
                 try {
                     this.gservCon.onClose.unsubscribe(this.onGservClose);
+                    // Deliberate quit: tell gserv this nick is gone for good
+                    // before closing, so it skips the rejoin grace window
+                    // instead of treating this like an accidental drop.
+                    this.gservCon.sendLeave();
                     this.gservCon.close();
                 }
                 catch (e) {
@@ -1550,15 +1725,47 @@ export class GameScreen extends RootScreen {
         });
     }
     private handleGservConError(error: any): void {
-        if (error instanceof OperationCanceledError) {
+        if (error instanceof OperationCanceledError || error instanceof IrcConnection.SocketError) {
             return;
         }
         let errorMessage = this.strings.get('WOL:MatchBadParameters');
-        if (error instanceof IrcConnection.SocketError) {
-            return;
-        }
         if (error instanceof IrcConnection.ConnectError) {
             errorMessage = this.strings.get('TS:ConnectFailed');
+        }
+        else if (error instanceof GservError) {
+            switch (error.code) {
+                case GservError.Code.BadLogin:
+                    errorMessage = this.strings.get('TXT_BADPASS');
+                    break;
+                case GservError.Code.AlreadyLoggedIn:
+                    errorMessage = this.strings.get('WOL:AlreadyLoggedIn');
+                    break;
+                case GservError.Code.TooManyLoginAttempts:
+                    errorMessage = this.strings.get('WOL:TooManyLoginAttempts');
+                    break;
+                case GservError.Code.ServiceUnavailable:
+                    errorMessage = this.strings.get('TS:ServiceUnavailable');
+                    break;
+                case GservError.Code.OutdatedClient:
+                    errorMessage = this.strings.get('TXT_YOURGAME_OUTDATED');
+                    break;
+                case GservError.Code.InstanceNonExistent:
+                    errorMessage = this.isReconnect
+                        ? this.strings.get('ts:game_no_longer_exists')
+                        : this.strings.get('WOL:InstanceNotFound');
+                    break;
+                case GservError.Code.InstanceNotAllowed:
+                    errorMessage = this.strings.get('WOL:InstanceNotAllowed');
+                    break;
+                case GservError.Code.InstanceAlreadyStarted:
+                    errorMessage = this.strings.get('WOL:GameAlreadyStarted');
+                    break;
+                case GservError.Code.InstanceVersMismatch:
+                    errorMessage = this.strings.get('TXT_MISMATCH');
+                    break;
+                default:
+                    break;
+            }
         }
         this.handleError(error, errorMessage);
     }
@@ -1604,14 +1811,33 @@ export class GameScreen extends RootScreen {
                 finished: false
             });
         }
+        // Upstream hands debug data to Sentry; this fork has no Sentry backend
+        // (src/Application.ts's mockSentry.captureException is a no-op stub
+        // that never invokes the scope callback), so download the compressed
+        // statedump/lockstep-log directly instead of silently dropping them.
+        if (debugDataProvider) {
+            debugDataProvider()
+                .then(({ debugBundle }: { debugBundle?: Uint8Array }) => {
+                    if (debugBundle) {
+                        this.downloadDebugFile(debugBundle, "desync-debug.7z");
+                    }
+                    else {
+                        console.warn("[GameScreen] Desync debug bundle was empty; nothing to download");
+                    }
+                })
+                .catch((error: any) => console.error("Failed to export debug data", error));
+        }
     }
-    private sendDebugInfo(error: any, { gameId, replay, map, official }: {
-        gameId?: string;
-        replay?: any;
-        map?: any;
-        official?: boolean;
-    } = {}, debugDataProvider?: () => Promise<any>): void {
-        console.error('Game error:', error, { gameId, official });
+    private downloadDebugFile(data: Uint8Array, filename: string): void {
+        const blob = new Blob([data as any], { type: "application/x-7z-compressed" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", filename);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
     }
     private sendGameRes(game: any, result: any): void {
         if (!this.wgameresService?.getUrl?.()) {

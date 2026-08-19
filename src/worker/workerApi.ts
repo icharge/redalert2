@@ -40,7 +40,13 @@ function generateVxlGeometry(plainVxl: any, _modelQuality: any): ArrayBuffer[] {
 
 async function compressFile(data: Uint8Array, filename: string): Promise<Uint8Array> {
     const SevenZip = (await import("7z-wasm")).default as any;
-    const module = await SevenZip({ noInitialRun: true } as any);
+    // Same locateFile override GameResImporter.ts needs for this library: the
+    // default locateFile can't resolve 7zz.wasm's URL from inside a module
+    // worker, so it must be pointed at the copy served from public/7zz.wasm.
+    const module = await SevenZip({
+        noInitialRun: true,
+        locateFile: (path: string) => path === "7zz.wasm" ? "/7zz.wasm" : path,
+    } as any);
     const safeName = filename.split("/").pop() ?? "file";
     const inputPath = "/input_" + safeName;
     const outputPath = "/output.7z";

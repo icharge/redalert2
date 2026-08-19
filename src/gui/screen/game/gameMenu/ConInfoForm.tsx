@@ -21,6 +21,7 @@ interface ConInfo {
     status: any;
     ping?: number;
     lagAllowanceMillis?: number;
+    timeoutAt?: number;
 }
 interface Strings {
     get(key: string, ...args: any[]): string;
@@ -45,6 +46,17 @@ interface ConInfoFormProps {
 const TURN_TIMEOUT_MILLIS = 60000;
 const LAG_STATE_THRESH_MILLIS = 5000;
 const CON_INFO_THRESH_MILLIS = 3000;
+// Above this, treat the deadline as "hold indefinitely" (GservServer's
+// ABANDONED_HOLD_INDEFINITELY_DEADLINE sentinel) rather than rendering a
+// meaningless multi-million-second countdown.
+const INDEFINITE_THRESHOLD_MILLIS = 365 * 24 * 60 * 60 * 1000;
+function formatReconnectCountdown(timeoutAt: number): React.ReactNode {
+    const remainingMillis = timeoutAt - Date.now();
+    if (remainingMillis > INDEFINITE_THRESHOLD_MILLIS) {
+        return "∞";
+    }
+    return Math.max(0, Math.ceil(remainingMillis / 1000));
+}
 export const ConInfoForm: React.FC<ConInfoFormProps> = ({ strings, conInfos, players, localPlayer, messages, chatHistory, onSendMessage, }) => {
     const [timeRemaining, setTimeRemaining] = useState(() => Math.floor((TURN_TIMEOUT_MILLIS -
         LAG_STATE_THRESH_MILLIS -
@@ -84,9 +96,21 @@ export const ConInfoForm: React.FC<ConInfoFormProps> = ({ strings, conInfos, pla
                         : 1,
                 }}>
                     <td>
-                      <CountryIcon country={player.country
+                      <div className="player-icon-wrap">
+                        <CountryIcon country={player.country
                     ? player.country.name
                     : OBS_COUNTRY_NAME}/>
+                        {conInfo && conInfo.status !== PlayerConnectionStatus.Connected && (conInfo.timeoutAt
+                    // Still within the rejoin grace window: distinct from a
+                    // permanent departure, since this player may still come
+                    // back (the player-time column shows the countdown).
+                    ? (<span className="player-reconnecting-badge" title={strings.get("ts:player_reconnecting", player.name)}>
+                            ⟳
+                          </span>)
+                    : (<span className="player-disconnect-badge" title={strings.get("ts:player_left", player.name)}>
+                            ✕
+                          </span>))}
+                      </div>
                     </td>
                     <td className="player-name">
                       {player.name}
@@ -94,10 +118,15 @@ export const ConInfoForm: React.FC<ConInfoFormProps> = ({ strings, conInfos, pla
                     <td className="player-ping">
                       <meter value={conInfo?.ping ?? 1000} max={1000} low={150} high={500} optimum={0}/>
                     </td>
-                    <td className="player-time">
-                      {conInfo
-                    ? Math.floor((conInfo.lagAllowanceMillis ?? 0) / 1000)
-                    : undefined}
+                    <td className="player-time" title={conInfo?.timeoutAt ? strings.get("ts:reconnect_time_remaining") : undefined}>
+                      {conInfo?.timeoutAt
+                    // Player is mid-rejoin-grace-window: count down to the
+                    // deadline the server reported (already frozen for the
+                    // duration of any manual pause, see GservServer).
+                    ? formatReconnectCountdown(conInfo.timeoutAt)
+                    : conInfo
+                        ? Math.floor((conInfo.lagAllowanceMillis ?? 0) / 1000)
+                        : undefined}
                     </td>
                   </tr>);
         })}
