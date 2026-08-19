@@ -23,8 +23,47 @@ function json(body: unknown, status = 200): Response {
     });
 }
 
-function httpUrlOf(config: ServerConfig): string {
-    return config.externalUrl.replace(/^wss/, "https").replace(/^ws/, "http");
+function httpUrlOf(externalUrl: string): string {
+    return externalUrl.replace(/^wss/, "https").replace(/^ws/, "http");
+}
+
+// The externalUrl a client should actually use to reach this server: honors
+// X-Forwarded-Host/-Proto (set by vite's dev proxy with xfwd, or a real
+// reverse proxy) so /servers.ini advertises whichever origin the browser is
+// actually connected through, instead of a single value fixed at server
+// startup — a dev server reachable at once at localhost, 127.0.0.1, and a
+// LAN IP would otherwise only ever work correctly from one of them.
+function externalUrlFor(req: Request, config: ServerConfig): string {
+    const fwdHost = req.headers.get("x-forwarded-host");
+    if (!fwdHost) {
+        return config.externalUrl;
+    }
+    const fwdProto = req.headers.get("x-forwarded-proto");
+    const wsProto = fwdProto === "https" ? "wss" : fwdProto === "http" ? "ws" : config.externalUrl.startsWith("wss") ? "wss" : "ws";
+    return `${wsProto}://${fwdHost}`;
+}
+
+// The actual game WebSocket can't go through a dev proxy in front of this
+// server — see vite.config.ts's backendProxy comment for why HTTPS + Vite's
+// dev server + WebSocket proxying don't mix (an unfixable-via-config Vite
+// limitation, not something specific to this app) — so when a request
+// arrived through one (X-Forwarded-Host present, set by vite's xfwd: true),
+// wolUrl is redirected to this backend's own port instead of the proxied
+// one, keeping whichever hostname the browser is actually on. With no
+// X-Forwarded-Host, config.externalUrl is used completely as-is: that
+// covers both a bare direct connection AND production behind nginx/
+// Cloudflare, where externalUrl's port (typically 443, implicit) is the
+// public-facing one, not config.port — forcing config.port there would be
+// wrong, nginx and this backend are not usually on the same port.
+function wolExternalUrlFor(req: Request, config: ServerConfig): string {
+    const fwdHost = req.headers.get("x-forwarded-host");
+    if (!fwdHost) {
+        return config.externalUrl;
+    }
+    const fwdProto = req.headers.get("x-forwarded-proto");
+    const scheme = fwdProto === "https" ? "wss" : fwdProto === "http" ? "ws" : config.externalUrl.startsWith("wss") ? "wss" : "ws";
+    const hostname = fwdHost.replace(/:\d+$/, "");
+    return `${scheme}://${hostname}:${config.port}`;
 }
 
 function remoteOf(req: Request): string {
@@ -128,8 +167,9 @@ export async function handleHttp(req: Request, deps: HttpDeps, config: ServerCon
     }
 
     if (req.method === "GET" && url.pathname === "/servers.ini") {
-        const baseUrl = httpUrlOf(config);
-        const wsUrl = config.externalUrl + config.wolUrlPath;
+        const externalUrl = externalUrlFor(req, config);
+        const baseUrl = httpUrlOf(externalUrl);
+        const wsUrl = wolExternalUrlFor(req, config) + config.wolUrlPath;
         const ini = `[local]
 label="Local Dev"
 available=yes

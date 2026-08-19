@@ -205,4 +205,38 @@ describe("http routes", () => {
         expect(text).toContain('wladderUrl="https://game.example.com/ladder"');
         expect(text).toContain('wgameresUrl="https://game.example.com/wgameres"');
     });
+
+    test("servers.ini: HTTP endpoints follow X-Forwarded-Host (proxied port), but wolUrl redirects to the backend's own port (WebSocket can't go through the dev proxy)", async () => {
+        const config = loadConfig({ EXTERNAL_URL: "wss://server-side-default.example.com", WOL_URL_PATH: "/wol", SERVER_PORT: "9090" });
+        const storage = makeTestStorage();
+        const accounts = new AccountStore(storage, config);
+        const sessions = new SessionManager(storage, config.sessionTtlSeconds);
+        const gservs = new GservManager({ id: "gs1", url: "ws://test.local/gserv" });
+        const wol = new WolServer(config, sessions, accounts, gservs);
+        const ladder = new LadderService(storage, makeTestLogger());
+        const deps: HttpDeps = { accounts, sessions, ladder, gservs, wol };
+        const res = await handleHttp(new Request("http://127.0.0.1:9090/servers.ini", {
+            headers: { "x-forwarded-host": "192.168.1.50:4000", "x-forwarded-proto": "https" },
+        }), deps, config);
+        const text = await res.text();
+        // Proxied client origin (:4000, the port the browser is actually on).
+        expect(text).toContain('apiLoginUrl="https://192.168.1.50:4000/login"');
+        // Backend's own port (:9090), NOT the proxied :4000 — a WebSocket
+        // upgrade can't be relayed through vite's HTTPS dev server.
+        expect(text).toContain('wolUrl="wss://192.168.1.50:9090/wol"');
+    });
+
+    test("servers.ini falls back to EXTERNAL_URL when there's no X-Forwarded-Host (direct connection)", async () => {
+        const config = loadConfig({ EXTERNAL_URL: "wss://direct.example.com", WOL_URL_PATH: "/wol" });
+        const storage = makeTestStorage();
+        const accounts = new AccountStore(storage, config);
+        const sessions = new SessionManager(storage, config.sessionTtlSeconds);
+        const gservs = new GservManager({ id: "gs1", url: "ws://test.local/gserv" });
+        const wol = new WolServer(config, sessions, accounts, gservs);
+        const ladder = new LadderService(storage, makeTestLogger());
+        const deps: HttpDeps = { accounts, sessions, ladder, gservs, wol };
+        const res = await handleHttp(new Request("http://127.0.0.1:9090/servers.ini"), deps, config);
+        const text = await res.text();
+        expect(text).toContain('wolUrl="wss://direct.example.com/wol"');
+    });
 });

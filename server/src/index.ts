@@ -2,7 +2,8 @@ import { loadConfig, ServerConfig } from "./config";
 import { makeLogger, fileLogOptionsOf, Logger } from "./logger";
 import { createStorage } from "./storage";
 import { Storage } from "./storage/Storage";
-import { readdirSync } from "node:fs";
+import { readdirSync, existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 import { AccountStore } from "./auth/accountStore";
 import { SessionManager } from "./auth/session";
 import { WolServer } from "./server/WolServer";
@@ -50,10 +51,23 @@ backfillReplayPaths(storage, config.replaysDir, ladder, log);
 wol.startPingLoop();
 gserv.startSweepLoop();
 
+// Shares the same self-signed cert vite's dev server uses/auto-generates
+// (see scripts/dev-all.mjs), so a client served over https:// can reach this
+// server without hitting mixed-content blocking. Opt-in: absent in
+// production, where TLS is terminated by nginx/Cloudflare in front of a
+// plain-HTTP Bun process (see server/nginx.conf).
+const certsDir = path.join(import.meta.dir, "..", "..", "certs");
+const tlsKeyPath = path.join(certsDir, "server.key");
+const tlsCertPath = path.join(certsDir, "server.crt");
+const tls = existsSync(tlsKeyPath) && existsSync(tlsCertPath)
+    ? { key: readFileSync(tlsKeyPath), cert: readFileSync(tlsCertPath) }
+    : undefined;
+
 const server = Bun.serve<WsData>({
     hostname: config.host,
     port: config.port,
     maxRequestBodySize: config.maxPayloadBytes,
+    tls,
     fetch(req, srv) {
         if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
             if (!isOriginAllowed(config, req)) {
@@ -100,7 +114,9 @@ const server = Bun.serve<WsData>({
     },
 });
 
-const httpProtocol = config.externalUrl.startsWith("wss") ? "https" : "http";log.info(`Wol server listening on ws://${server.hostname}:${server.port}`);
+const wsProtocol = tls ? "wss" : "ws";
+const httpProtocol = tls ? "https" : "http";
+log.info(`Wol server listening on ${wsProtocol}://${server.hostname}:${server.port}${tls ? " (TLS)" : ""}`);
 log.info(`Http endpoints on ${httpProtocol}://${server.hostname}:${server.port} (/login /register /ladder /wgameres /servers.ini /health)`);
 log.info(`Gserv endpoint at ${config.externalUrl}${config.gservUrlPath}`);
 log.info(`Log level: ${config.logLevel}`);
