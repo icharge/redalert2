@@ -112,7 +112,7 @@ export class LoginScreen extends MainMenuScreen {
         this.sessionService = sessionService;
         this.title = this.strings.get("GUI:Login");
         this.musicType = MusicType.NormalShuffle;
-        this.handleLoginSubmit = async (username: string, password: string, turnstileToken?: string) => {
+        this.handleLoginSubmit = async (username: string, password: string, remember?: boolean, turnstileToken?: string) => {
             if (!this.isBusy && this.loginBoxApi && this.controller && (!this.cfTurnstile.isEnabledForLogin() || turnstileToken)) {
                 const region = this.selectedRegion;
                 if (region?.available) {
@@ -123,6 +123,7 @@ export class LoginScreen extends MainMenuScreen {
                         let realmSession: RealmSession;
                         try {
                             const loginResult = await this.wolService.login(region, username, password, turnstileToken);
+                            this.persistRememberedLogin(Boolean(remember), username, password);
                             realmSession = {
                                 realmId: region.id,
                                 nickname: loginResult.user,
@@ -200,7 +201,7 @@ export class LoginScreen extends MainMenuScreen {
         };
     }
 
-    private handleLoginSubmit: (username: string, password: string, turnstileToken?: string) => Promise<void>;
+    private handleLoginSubmit: (username: string, password: string, remember?: boolean, turnstileToken?: string) => Promise<void>;
     private handleAuthProviderLogin: (provider: AuthProvider) => void;
     private handleAuthProviderComplete: () => Promise<void>;
 
@@ -323,6 +324,7 @@ export class LoginScreen extends MainMenuScreen {
                 ? this.serverRegions.get(savedRegionId)
                 : this.serverRegions.getFirstAvailable();
         }
+        const rememberLogin = this.localPrefs.getBool(StorageKey.RememberLogin);
         const [component] = this.jsxRenderer.render(jsx(HtmlView, {
             width: "100%",
             height: "100%",
@@ -347,6 +349,17 @@ export class LoginScreen extends MainMenuScreen {
                 onTurnstileTokenChange: (token?: string) => {
                     this.turnstileToken = token;
                     this.updateSidebarButtons();
+                },
+                rememberLogin,
+                savedUsername: rememberLogin ? this.localPrefs.getItem(StorageKey.RememberedUsername) : undefined,
+                savedPassword: rememberLogin ? this.getRememberedPassword() : undefined,
+                onRememberLoginChange: (remember: boolean) => {
+                    if (!remember) {
+                        this.persistRememberedLogin(false);
+                    }
+                    else {
+                        this.localPrefs.setItem(StorageKey.RememberLogin, "1");
+                    }
                 },
                 onSubmit: this.handleLoginSubmit,
                 onAuthProviderLogin: this.handleAuthProviderLogin,
@@ -674,6 +687,43 @@ export class LoginScreen extends MainMenuScreen {
             }
         });
         return task;
+    }
+
+    private persistRememberedLogin(remember: boolean, username?: string, password?: string): void {
+        if (remember && username && password) {
+            this.localPrefs.setItem(StorageKey.RememberLogin, "1");
+            this.localPrefs.setItem(StorageKey.RememberedUsername, username);
+            this.localPrefs.setItem(StorageKey.RememberedPassword, LoginScreen.obfuscatePassword(password));
+        }
+        else {
+            this.localPrefs.setItem(StorageKey.RememberLogin, "0");
+            this.localPrefs.removeItem(StorageKey.RememberedUsername);
+            this.localPrefs.removeItem(StorageKey.RememberedPassword);
+        }
+    }
+
+    private getRememberedPassword(): string | undefined {
+        const stored = this.localPrefs.getItem(StorageKey.RememberedPassword);
+        return stored ? LoginScreen.deobfuscatePassword(stored) : undefined;
+    }
+
+    // Not encryption: only meant to avoid keeping the password in cleartext at rest in localStorage.
+    private static obfuscatePassword(password: string): string {
+        try {
+            return btoa(encodeURIComponent(password));
+        }
+        catch {
+            return "";
+        }
+    }
+
+    private static deobfuscatePassword(value: string): string | undefined {
+        try {
+            return decodeURIComponent(atob(value));
+        }
+        catch {
+            return undefined;
+        }
     }
 
     private handleBadPass(): void {

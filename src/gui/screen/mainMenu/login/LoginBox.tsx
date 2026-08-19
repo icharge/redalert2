@@ -22,10 +22,14 @@ interface LoginBoxProps {
     authProviders: AuthProvider[];
     devMode: boolean;
     cfTurnstile: CfTurnstile;
+    rememberLogin: boolean;
+    savedUsername?: string;
+    savedPassword?: string;
     onRegionChange: (regionId: string) => void;
     onRequestRegionRefresh: () => void;
     onTurnstileTokenChange: (token?: string) => void;
-    onSubmit: (username: string, password: string, turnstileToken?: string) => void;
+    onRememberLoginChange: (remember: boolean) => void;
+    onSubmit: (username: string, password: string, remember?: boolean, turnstileToken?: string) => void;
     onAuthProviderLogin: (provider: AuthProvider) => void;
 }
 
@@ -34,19 +38,25 @@ interface LoginBoxRef {
     resetTurnstile(): void;
 }
 
-export const LoginBox = forwardRef<LoginBoxRef, LoginBoxProps>(({ regions, selectedRegion, breakingNewsUrl, strings, authProviders, devMode, cfTurnstile, onRegionChange, onRequestRegionRefresh, onTurnstileTokenChange, onSubmit, onAuthProviderLogin }, ref) => {
+export const LoginBox = forwardRef<LoginBoxRef, LoginBoxProps>(({ regions, selectedRegion, breakingNewsUrl, strings, authProviders, devMode, cfTurnstile, rememberLogin, savedUsername, savedPassword, onRegionChange, onRequestRegionRefresh, onTurnstileTokenChange, onRememberLoginChange, onSubmit, onAuthProviderLogin }, ref) => {
     const formRef = useRef<HTMLFormElement>(null);
     const usernameRef = useRef<HTMLInputElement>(null);
     const passwordRef = useRef<HTMLInputElement>(null);
     const turnstileTokenRef = useRef<string | undefined>(undefined);
     const [resetKey, setResetKey] = useState<number>();
+    const [remember, setRemember] = useState<boolean>(rememberLogin);
     useEffect(() => {
-        setTimeout(() => usernameRef.current?.focus(), 50);
+        const focusTarget = savedUsername ? passwordRef.current : usernameRef.current;
+        setTimeout(() => focusTarget?.focus(), 50);
     }, []);
     const handleSubmit = () => {
         if (usernameRef.current && passwordRef.current) {
-            onSubmit(usernameRef.current.value, passwordRef.current.value, turnstileTokenRef.current);
+            onSubmit(usernameRef.current.value, passwordRef.current.value, remember, turnstileTokenRef.current);
         }
+    };
+    const handleRememberChange = (checked: boolean) => {
+        setRemember(checked);
+        onRememberLoginChange(checked);
     };
     const handleTurnstileToken = (token?: string) => {
         turnstileTokenRef.current = token;
@@ -93,6 +103,7 @@ export const LoginBox = forwardRef<LoginBoxRef, LoginBoxProps>(({ regions, selec
         maxLength: MAX_USERNAME_LEN,
         pattern: "[a-zA-Z0-9_\\-]+",
         autoComplete: "off",
+        defaultValue: savedUsername ?? "",
         ref: usernameRef,
     })), React.createElement("div", { className: "field" }, React.createElement("label", null, strings.get("GUI:Password")), React.createElement("input", {
         name: "pass",
@@ -100,8 +111,13 @@ export const LoginBox = forwardRef<LoginBoxRef, LoginBoxProps>(({ regions, selec
         required: true,
         maxLength: MAX_PASS_LEN,
         autoComplete: "off",
+        defaultValue: savedPassword ?? "",
         ref: passwordRef,
-    })), cfTurnstile.isEnabledForLogin() && React.createElement("div", { className: "field turnstile-field" }, React.createElement("label", null), cfTurnstile.isLoaded()
+    })), React.createElement("div", { className: "field remember-login-field" }, React.createElement("label", { className: "remember-login" }, React.createElement("input", {
+        type: "checkbox",
+        checked: remember,
+        onChange: (event: React.ChangeEvent<HTMLInputElement>) => handleRememberChange(event.currentTarget.checked),
+    }), React.createElement("span", null, strings.get("NOSTR:Remember username & password")))), cfTurnstile.isEnabledForLogin() && React.createElement("div", { className: "field turnstile-field" }, React.createElement("label", null), cfTurnstile.isLoaded()
         ? React.createElement(CfTurnstileWidget, {
             cfTurnstile,
             action: "login",
