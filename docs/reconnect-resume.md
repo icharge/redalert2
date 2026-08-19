@@ -21,6 +21,15 @@ Implemented and tested (server: 208 tests; client: 240 tests incl.
   online join path.
 - Known limits (v1): the catch-up replay runs at CPU speed (long matches take a while
   on the rejoining client); no LAN rejoin yet; no rejoin time-limit policy for ranked.
+- Catch-up perf (2026-08-19): `runRejoinCatchUp`'s hot loop yielded via `sleep(0)`
+  (`setTimeout`) every ~50ms of simulated work; a tight loop like this blows past the
+  HTML spec's 5-deep nested-timer clamp almost immediately, turning every "0ms" yield
+  into a real ~4ms stall — a fixed tax of roughly (4ms / chunk budget) regardless of
+  match length. Switched to `yieldToEventLoop()` (`src/util/time.ts`), a
+  `MessageChannel`-based macrotask yield outside that clamp. Simulation semantics are
+  unchanged (still full-speed `game.update()` per subtick, still yields on the same
+  ~50ms cadence for progress-bar/cancel responsiveness) — this only removes scheduling
+  overhead between chunks.
 
 ## Whole-game pause (MOBA-style, v1)
 
@@ -104,6 +113,44 @@ mid-game reconnect. Root-caused and fixed:
   to load inside the worker. All fixed: a desync now downloads a single
   `desync-debug.7z` (bundled statedump + lockstep log in one file, to avoid browsers'
   multi-download blocker) instead of silently producing nothing.
+
+## Post-v1 playtest fixes (2026-08-19)
+
+A real 2-human playtest of a disconnect → grace window → rejoin cycle surfaced three
+more issues:
+
+- **Wrong wording on disconnect vs. timeout.** The peer who stayed connected saw
+  "X has left the game" (`ts:player_left`) the instant the other player merely dropped
+  — before the reconnect grace window had even started — because `RPL_PLAYER_DISCONNECT`
+  and `gaveUpHandler` (on grace-timeout resignation) both mapped to that string. Split
+  them: a bare disconnect now shows the new `ts:player_disconnected` ("X has
+  disconnected.") — immediately followed by the existing `ts:player_reconnecting`
+  message, which already says "The game will resume when they rejoin." — and only the
+  grace-timeout resignation (and a deliberate quit, `RPL_PLAYER_GAVE_UP`'s other
+  trigger) now shows `ts:player_left`, reusing the existing string per the request
+  instead of adding a new one. This retired the now-unused `ts:player_reconnect_timeout`
+  string.
+- **Resume countdown dialog invisible to the peer who kept playing.** `showPauseCountdown`
+  renders via `messageBoxApi` (a `Dialog` at `zIndex: 101`), but the peer who never
+  disconnected has the auto-opened `ConnectionInfoScreen` menu on screen for the
+  *entire* resume countdown — the relay stays held (so `lagState` never flips back to
+  `false`) until the countdown's final tick, which is the only thing that would have
+  auto-closed it. The dialog was firing correctly but rendering underneath the still-open
+  menu. Fixed by closing `ConnectionInfoScreen` as soon as the resume countdown starts
+  (`resumeCountdownHandler` in `GameScreen.ts`) instead of waiting for the relay to
+  actually unfreeze — resume is already imminent once that countdown begins.
+- **Countdown display was locally guessed, not server-driven, and could flash "0".**
+  `showPauseCountdown` hardcoded `countdownSeconds = 3`, decoupled from the server's
+  actual `GSERV_PAUSE_COUNTDOWN_MILLIS` / `GSERV_REJOIN_RESUME_COUNTDOWN_MILLIS` (only
+  correct by coincidence at their shared 3000ms default) — and independently, its
+  `ceil()` math let `remaining` reach `0` for the brief window between the local
+  countdown's math finishing and the server's real `RPL_GAME_PAUSED`/`RPL_GAME_RESUMED`
+  event actually arriving to tear the dialog down, producing a spurious extra
+  "...0..." flash after "1". Fixed both: `RPL_GAME_PAUSE_COUNTDOWN` /
+  `RPL_GAME_RESUME_COUNTDOWN` now carry the real countdown length in their trailing
+  param (`:<nick>,<countdownMillis>`, mirroring `RPL_NET_RATE`'s existing comma-param
+  convention) instead of nothing, and the client clamps its displayed `remaining` to a
+  minimum of `1` rather than `0`.
 
 ## 1. Problem statement
 

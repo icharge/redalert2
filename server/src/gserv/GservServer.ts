@@ -685,7 +685,7 @@ export class GservServer {
             // Everyone is synced; run a short countdown before the relay
             // resumes so all players are ready.
             state.resumeCountdownUntil = Date.now() + this.config.rejoinResumeCountdownMillis;
-            this.broadcastAll(state, `:${this.serverName} ${Code.RPL_GAME_RESUME_COUNTDOWN} ${client.nick} :${client.nick}`);
+            this.broadcastAll(state, `:${this.serverName} ${Code.RPL_GAME_RESUME_COUNTDOWN} ${client.nick} :${client.nick},${this.config.rejoinResumeCountdownMillis}`);
             this.schedulePauseTimer(state, client.instance.gameId, this.config.rejoinResumeCountdownMillis);
         }
     }
@@ -713,7 +713,7 @@ export class GservServer {
         }
         state.pauseCountdownUntil = now + this.config.pauseCountdownMillis;
         this.log.info(`pause requested by ${client.nick} for instance ${client.instance.gameId}`);
-        this.broadcastAll(state, `:${this.serverName} ${Code.RPL_GAME_PAUSE_COUNTDOWN} ${client.nick} :${client.nick}`);
+        this.broadcastAll(state, `:${this.serverName} ${Code.RPL_GAME_PAUSE_COUNTDOWN} ${client.nick} :${client.nick},${this.config.pauseCountdownMillis}`);
         this.schedulePauseTimer(state, client.instance.gameId, this.config.pauseCountdownMillis);
     }
 
@@ -735,7 +735,7 @@ export class GservServer {
         }
         state.resumeCountdownUntil = Date.now() + this.config.pauseCountdownMillis;
         this.log.info(`resume requested by ${client.nick} for instance ${client.instance.gameId}`);
-        this.broadcastAll(state, `:${this.serverName} ${Code.RPL_GAME_RESUME_COUNTDOWN} ${client.nick} :${client.nick}`);
+        this.broadcastAll(state, `:${this.serverName} ${Code.RPL_GAME_RESUME_COUNTDOWN} ${client.nick} :${client.nick},${this.config.pauseCountdownMillis}`);
         this.schedulePauseTimer(state, client.instance.gameId, this.config.pauseCountdownMillis);
     }
 
@@ -870,9 +870,17 @@ export class GservServer {
         return aborted;
     }
 
+    // Every broadcastAll/broadcastLine call site in this file omits the
+    // trailing "\r\n" (unlike every direct client.socket.send() call, which
+    // includes it) — the client's IrcConnection buffers a message with no
+    // terminator and silently prepends it onto the *next* incoming message
+    // instead of dispatching it, fusing two unrelated lines into one
+    // (observed: a chat message glued onto a PONG reply). Terminating here,
+    // once, fixes every caller instead of patching each one individually.
     private broadcastAll(state: InstanceState, line: string): void {
+        const frame = line + "\r\n";
         for (const member of state.members.values()) {
-            member.socket.send(line);
+            member.socket.send(frame);
         }
     }
 
@@ -1123,7 +1131,7 @@ export class GservServer {
     }
 
     private broadcastLine(sender: GservClient, line: string): void {
-        this.forEachOtherMember(sender, other => other.socket.send(line));
+        this.forEachOtherMember(sender, other => other.socket.send(line + "\r\n"));
     }
 
     private forEachOtherMember(sender: GservClient, fn: (member: GservClient) => void): void {

@@ -3,6 +3,7 @@ import { CompositeDisposable } from '@/util/disposable/CompositeDisposable';
 import { MedianPing } from './MedianPing';
 import { ScreenType, MainMenuScreenType } from '@/gui/screen/ScreenType';
 import { sleep } from '@puzzl/core/lib/async/sleep';
+import { yieldToEventLoop } from '@/util/time';
 import { GameStatus } from '@/game/Game';
 import { ActionFactory } from '@/game/action/ActionFactory';
 import { ActionQueue } from '@/game/action/ActionQueue';
@@ -346,8 +347,13 @@ export class GameScreen extends RootScreen {
             };
             const reconnectingHandler = (nick: string) => playerNoticeHandler(nick, 'ts:player_reconnecting');
             const reconnectedHandler = (nick: string) => playerNoticeHandler(nick, 'ts:player_reconnected');
-            const gaveUpHandler = (nick: string) => playerNoticeHandler(nick, 'ts:player_reconnect_timeout');
-            const disconnectHandler = (nick: string) => playerNoticeHandler(nick, 'ts:player_left');
+            // Grace-window timeout (auto-resign) and a deliberate quit both
+            // resolve to "left the game" — from a peer's perspective they're
+            // indistinguishable outcomes (the player is gone for the rest of
+            // the match), unlike the disconnect/reconnecting pair above which
+            // is explicitly a "hang on, they might come back" state.
+            const gaveUpHandler = (nick: string) => playerNoticeHandler(nick, 'ts:player_left');
+            const disconnectHandler = (nick: string) => playerNoticeHandler(nick, 'ts:player_disconnected');
             this.gservCon.onPlayerReconnecting.subscribe(reconnectingHandler);
             this.gservCon.onPlayerReconnected.subscribe(reconnectedHandler);
             this.gservCon.onPlayerGaveUp.subscribe(gaveUpHandler);
@@ -358,20 +364,33 @@ export class GameScreen extends RootScreen {
                 () => this.gservCon.onPlayerGaveUp.unsubscribe(gaveUpHandler),
                 () => this.gservCon.onPlayerDisconnect.unsubscribe(disconnectHandler),
             );
-            const pauseCountdownHandler = () => {
+            const pauseCountdownHandler = (countdownMillis: number) => {
                 this.showPauseCountdown(
                     uiInitResult.messageList,
                     uiInitResult.chatHistory,
                     this.strings.get('ts:game_pausing_in_chat'),
                     this.strings.get('ts:game_pausing_in'),
+                    countdownMillis,
                 );
             };
-            const resumeCountdownHandler = () => {
+            const resumeCountdownHandler = (countdownMillis: number) => {
+                // A peer who was watching the Connection Info screen (opened
+                // automatically while the relay was held) would otherwise
+                // never see this countdown dialog: the relay stays held for
+                // the whole countdown, so lagState never flips false to
+                // trigger the screen's normal auto-close, and the dialog
+                // renders underneath the still-open menu. Resume is imminent
+                // once this countdown starts, so close it now rather than
+                // waiting for the final tick.
+                if (this.menu?.getCurrentScreen() instanceof ConnectionInfoScreen) {
+                    this.menu.close();
+                }
                 this.showPauseCountdown(
                     uiInitResult.messageList,
                     uiInitResult.chatHistory,
                     this.strings.get('ts:game_resuming_in_chat'),
                     this.strings.get('ts:game_resuming_in'),
+                    countdownMillis,
                 );
             };
             const pausedHandler = () => {
@@ -1448,10 +1467,15 @@ export class GameScreen extends RootScreen {
             }
             // Run the re-simulation at full speed, yielding only every ~50ms
             // so the loading bar stays responsive without per-turn scheduling
-            // overhead (which dominated the wall-clock time).
+            // overhead (which dominated the wall-clock time). Uses
+            // yieldToEventLoop() rather than sleep(0): a tight loop yielding
+            // via setTimeout hits the HTML spec's nested-timer clamp almost
+            // immediately, turning every "0ms" yield into a real ~4ms stall —
+            // for a catch-up made of hundreds of these chunks, that clamp
+            // alone was a double-digit percentage of the total wall time.
             if (performance.now() - chunkStart > 50) {
                 updateProgress();
-                await sleep(0);
+                await yieldToEventLoop();
                 chunkStart = performance.now();
             }
         }
@@ -1471,13 +1495,20 @@ export class GameScreen extends RootScreen {
         this.gservCon.sendReady(lastTurnNo);
         return this.game?.status === GameStatus.Ended;
     }
-    private showPauseCountdown(messageList: any, chatHistory: any, chatLabel: string, tickLabel: string): void {
+    private showPauseCountdown(messageList: any, chatHistory: any, chatLabel: string, tickLabel: string, countdownMillis: number): void {
         this.clearPauseCountdown();
-        const countdownSeconds = 3;
+        const countdownSeconds = Math.max(1, Math.round(countdownMillis / 1000));
         const startedAt = Date.now();
         let lastPosted = -1;
         const update = () => {
-            const remaining = Math.max(0, Math.ceil(countdownSeconds - (Date.now() - startedAt) / 1000));
+            // Clamped to a minimum of 1, never 0: this is a locally-rendered
+            // approximation of a server-timed countdown, and the dialog is
+            // actually torn down by the server's RPL_GAME_PAUSED/RESUMED
+            // event arriving (pausedHandler/resumedHandler), which can lag a
+            // tick behind this local clock. Letting the display reach 0
+            // produced a spurious extra "...0..." flash right before that
+            // event landed.
+            const remaining = Math.max(1, Math.ceil(countdownSeconds - (Date.now() - startedAt) / 1000));
             const text = tickLabel.replace('%d', String(remaining));
             // First tick: no dialog is showing yet (or the previous one, e.g.
             // "Game paused", needs replacing), so `show()` is required —
@@ -1492,11 +1523,9 @@ export class GameScreen extends RootScreen {
             }
             if (remaining !== lastPosted) {
                 lastPosted = remaining;
-                if (remaining > 0) {
-                    const chatText = chatLabel.replace('%d', String(remaining));
-                    messageList?.addSystemMessage?.(chatText, 'grey');
-                    chatHistory?.addChatMessage?.({ text: chatText });
-                }
+                const chatText = chatLabel.replace('%d', String(remaining));
+                messageList?.addSystemMessage?.(chatText, 'grey');
+                chatHistory?.addChatMessage?.({ text: chatText });
             }
         };
         update();

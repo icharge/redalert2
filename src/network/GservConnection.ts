@@ -3,7 +3,7 @@ import { DataStream } from "@/data/DataStream";
 import { IrcConnection } from "@/network/IrcConnection";
 import * as GservCode from "@/network/gservCodes";
 import { GservError } from "@/network/GservError";
-import { API_VERSION, RECIPIENT_ALL, RECIPIENT_TEAM, GSERV_LOGIN_TIMEOUT_SECONDS } from "@/network/gservConfig";
+import { API_VERSION, RECIPIENT_ALL, RECIPIENT_TEAM, GSERV_LOGIN_TIMEOUT_SECONDS, DEFAULT_GAME_COUNTDOWN_MILLIS } from "@/network/gservConfig";
 import { ChatRecipientType, ChatMessage } from "@/network/chat/ChatMessage";
 
 const gservErrorCodeMap: Map<number, GservError.Code> = new Map([
@@ -31,9 +31,9 @@ export class GservConnection {
     private _onPlayerReconnecting = new EventDispatcher<GservConnection, string>();
     private _onPlayerReconnected = new EventDispatcher<GservConnection, string>();
     private _onPlayerGaveUp = new EventDispatcher<GservConnection, string>();
-    private _onPauseCountdown = new EventDispatcher<GservConnection>();
+    private _onPauseCountdown = new EventDispatcher<GservConnection, number>();
     private _onPaused = new EventDispatcher<GservConnection>();
-    private _onResumeCountdown = new EventDispatcher<GservConnection>();
+    private _onResumeCountdown = new EventDispatcher<GservConnection, number>();
     private _onResumed = new EventDispatcher<GservConnection>();
     private _onResyncLogComplete = new EventDispatcher<GservConnection>();
     private _onPrivMsgNotAllowed = new EventDispatcher<GservConnection>();
@@ -139,8 +139,13 @@ export class GservConnection {
                     });
                 }
                 else if (parts[1] === "" + GservCode.RPL_TAUNT) {
+                    // RPL_TAUNT is a server-authored numeric reply
+                    // (":<serverName> <code> <nick> :<tauntNo>"), not a
+                    // PRIVMSG — the taunting player's nick is the parameter
+                    // at parts[2], same as every other RPL_* code here.
+                    // parts[0] is the *server's* name prefix, not theirs.
                     this._onTaunt.dispatch(this, {
-                        from: parts[0].replace(/^:/, ""),
+                        from: parts[2],
                         tauntNo: Number(parts[3].replace(/^:/, "")),
                     });
                 }
@@ -157,13 +162,13 @@ export class GservConnection {
                     this._onPlayerGaveUp.dispatch(this, parts[3].replace(/^:/, ""));
                 }
                 else if (parts[1] === "" + GservCode.RPL_GAME_PAUSE_COUNTDOWN) {
-                    this._onPauseCountdown.dispatch(this);
+                    this._onPauseCountdown.dispatch(this, this.parseCountdownMillis(parts[3]));
                 }
                 else if (parts[1] === "" + GservCode.RPL_GAME_PAUSED) {
                     this._onPaused.dispatch(this);
                 }
                 else if (parts[1] === "" + GservCode.RPL_GAME_RESUME_COUNTDOWN) {
-                    this._onResumeCountdown.dispatch(this);
+                    this._onResumeCountdown.dispatch(this, this.parseCountdownMillis(parts[3]));
                 }
                 else if (parts[1] === "" + GservCode.RPL_GAME_RESUMED) {
                     this._onResumed.dispatch(this);
@@ -242,6 +247,12 @@ export class GservConnection {
     }
 
     async joinGame(gameId: string, version: string, modHash: string): Promise<void> {
+        // Drop any resync log left over from a previous game instance on this
+        // connection. Without this, starting a fresh game right after
+        // rejoining an earlier one would see the stale log via
+        // getResyncLog() and incorrectly replay the old match's turns.
+        this.resyncTurnCount = undefined;
+        this.resyncFrames = new Map();
         const replies = await this.con.sendCommand(`join ${gameId} ${version} ${modHash}`, {
             replyCodes: [
                 GservCode.RPL_INSTANCE_CONNECTED,
@@ -309,6 +320,15 @@ export class GservConnection {
 
     private handleLoadInfo(loadInfo: string): void {
         this._onLoadInfo.dispatch(this, loadInfo.replace(/^:/, ""));
+    }
+
+    // RPL_GAME_PAUSE_COUNTDOWN/RPL_GAME_RESUME_COUNTDOWN's trailing param is
+    // ":<nick>,<countdownMillis>" — the server's actual configured countdown
+    // length, so the client renders a countdown that matches the real
+    // server-side timer instead of a hardcoded guess.
+    private parseCountdownMillis(param: string | undefined): number {
+        const millis = Number(param?.replace(/^:/, "").split(",")[1]);
+        return Number.isFinite(millis) && millis > 0 ? millis : DEFAULT_GAME_COUNTDOWN_MILLIS;
     }
 
     private handleGameStart(): void {
