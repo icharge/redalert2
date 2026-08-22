@@ -16,6 +16,7 @@ import { DownloadError } from "@/network/HttpRequest";
 import { WolService } from "@/network/WolService";
 import { WLadderService } from "@/network/ladder/WLadderService";
 import { WGameResService } from "@/network/WGameResService";
+import { ErrorReportService } from "@/network/ErrorReportService";
 import { MapTransferService } from "@/network/MapTransferService";
 import { ErrorHandler } from "@/ErrorHandler";
 import { Strings } from "@/data/Strings";
@@ -61,6 +62,7 @@ export class LoginScreen extends MainMenuScreen {
     private wolService: WolService;
     private wladderService: WLadderService;
     private wgameresService: WGameResService;
+    private errorReportService: ErrorReportService;
     private mapTransferService: MapTransferService;
     private strings: Strings;
     private jsxRenderer: JsxRenderer;
@@ -88,11 +90,12 @@ export class LoginScreen extends MainMenuScreen {
     private turnstileToken?: string;
     private serversUpdateTask?: Task<void>;
 
-    constructor(wolService: WolService, wladderService: WLadderService, wgameresService: WGameResService, mapTransferService: MapTransferService, strings: Strings, jsxRenderer: JsxRenderer, messageBoxApi: MessageBoxApi, serversUrl: string, breakingNewsUrl: string, errorHandler: ErrorHandler, localPrefs: LocalPrefs, rootController: any, devMode: boolean, cfTurnstile: CfTurnstile, legacyRegistrationEnabled: boolean, authProvidersConfig: AuthProvidersConfig, authPopupApi: AuthPopupApi, authService: AuthService | undefined, realmService: RealmService | undefined, sessionService: SessionService) {
+    constructor(wolService: WolService, wladderService: WLadderService, wgameresService: WGameResService, errorReportService: ErrorReportService, mapTransferService: MapTransferService, strings: Strings, jsxRenderer: JsxRenderer, messageBoxApi: MessageBoxApi, serversUrl: string, breakingNewsUrl: string, errorHandler: ErrorHandler, localPrefs: LocalPrefs, rootController: any, devMode: boolean, cfTurnstile: CfTurnstile, legacyRegistrationEnabled: boolean, authProvidersConfig: AuthProvidersConfig, authPopupApi: AuthPopupApi, authService: AuthService | undefined, realmService: RealmService | undefined, sessionService: SessionService) {
         super();
         this.wolService = wolService;
         this.wladderService = wladderService;
         this.wgameresService = wgameresService;
+        this.errorReportService = errorReportService;
         this.mapTransferService = mapTransferService;
         this.strings = strings;
         this.jsxRenderer = jsxRenderer;
@@ -620,6 +623,9 @@ export class LoginScreen extends MainMenuScreen {
                 });
                 this.wladderService.setUrl(region.wladderUrl!);
                 this.wgameresService.setUrl(region.wgameresUrl!);
+                if (region.errorReportUrl) {
+                    this.errorReportService.setUrl(region.errorReportUrl);
+                }
                 this.mapTransferService.setUrl(region.mapTransferUrl!);
             }
             connectingTask.cancel();

@@ -143,6 +143,7 @@ export class MainMenuRootScreen extends RootScreen {
         const { GservConnection } = await import('../../../network/GservConnection.js');
         const { WLadderService } = await import('../../../network/ladder/WLadderService.js');
         const { WGameResService } = await import('../../../network/WGameResService.js');
+        const { ErrorReportService } = await import('../../../network/ErrorReportService.js');
         const { MapTransferService } = await import('../../../network/MapTransferService.js');
         const { HttpRequest } = await import('../../../network/HttpRequest.js');
         const { CfChallengeHttpRequest } = await import('../../../network/CfChallengeHttpRequest.js');
@@ -166,6 +167,7 @@ export class MainMenuRootScreen extends RootScreen {
         wolService.init();
         const wladderService = new WLadderService(wolConfig);
         const wgameresService = new WGameResService(wolService, wolConfig, httpRequest);
+        const errorReportService = new ErrorReportService(wolService, wolConfig, httpRequest);
         const mapTransferService = new MapTransferService(wolService, httpRequest);
         const serverRegions = new ServerRegions();
         let authService: any;
@@ -184,6 +186,7 @@ export class MainMenuRootScreen extends RootScreen {
             wolService,
             wladderService,
             wgameresService,
+            errorReportService,
             mapTransferService,
             serverRegions,
             authService,
@@ -288,6 +291,7 @@ export class MainMenuRootScreen extends RootScreen {
                         services.wolService,
                         services.wladderService,
                         services.wgameresService,
+                        services.errorReportService,
                         services.mapTransferService,
                         this.strings,
                         this.jsxRenderer,
@@ -345,6 +349,7 @@ export class MainMenuRootScreen extends RootScreen {
                         this.rootController,
                         services.wladderService,
                         services.wgameresService,
+                        services.errorReportService,
                         services.mapTransferService,
                         services.wolService,
                         services.realmService,

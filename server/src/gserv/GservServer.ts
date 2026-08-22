@@ -89,6 +89,16 @@ interface InstanceState {
     // Nicks admitted back into a started instance who have not yet finished
     // catching up (sent "ready"). Their action submissions are ignored.
     rejoiningNicks: Set<string>;
+    // Nicks that just finished rejoining (sent "ready") and are waiting for
+    // the resume countdown to actually fire. A rejoiner's LockstepManager is
+    // seeded from its snapshot's turnNo and never submits anything for a
+    // turn before that point -- so any turn another player kept submitting
+    // (unconfirmed) to state.pending *while* this nick was rejoining can
+    // never pick up this nick's entry on its own. See schedulePauseTimer's
+    // resume branch, which backfills exactly these turns with NO_ACTION_BLOB
+    // before flushing, mirroring the same backfill handlePassive/handleLeave
+    // already do when a player stops being required entirely.
+    pendingRejoinBackfill: Set<string>;
     // Nicks that voluntarily left (handleLeave) rather than just dropping.
     // Unlike a dropped/timed-out player, tickets and instance.players are
     // unchanged, so without this a "leave" would be silently undone by a
@@ -571,6 +581,7 @@ export class GservServer {
             turnLog: new Map(),
             departedAt: new Map(),
             rejoiningNicks: new Set(),
+            pendingRejoinBackfill: new Set(),
             leftNicks: new Set(),
             paused: false,
             lastPauseByNick: new Map(),
@@ -680,8 +691,17 @@ export class GservServer {
         }
         state.departedAt.delete(client.nick);
         if (rejoining) {
-            this.log.info(`player ${client.nick} rejoined at turn ${turnNo}; resuming in ${this.config.rejoinResumeCountdownMillis}ms`);
+            state.pendingRejoinBackfill.add(client.nick);
             this.broadcastLine(client, `:${this.serverName} ${Code.RPL_PLAYER_RECONNECTED} ${client.nick} :${client.nick}`);
+            if (this.hasAbsentRequiredPlayers(state)) {
+                // Someone else who dropped is still away or still catching up:
+                // starting the resume countdown now would broadcast a false
+                // "resumed" to everyone while the relay keeps holding on the
+                // straggler. Wait for the last one back to trigger it.
+                this.log.info(`player ${client.nick} rejoined at turn ${turnNo}; still waiting on other departed player(s) in instance ${client.instance.gameId}`);
+                return;
+            }
+            this.log.info(`player ${client.nick} rejoined at turn ${turnNo}; resuming in ${this.config.rejoinResumeCountdownMillis}ms`);
             // Everyone is synced; run a short countdown before the relay
             // resumes so all players are ready.
             state.resumeCountdownUntil = Date.now() + this.config.rejoinResumeCountdownMillis;
@@ -769,6 +789,17 @@ export class GservServer {
                     state.pausedAt = undefined;
                 }
                 this.log.info(`instance ${gameId} resumed`);
+                // Diagnostic: the deadlock this is chasing always presents as
+                // "resumed" logged, then 0 ticks/frames forever. This shows
+                // exactly what's sitting unflushed at that moment -- which
+                // turn(s) are stuck and which nick(s) are missing from them.
+                if (state.pending.size > 0) {
+                    const pendingSummary = [...state.pending.entries()]
+                        .sort(([a], [b]) => a - b)
+                        .map(([turnNo, submissions]) => `${turnNo}:[${[...submissions.keys()].join(",")}]`)
+                        .join(" ");
+                    this.log.info(`instance ${gameId} pending at resume (lastTurnNo=${state.lastTurnNo}, requiredNicks=${[...state.requiredNicks].join(",")}): ${pendingSummary}`);
+                }
                 this.flushPendingTurns(state);
                 this.broadcastAll(state, `:${this.serverName} ${Code.RPL_GAME_RESUMED} ${gameId} :resumed`);
             }
@@ -977,7 +1008,11 @@ export class GservServer {
         }
         this.expireDeparted(state, client.instance.gameId);
         if (state.rejoiningNicks.has(client.nick)) {
-            this.log.debug(`ignoring actions from ${client.nick}: still rejoining`);
+            // Diagnostic: promoted from debug -- this is the one signal that
+            // distinguishes "the relay is correctly holding for an active
+            // rejoin" from "a rejoin's client never cleared this flag", the
+            // difference between a normal hold and a permanent deadlock.
+            this.log.info(`ignoring actions from ${client.nick}: still rejoining (turn ${new DataView(data.buffer, data.byteOffset, data.byteLength).getUint32(2, true)})`);
             return;
         }
         const playerId = state.recorder.playerIdFor(client.nick);
@@ -992,12 +1027,16 @@ export class GservServer {
             const now = Date.now();
             if ((state.lastStaleLogByNick.get(client.nick) ?? 0) + STALE_TURN_LOG_INTERVAL_MS < now) {
                 state.lastStaleLogByNick.set(client.nick, now);
-                this.log.debug(`ignoring stale turn ${turnNo} from ${client.nick}`);
+                // Diagnostic: promoted from debug -- a rejoiner's first live
+                // submission landing here (turnNo <= lastTurnNo right after a
+                // resume) would mean its resync point disagreed with the
+                // relay's, which silently drops every submission after it too.
+                this.log.info(`ignoring stale turn ${turnNo} from ${client.nick} (relay at ${state.lastTurnNo})`);
             }
             return;
         }
         if (turnNo > state.lastTurnNo + TURN_WINDOW) {
-            this.log.warn(`ignoring out-of-window turn ${turnNo} from ${client.nick}`);
+            this.log.warn(`ignoring out-of-window turn ${turnNo} from ${client.nick} (relay at ${state.lastTurnNo}, window ${TURN_WINDOW})`);
             return;
         }
         if (state.pending.size >= MAX_PENDING_TURNS && !state.pending.has(turnNo)) {
@@ -1057,11 +1096,62 @@ export class GservServer {
                 return;
             }
         }
+        this.backfillRejoinedNicks(state);
+        // Strictly in order: a turn's actions are only ever usable once every
+        // earlier turn has already been relayed (LockstepManager looks two
+        // turns back), so broadcasting a later-ready turn out of order would
+        // permanently strand whatever gap is still sitting behind it -- no
+        // client would ever ask for it again, and no one still deadlocked
+        // waiting on it would ever get unstuck.
         for (const turnNo of [...state.pending.keys()].sort((a, b) => a - b)) {
             const submissions = state.pending.get(turnNo);
-            if (submissions && [...state.requiredNicks].every(nick => submissions.has(nick))) {
-                this.broadcastTurn(state, turnNo);
+            if (!submissions || ![...state.requiredNicks].every(nick => submissions.has(nick))) {
+                break;
             }
+            this.broadcastTurn(state, turnNo);
+        }
+    }
+
+    // A rejoining player's LockstepManager is seeded straight from its
+    // snapshot's turnNo and never submits anything for a turn before that --
+    // so any turn another player kept submitting (unconfirmed) to
+    // state.pending while this nick was still catching up can never
+    // complete on its own. Once we can see the nick's own earliest real
+    // submission in state.pending, every still-pending turn strictly before
+    // it is provably one the nick will never fill in itself, so it's
+    // backfilled with a no-op, the same way handlePassive/handleLeave
+    // already backfill a player who stops being required entirely. Turns at
+    // or after that point are left untouched -- deliberately never guessed
+    // at ahead of time, so a real, still-in-flight submission is never
+    // clobbered by a premature no-op.
+    private backfillRejoinedNicks(state: InstanceState): void {
+        if (state.pendingRejoinBackfill.size === 0) {
+            return;
+        }
+        const turnNumbers = [...state.pending.keys()].sort((a, b) => a - b);
+        for (const nick of [...state.pendingRejoinBackfill]) {
+            const playerId = state.recorder.playerIdFor(nick);
+            if (playerId === undefined) {
+                state.pendingRejoinBackfill.delete(nick);
+                continue;
+            }
+            const firstOwnTurn = turnNumbers.find(turnNo => state.pending.get(turnNo)!.has(nick));
+            if (firstOwnTurn === undefined) {
+                // Nothing from this nick yet -- try again next time
+                // flushPendingTurns runs (i.e. the next accepted submission
+                // from anyone), rather than guessing.
+                continue;
+            }
+            for (const turnNo of turnNumbers) {
+                if (turnNo >= firstOwnTurn) {
+                    break;
+                }
+                const submissions = state.pending.get(turnNo)!;
+                if (!submissions.has(nick)) {
+                    submissions.set(nick, { playerId, blob: NO_ACTION_BLOB });
+                }
+            }
+            state.pendingRejoinBackfill.delete(nick);
         }
     }
 

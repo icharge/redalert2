@@ -55,7 +55,7 @@ const manualHttpsConfig = hasTls
 const backendProxyTarget = `${hasTls ? 'https' : 'http'}://127.0.0.1:9090`;
 const backendProxy = Object.fromEntries([
     '/login', '/register', '/servers.ini', '/admin',
-    '/replays', '/ladder', '/wgameres', '/auth', '/health',
+    '/replays', '/ladder', '/wgameres', '/errorreport', '/auth', '/health',
 ].map((path) => [path, {
     target: backendProxyTarget,
     changeOrigin: true,

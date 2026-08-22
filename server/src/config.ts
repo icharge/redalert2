@@ -85,6 +85,11 @@ export interface ServerConfig {
     adminUsernames: string[];
     /** Public origin of the game client (for admin console replay deeplinks). */
     clientUrl?: string;
+    // Auto-submitted crash/desync diagnostic reports (see ERROR_REPORTING_PLAN.md).
+    errorReportsDir: string;
+    desyncReportTimeoutMillis: number;
+    maxErrorReportBytes: number;
+    errorReportMaxPerMin: number;
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env as Record<string, string | undefined>): ServerConfig {
@@ -186,5 +191,18 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
             ? env.ADMIN_USERNAMES.split(",").map(name => name.trim().toLowerCase()).filter(Boolean)
             : [],
         clientUrl: env.CLIENT_URL?.trim() || undefined,
+        // Auto-submitted crash/desync diagnostic reports (see ERROR_REPORTING_PLAN.md).
+        // Reports collect per-gameId, mirroring replaysDir's directory-per-artifact layout.
+        errorReportsDir: env.ERROR_REPORTS_DIR ?? path.join(import.meta.dir, "..", "error-reports"),
+        // How long the server waits after a desync_error report arrives before
+        // giving up on a second peer's report to diff against, and persisting
+        // whatever it has. Non-desync errorTypes never wait (nothing to correlate).
+        desyncReportTimeoutMillis: Number(env.GSERV_DESYNC_REPORT_TIMEOUT_MILLIS ?? 5000),
+        // Upper bound on a report's raw JSON body size, checked before JSON.parse
+        // (same early-reject-on-size principle as maxSnapshotBytes). A getObjectHashList()
+        // payload runs roughly 15-40 bytes/object, well under this.
+        maxErrorReportBytes: Number(env.GSERV_MAX_ERROR_REPORT_BYTES ?? 4 * 1024 * 1024),
+        // Per-IP limiter (no mandatory auth on this endpoint, so no account to key by).
+        errorReportMaxPerMin: Number(env.GSERV_ERROR_REPORT_MAX_PER_MIN ?? 20),
     };
 }

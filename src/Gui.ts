@@ -429,6 +429,45 @@ export class Gui {
             }
         }
     }
+    // Page-refresh reconnect (routeToInitialScreen above, `reconnect: true`)
+    // jumps straight into the already-built GameScreen singleton, entirely
+    // bypassing LoginScreen/NicknameSelectionScreen/RealmSelectionScreen --
+    // so unlike every other path into GameScreen, wladderService/
+    // wgameresService/errorReportService/mapTransferService (constructed once
+    // in navigateToMainMenu() and shared by every screen, GameScreen
+    // included) never get their setUrl() called. Mirrors LoginScreen.connect()'s
+    // equivalent block, minus the actual WOL login: a reconnecting client only
+    // re-attaches directly to gserv with its stored ticket
+    // (GameScreen.connectToServerInstance), it never re-establishes a WOL
+    // session, so there is no other hook in this path where these URLs would
+    // otherwise get set. Best-effort and silent on failure -- a player must
+    // still be able to rejoin their game with no report/ladder/mapTransfer
+    // URLs configured, same as if servers.ini simply omitted them.
+    private async configureOnlineServicesForReconnect(): Promise<void> {
+        const services = this.onlineServices;
+        if (!services?.wolService || !services.serverRegions || services.errorReportService?.getUrl?.()) {
+            return;
+        }
+        try {
+            const serverList = await services.wolService.loadServerList(this.config.serversUrl);
+            services.serverRegions.load(serverList);
+            const region = services.serverRegions.getFirstAvailable();
+            if (!region) {
+                console.warn('[Gui] No available server region found ahead of page-refresh reconnect');
+                return;
+            }
+            services.wladderService?.setUrl(region.wladderUrl);
+            services.wgameresService?.setUrl(region.wgameresUrl);
+            if (region.errorReportUrl) {
+                services.errorReportService?.setUrl(region.errorReportUrl);
+            }
+            services.mapTransferService?.setUrl(region.mapTransferUrl);
+        }
+        catch (error) {
+            console.warn('[Gui] Failed to configure online services ahead of page-refresh reconnect; ' +
+                'error report submission and related services will be unavailable this session', error);
+        }
+    }
     private async navigateToMainMenu(): Promise<void> {
         console.log('[Gui] Navigating to main menu');
         if (!this.rootController || !this.uiScene || !this.jsxRenderer || !this.renderer || !this.messageBoxApi) {
@@ -529,7 +568,7 @@ export class Gui {
         const sharedVxlGeometryPool = new VxlGeometryPool(new VxlGeometryCache(null, Engine.getActiveMod?.() ?? null), this.generalOptions!.graphics.models.value);
         const buildingImageDataCache = new Map();
         const workerHost = new WorkerHost();
-        const gameScreen = new GameScreen(workerHost, onlineServices.gservCon, onlineServices.wgameresService, onlineServices.wolService, onlineServices.mapTransferService, Engine.getVersion(), '', errorHandler, gameMenuSubScreens, loadingScreenApiFactory, new Parser(), new Serializer(), this.config, this.strings, this.renderer, this.uiScene, this.runtimeVars || {}, this.messageBoxApi, this.toastApi, this.uiAnimationLoop, this.viewport, this.jsxRenderer, this.pointer, this.sound, this.music, this.mixer, this.keyBinds, this.generalOptions, this.localPrefs, undefined, undefined, replayManager, this.fullScreen, mapFileLoader, undefined, Engine.getMapList?.(), new GameLoader(this.appVersion, workerHost, gameResLoader, gameResLoader, rules, gameModes, this.sound, (console as any), undefined, speedCheat, this.gameResConfig!, sharedVxlGeometryPool, buildingImageDataCache, (this as any).runtimeVars?.debugBotIndex, this.config.devMode ?? false), sharedVxlGeometryPool, buildingImageDataCache, mutedPlayers, tauntsEnabled, speedCheat, undefined, clientApi.battleControl);
+        const gameScreen = new GameScreen(workerHost, onlineServices.gservCon, onlineServices.wgameresService, onlineServices.errorReportService, onlineServices.wolService, onlineServices.mapTransferService, Engine.getVersion(), '', errorHandler, gameMenuSubScreens, loadingScreenApiFactory, new Parser(), new Serializer(), this.config, this.strings, this.renderer, this.uiScene, this.runtimeVars || {}, this.messageBoxApi, this.toastApi, this.uiAnimationLoop, this.viewport, this.jsxRenderer, this.pointer, this.sound, this.music, this.mixer, this.keyBinds, this.generalOptions, this.localPrefs, undefined, undefined, replayManager, this.fullScreen, mapFileLoader, undefined, Engine.getMapList?.(), new GameLoader(this.appVersion, workerHost, gameResLoader, gameResLoader, rules, gameModes, this.sound, (console as any), undefined, speedCheat, this.gameResConfig!, sharedVxlGeometryPool, buildingImageDataCache, (this as any).runtimeVars?.debugBotIndex, this.config.devMode ?? false), sharedVxlGeometryPool, buildingImageDataCache, mutedPlayers, tauntsEnabled, speedCheat, undefined, clientApi.battleControl);
         (gameScreen as any).setController?.(this.rootController);
         this.rootController.addScreen(ScreenType.Game, gameScreen as any);
         const { ReplayScreen } = await import('./gui/screen/replay/ReplayScreen.js');

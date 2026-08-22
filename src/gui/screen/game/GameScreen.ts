@@ -43,6 +43,10 @@ import { CON_INFO_THRESH_MILLIS, LAN_LOAD_TIMEOUT_MILLIS } from '@/network/gserv
 const REJOIN_RESYNC_TIMEOUT_MILLIS = 30_000;
 const REJOIN_CATCHUP_STALL_LIMIT = 32;
 import { GameRes } from '@/network/gameres/GameRes';
+import type { ErrorReportType, ErrorReportPayload } from '@/network/ErrorReportService';
+import { ERROR_REPORT_UI_TIMEOUT_MILLIS } from '@/network/errorReport/errorReportConfig';
+import React from 'react';
+import { CrashReportPrompt } from '@/gui/screen/game/component/CrashReportPrompt';
 import { Task } from '@puzzl/core/lib/async/Task';
 import { IrcConnection } from '@/network/IrcConnection';
 import { GservError } from '@/network/GservError';
@@ -55,7 +59,7 @@ import { CommandBarButtonType } from '@/gui/screen/game/component/hud/commandBar
 import { LoadingScreenType } from '@/gui/screen/game/loadingScreen/LoadingScreenApiFactory';
 import { MapFile } from '@/data/MapFile';
 import { VirtualFile } from '@/data/vfs/VirtualFile';
-import { base64StringToUint8Array, binaryStringToUint8Array } from '@/util/string';
+import { base64StringToUint8Array, binaryStringToUint8Array, uint8ArrayToBase64String } from '@/util/string';
 import { MapDigest } from '@/engine/MapDigest';
 import { MapSupport } from '@/engine/MapSupport';
 import { OBS_COUNTRY_ID } from '@/game/gameopts/constants';
@@ -78,6 +82,12 @@ export class GameScreen extends RootScreen {
     public preventUnload = true;
     protected controller?: any;
     private game?: any;
+    // Tracked separately from `game` (see buildErrorReport): the auto-submitted
+    // error report needs a gameId even for the earliest failures where a Game
+    // was never constructed, and single-player uses the fixed placeholder '0'
+    // (see SkirmishScreen.ts) rather than a real gserv-issued id.
+    private gameId?: string;
+    private errorReportPromptShown = false;
     private replay?: any;
     private replayRecorderInstance?: ReplayRecorder;
     private gameTurnMgr?: any;
@@ -106,14 +116,18 @@ export class GameScreen extends RootScreen {
     private debugMapFile?: any;
     private pausedAtSpeed?: number;
     private gameEndHandled = false;
-    constructor(private workerHostApi: any, private gservCon: any, private wgameresService: any, private wolService: any, private mapTransferService: any, private engineVersion: string, private engineModHash: string, private errorHandler: any, private gameMenuSubScreens: any, private loadingScreenApiFactory: any, private gameOptsParser: any, private gameOptsSerializer: any, private config: any, private strings: any, private renderer: any, private uiScene: any, private runtimeVars: any, private messageBoxApi: any, private toastApi: any, private uiAnimationLoop: any, private viewport: any, private jsxRenderer: any, private pointer: any, private sound: any, private music: any, private mixer: any, private keyBinds: any, private generalOptions: any, private localPrefs: any, private actionLogger: any, private lockstepLogger: any, private replayManager: any, private fullScreen: any, private mapFileLoader: any, private mapDir: any, private mapList: any, private gameLoader: any, private vxlGeometryPool: any, private buildingImageDataCache: any, private mutedPlayers: any, private tauntsEnabled: any, private speedCheat: any, private sentry: any, private battleControlApi: any) {
+    constructor(private workerHostApi: any, private gservCon: any, private wgameresService: any, private errorReportService: any, private wolService: any, private mapTransferService: any, private engineVersion: string, private engineModHash: string, private errorHandler: any, private gameMenuSubScreens: any, private loadingScreenApiFactory: any, private gameOptsParser: any, private gameOptsSerializer: any, private config: any, private strings: any, private renderer: any, private uiScene: any, private runtimeVars: any, private messageBoxApi: any, private toastApi: any, private uiAnimationLoop: any, private viewport: any, private jsxRenderer: any, private pointer: any, private sound: any, private music: any, private mixer: any, private keyBinds: any, private generalOptions: any, private localPrefs: any, private actionLogger: any, private lockstepLogger: any, private replayManager: any, private fullScreen: any, private mapFileLoader: any, private mapDir: any, private mapList: any, private gameLoader: any, private vxlGeometryPool: any, private buildingImageDataCache: any, private mutedPlayers: any, private tauntsEnabled: any, private speedCheat: any, private sentry: any, private battleControlApi: any) {
         super();
         this.onGservClose = (error: any) => {
             if (this.replay) {
                 this.replay.finish(this.game.currentTick);
                 this.saveReplay(this.replay);
             }
-            this.handleError(error, this.strings.get('TXT_YOURE_DISCON'));
+            // Too common and mundane to prompt for a report every time: a
+            // plain "you've been disconnected" fires on normal game end,
+            // resignation, a network blip, or a server restart, none of
+            // which a diagnostic report says anything useful about.
+            this.handleError(error, this.strings.get('TXT_YOURE_DISCON'), undefined, this.game, 'connection_error', true);
             if (this.game) {
                 this.sendGameRes(this.game, {
                     disconnect: true,
@@ -132,6 +146,7 @@ export class GameScreen extends RootScreen {
     }
     async onEnter(params: any): Promise<void> {
         this.gameEndHandled = false;
+        this.errorReportPromptShown = false;
         this.pointer.lock();
         this.pointer.setVisible(false);
         await this.music?.play(MusicType.Loading);
@@ -141,7 +156,7 @@ export class GameScreen extends RootScreen {
         let gameOpts: any;
         const lanLaunch = params.lanLaunch;
         this.lanMatchSession = params.lanMatchSession;
-        const gameId = lanLaunch?.gameId ?? params.gameId;
+        const gameId = this.gameId = lanLaunch?.gameId ?? params.gameId;
         const timestamp = lanLaunch?.timestamp ?? params.timestamp;
         this.returnTo = params.returnTo ?? lanLaunch?.returnRoute;
         this.isTournament = params.tournament;
@@ -275,7 +290,7 @@ export class GameScreen extends RootScreen {
         }
         else if (this.isLanGame) {
             if (!this.lanMatchSession) {
-                this.handleError(new Error('Missing LAN match session'), this.strings.get('TS:ConnectFailed'));
+                this.handleError(new Error('Missing LAN match session'), this.strings.get('TS:ConnectFailed'), undefined, game, 'connection_error');
                 return;
             }
             this.gameTurnMgr = this.initLockstep(game, localPlayer, actionFactory, actionQueue, replayRecorder, this.lanMatchSession);
@@ -473,6 +488,9 @@ export class GameScreen extends RootScreen {
                 this.handleError(
                     new Error('LAN load timeout'),
                     this.strings.get('TS:ConnectFailed'),
+                    undefined,
+                    this.game,
+                    'connection_error',
                 );
                 return;
             }
@@ -502,6 +520,7 @@ export class GameScreen extends RootScreen {
         this.lanMatchSession = undefined;
         this.disposables.dispose();
         this.activeWorldScene = undefined;
+        this.gameId = undefined;
         this.localPrefs.removeItem(StorageKey.LastConnection);
         if (hadGameAnimationLoop) {
             this.uiAnimationLoop.start();
@@ -599,11 +618,17 @@ export class GameScreen extends RootScreen {
         });
     }
     private onGservClose: (error: any) => void;
-    private handleError(error: any, message: string, skipGoToMenu?: boolean): void {
+    private handleError(error: any, message: string, skipGoToMenu?: boolean, game?: any, errorType: ErrorReportType = 'other', skipReport: boolean = false, debugDataPromise?: Promise<{ debugBundle?: Uint8Array } | undefined>): void {
         if (this.gameTurnMgr) {
             this.gameTurnMgr.setErrorState();
         }
         this.pointer.unlock();
+        // A pause/resume countdown (showPauseCountdown) polls messageBoxApi.
+        // updateText() on a 500ms interval and is only ever cancelled by the
+        // server's actual RPL_GAME_PAUSED/RESUMED events -- an error arriving
+        // mid-countdown left it running underneath (and stomping the text of)
+        // whatever dialog we show below.
+        this.clearPauseCountdown();
         const cleanup = () => {
             if (!this.usesServerConnection()) {
                 return;
@@ -614,14 +639,160 @@ export class GameScreen extends RootScreen {
                 this.gservCon.close();
             }
         };
-        this.errorHandler.handle(error, message, skipGoToMenu ? undefined : () => {
-            cleanup();
-            this.controller?.goToScreen(ScreenType.MainMenuRoot);
-        });
         if (skipGoToMenu) {
+            this.errorHandler.handle(error, message);
             cleanup();
             this.playerUi?.dispose();
+            return;
         }
+        if (this.errorReportPromptShown) {
+            // Already showing (or waiting on) a dialog for an earlier error in
+            // this same failure -- matches ErrorHandler's own isErrorState
+            // guard: additional errors are logged, not stacked as new dialogs.
+            console.error('Handled error (already showing a crash dialog):', error);
+            return;
+        }
+        this.errorReportPromptShown = true;
+        const proceed = () => {
+            cleanup();
+            this.controller?.goToScreen(ScreenType.MainMenuRoot);
+        };
+        if (skipReport) {
+            this.errorHandler.handle(error, message, proceed);
+            return;
+        }
+        // setErrorState() above already halted this client's turn processing
+        // for good (LockstepManager.doGameTurn is a permanent no-op once set)
+        // -- if anything in the report/consent flow throws or its promise
+        // rejects, the player must still see the real error and get routed
+        // back to the menu, not sit on a silently frozen game screen forever.
+        this.maybeSubmitErrorReport(errorType, error, message, game, debugDataPromise)
+            .then(shown => {
+                if (shown) {
+                    // The combined dialog already showed the real error message;
+                    // showing ErrorHandler's plain-message dialog again would be
+                    // a redundant second popup for the same failure.
+                    proceed();
+                    return;
+                }
+                this.errorHandler.handle(error, message, proceed);
+            })
+            .catch(reportFlowError => {
+                console.error('[GameScreen] Crash-report flow failed; falling back to the plain error dialog', reportFlowError);
+                this.errorHandler.handle(error, message, proceed);
+            });
+    }
+    // Player-consented, best-effort upload of a crash/desync diagnostic report
+    // (see ERROR_REPORTING_PLAN.md). Runs uniformly in single-player, LAN, and
+    // online multiplayer -- the only mode-specific behavior is that
+    // errorReportService silently has no URL configured until login completes,
+    // which single-player also goes through (see MainMenuRootScreen.getOnlineServices).
+    // Returns whether the combined error/report dialog was actually shown --
+    // false means the caller still needs to show the plain error message itself
+    // (no gameId yet, or no report endpoint configured for this session).
+    private async maybeSubmitErrorReport(errorType: ErrorReportType, error: any, message: string, game?: any, debugDataPromise?: Promise<{ debugBundle?: Uint8Array } | undefined>): Promise<boolean> {
+        if (!this.gameId || !this.errorReportService?.getUrl?.()) {
+            return false;
+        }
+        const wantsToSubmit = await new Promise<boolean>(resolve => {
+            this.messageBoxApi.show(
+                React.createElement(CrashReportPrompt, { message, discordUrl: this.config.discordUrl, strings: this.strings }),
+                [
+                    { label: this.strings.get('GUI:Submit'), onClick: () => resolve(true) },
+                    { label: this.strings.get('GUI:Skip'), onClick: () => resolve(false) },
+                ],
+            );
+        });
+        if (!wantsToSubmit) {
+            return true;
+        }
+        const cancellationTokenSource = new CancellationTokenSource();
+        await new Promise<void>(resolve => {
+            let settled = false;
+            const settle = () => {
+                if (settled) {
+                    return;
+                }
+                settled = true;
+                clearTimeout(skipTimer);
+                this.messageBoxApi.destroy();
+                resolve();
+            };
+            // Native <progress> with no `value` renders as an indeterminate,
+            // animated bar in every browser -- same element LoadingScreen.tsx
+            // uses for per-player load percent. Indeterminate rather than a
+            // real percentage: ErrorReportService.submit() goes through
+            // fetch() (HttpRequest.ts), which exposes no upload-progress
+            // signal, and the payload is capped at ~4MB (typically much
+            // smaller) -- a fabricated percentage would just be a lie with
+            // extra steps.
+            const submittingContent = () => React.createElement('div', { style: { textAlign: 'center' } }, React.createElement('div', { style: { marginBottom: '12px', whiteSpace: 'pre-line' } }, this.strings.get('TXT_SUBMITTING_REPORT')), React.createElement('progress', { style: { width: '100%' } }));
+            // Shown immediately on click, covering both phases below (waiting
+            // out debugDataPromise, then the actual upload) with one
+            // continuous spinner rather than a gap of no dialog while
+            // buildErrorReport awaits the still-compressing debug bundle --
+            // debugDataPromise was kicked off back in handleGameError, in
+            // parallel with the CrashReportPrompt dialog above, so by the
+            // time the player clicks Submit (a few seconds at minimum) the
+            // ~1-2s 7z compression has usually already finished anyway.
+            this.messageBoxApi.show(submittingContent());
+            const skipTimer = setTimeout(() => {
+                if (!settled) {
+                    this.messageBoxApi.show(submittingContent(), this.strings.get('GUI:Skip'), () => {
+                        cancellationTokenSource.cancel();
+                        settle();
+                    });
+                }
+            }, ERROR_REPORT_UI_TIMEOUT_MILLIS);
+            this.buildErrorReport(errorType, error, game, debugDataPromise)
+                .then(report => this.errorReportService.submit(report, cancellationTokenSource.token))
+                .catch((submitError: any) => {
+                    if (!(submitError instanceof OperationCanceledError)) {
+                        console.warn('[GameScreen] Failed to submit error report', submitError);
+                    }
+                })
+                .then(settle);
+        });
+        return true;
+    }
+    private async buildErrorReport(errorType: ErrorReportType, error: any, game?: any, debugDataPromise?: Promise<{ debugBundle?: Uint8Array } | undefined>): Promise<ErrorReportPayload> {
+        const report: ErrorReportPayload = {
+            gameId: this.gameId!,
+            nick: this.playerName || 'unknown',
+            errorType,
+            message: error instanceof Error ? error.message : String(error?.message ?? error),
+            stack: error instanceof Error ? error.stack : undefined,
+            timestamp: Date.now(),
+            clientVersion: this.engineVersion,
+        };
+        if (game && typeof game.getHashBreakdown === 'function' && typeof game.getObjectHashList === 'function') {
+            try {
+                report.gameState = {
+                    tick: game.currentTick,
+                    hashBreakdown: game.getHashBreakdown(),
+                    objectHashes: game.getObjectHashList(),
+                };
+            }
+            catch (hashError) {
+                console.warn('[GameScreen] Failed to capture game state for error report', hashError);
+            }
+        }
+        if (debugDataPromise) {
+            // Failure here (compression threw, or the shared promise's own
+            // .catch in handleGameError already swallowed it) must never lose
+            // the report entirely -- gameState above is still a real, if
+            // thinner, single-tick diagnostic on its own.
+            try {
+                const debugData = await debugDataPromise;
+                if (debugData?.debugBundle) {
+                    report.debugBundle = uint8ArrayToBase64String(debugData.debugBundle);
+                }
+            }
+            catch (debugError) {
+                console.warn('[GameScreen] Failed to attach debug bundle to error report', debugError);
+            }
+        }
+        return report;
     }
     private saveReplay(replay: any): void {
         if (!this.replayManager?.saveReplay) {
@@ -1317,7 +1488,7 @@ export class GameScreen extends RootScreen {
             onError: this.config.devMode ? undefined : (error: any, isCritical?: boolean) => this.handleError(error, this.strings.get('TS:GameCrashed') +
                 (isCritical || game.gameOpts.mapOfficial
                     ? ''
-                    : '\n\n' + this.strings.get('TS:CustomMapCrash')), isCritical)
+                    : '\n\n' + this.strings.get('TS:CustomMapCrash')), isCritical, game, 'game_crash')
         });
         this.uiAnimationLoop.stop();
         this.gameAnimationLoop.start();
@@ -1420,7 +1591,7 @@ export class GameScreen extends RootScreen {
                 return false;
             }
             if (Date.now() > deadline) {
-                this.handleError(new Error('Resync log incomplete'), this.strings.get('TS:ConnectFailed'));
+                this.handleError(new Error('Resync log incomplete'), this.strings.get('TS:ConnectFailed'), undefined, this.game, 'connection_error');
                 return false;
             }
             await sleep(25);
@@ -1796,7 +1967,7 @@ export class GameScreen extends RootScreen {
                     break;
             }
         }
-        this.handleError(error, errorMessage);
+        this.handleError(error, errorMessage, undefined, undefined, 'connection_error');
     }
     private handleMapLoadError(error: any, mapName: string): void {
         if (error instanceof OperationCanceledError || error instanceof IrcConnection.SocketError) {
@@ -1807,7 +1978,7 @@ export class GameScreen extends RootScreen {
         if (message?.match(/memory|allocation/i)) {
             errorMessage = this.strings.get('TS:GameInitOom');
         }
-        this.handleError(error, errorMessage);
+        this.handleError(error, errorMessage, undefined, undefined, 'game_load_error');
     }
     private handleGameLoadError(error: any, params: any, gameOpts: any): void {
         if (error instanceof OperationCanceledError || error instanceof IrcConnection.SocketError) {
@@ -1821,7 +1992,7 @@ export class GameScreen extends RootScreen {
         else if (!gameOpts.mapOfficial) {
             errorMessage += '\n\n' + this.strings.get('TS:CustomMapCrash');
         }
-        this.handleError(error, errorMessage);
+        this.handleError(error, errorMessage, undefined, undefined, 'game_load_error');
     }
     private handleGameError(error: any, message: string, game: any, debugDataProvider?: () => Promise<any>, isCustomMap?: boolean): void {
         const replay = this.replay;
@@ -1831,7 +2002,24 @@ export class GameScreen extends RootScreen {
             replay.finish(game.currentTick);
             this.saveReplay(replay);
         }
-        this.handleError(error, message, isCustomMap);
+        const errorType: ErrorReportType = error === 'desync_error' ? 'desync_error' : 'game_crash';
+        // Upstream hands debug data to Sentry; this fork has no Sentry backend
+        // (src/Application.ts's mockSentry.captureException is a no-op stub
+        // that never invokes the scope callback), so the compressed
+        // statedump/lockstep-log rides along in the uploaded error report
+        // instead (see buildErrorReport's debugBundle field) -- there is no
+        // local-download fallback, so a report that fails to include this
+        // (compression threw, or the player skips/never gets a URL) is the
+        // only copy of this data that ever existed anywhere.
+        // Kicked off here, in parallel with the handleError() dialog below,
+        // rather than awaited: compression takes ~1-2s and the player needs a
+        // moment to read the prompt anyway, so by the time (if ever) they hit
+        // Submit in maybeSubmitErrorReport this has usually already resolved.
+        const debugDataPromise = debugDataProvider?.().catch((error: any) => {
+            console.error("[GameScreen] Failed to export desync debug bundle", error);
+            return undefined;
+        });
+        this.handleError(error, message, isCustomMap, game, errorType, false, debugDataPromise);
         if (error === 'desync_error' && this.usesServerConnection()) {
             this.sendGameRes(game, {
                 disconnect: false,
@@ -1840,33 +2028,6 @@ export class GameScreen extends RootScreen {
                 finished: false
             });
         }
-        // Upstream hands debug data to Sentry; this fork has no Sentry backend
-        // (src/Application.ts's mockSentry.captureException is a no-op stub
-        // that never invokes the scope callback), so download the compressed
-        // statedump/lockstep-log directly instead of silently dropping them.
-        if (debugDataProvider) {
-            debugDataProvider()
-                .then(({ debugBundle }: { debugBundle?: Uint8Array }) => {
-                    if (debugBundle) {
-                        this.downloadDebugFile(debugBundle, "desync-debug.7z");
-                    }
-                    else {
-                        console.warn("[GameScreen] Desync debug bundle was empty; nothing to download");
-                    }
-                })
-                .catch((error: any) => console.error("Failed to export debug data", error));
-        }
-    }
-    private downloadDebugFile(data: Uint8Array, filename: string): void {
-        const blob = new Blob([data as any], { type: "application/x-7z-compressed" });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.setAttribute("href", url);
-        link.setAttribute("download", filename);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
     }
     private sendGameRes(game: any, result: any): void {
         if (!this.wgameresService?.getUrl?.()) {

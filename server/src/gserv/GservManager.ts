@@ -1,4 +1,7 @@
 import { randomHex } from "../util/random";
+import { ErrorReportCorrelator, RecordErrorReportOptions } from "../diagnostics/errorReportStore";
+import { ErrorReport } from "../diagnostics/errorReportCodec";
+import { Logger } from "../logger";
 
 export interface GservServerInfo {
     id: string;
@@ -49,6 +52,7 @@ export class GservManager {
     readonly instances = new Map<string, GservInstance>();
     private tickets = new Map<string, TicketInfo>();
     private counter = 0;
+    private errorReports = new ErrorReportCorrelator();
 
     constructor(private defaultInfo: GservServerInfo) {
     }
@@ -166,5 +170,13 @@ export class GservManager {
             }
         }
         return removed;
+    }
+
+    // Auto-submitted crash/desync diagnostic reports (see ERROR_REPORTING_PLAN.md).
+    // Lives here rather than on GservServer's private per-connection state so the
+    // plain HTTP route handler (which only has this manager, not a live WS relay)
+    // can reach it too.
+    recordErrorReport(report: ErrorReport, options: RecordErrorReportOptions, log: Logger): void {
+        this.errorReports.record(report, options, log);
     }
 }

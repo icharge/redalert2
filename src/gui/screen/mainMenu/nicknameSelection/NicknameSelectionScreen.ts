@@ -31,6 +31,10 @@ interface WgameresService {
     setUrl(url?: string): void;
 }
 
+interface ErrorReportServiceLike {
+    setUrl(url?: string): void;
+}
+
 interface MapTransferService {
     setUrl(url?: string): void;
 }
@@ -58,6 +62,7 @@ export class NicknameSelectionScreen extends MainMenuScreen {
     private rootController: RootController;
     private wladderService: WladderService;
     private wgameresService: WgameresService;
+    private errorReportService: ErrorReportServiceLike;
     private mapTransferService: MapTransferService;
     private wolService: WolService;
     private realmService: RealmService;
@@ -79,7 +84,7 @@ export class NicknameSelectionScreen extends MainMenuScreen {
     private handleClaimNickname: () => Promise<void>;
     private handleCreateNickname: (defaultValue?: string) => Promise<void>;
 
-    constructor(strings: any, jsxRenderer: any, messageBoxApi: MessageBoxApi, errorHandler: ErrorHandler, rootController: RootController, wladderService: WladderService, wgameresService: WgameresService, mapTransferService: MapTransferService, wolService: WolService, realmService: RealmService, sessionService: SessionService, localPrefs: LocalPrefs, cfTurnstile: CfTurnstile) {
+    constructor(strings: any, jsxRenderer: any, messageBoxApi: MessageBoxApi, errorHandler: ErrorHandler, rootController: RootController, wladderService: WladderService, wgameresService: WgameresService, errorReportService: ErrorReportServiceLike, mapTransferService: MapTransferService, wolService: WolService, realmService: RealmService, sessionService: SessionService, localPrefs: LocalPrefs, cfTurnstile: CfTurnstile) {
         super();
         this.strings = strings;
         this.jsxRenderer = jsxRenderer;
@@ -88,6 +93,7 @@ export class NicknameSelectionScreen extends MainMenuScreen {
         this.rootController = rootController;
         this.wladderService = wladderService;
         this.wgameresService = wgameresService;
+        this.errorReportService = errorReportService;
         this.mapTransferService = mapTransferService;
         this.wolService = wolService;
         this.realmService = realmService;
@@ -409,6 +415,7 @@ export class NicknameSelectionScreen extends MainMenuScreen {
                         });
                     this.wladderService.setUrl(realm.wladderUrl);
                     this.wgameresService.setUrl(realm.wgameresUrl);
+                    this.errorReportService.setUrl(realm.errorReportUrl);
                     this.mapTransferService.setUrl(realm.mapTransferUrl);
                     this.messageBoxApi.destroy();
                     const route = this.params.afterLogin(messages);

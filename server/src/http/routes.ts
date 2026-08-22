@@ -9,6 +9,7 @@ import { FixedWindowLimiter } from "../util/rateLimit";
 import { LadderError, LadderService } from "../ladder/LadderService";
 import { isLadderType, WolGameReportResult } from "../ladder/LadderService";
 import { decodeGameRes, GameResDecodeError, GameResType } from "../ladder/gameResCodec";
+import { validateErrorReport, ErrorReportValidationError } from "../diagnostics/errorReportCodec";
 import { GservManager } from "../gserv/GservManager";
 import { WolServer } from "../server/WolServer";
 import { numeric, WOL_SERVER_NAME } from "../protocol/replies";
@@ -72,14 +73,18 @@ function remoteOf(req: Request): string {
 
 // Limiters are stateful, so keep one pair per config object (config is fixed
 // per process; tests pass their own config objects and get fresh limiters).
-const limitersByConfig = new WeakMap<ServerConfig, { login: FixedWindowLimiter; register: FixedWindowLimiter }>();
+const limitersByConfig = new WeakMap<ServerConfig, { login: FixedWindowLimiter; register: FixedWindowLimiter; errorReport: FixedWindowLimiter }>();
 
-function limitersFor(config: ServerConfig): { login: FixedWindowLimiter; register: FixedWindowLimiter } {
+function limitersFor(config: ServerConfig): { login: FixedWindowLimiter; register: FixedWindowLimiter; errorReport: FixedWindowLimiter } {
     let entry = limitersByConfig.get(config);
     if (!entry) {
         entry = {
             login: new FixedWindowLimiter(config.loginMaxPerMin, 60_000),
             register: new FixedWindowLimiter(config.registerMaxPerHour, 3_600_000),
+            // No mandatory auth on /errorreport (single-player/LAN must be able to
+            // submit without a WOL session), so this is keyed by IP rather than
+            // account — the only defense against a flood is per-IP.
+            errorReport: new FixedWindowLimiter(config.errorReportMaxPerMin, 60_000),
         };
         limitersByConfig.set(config, entry);
     }
@@ -179,6 +184,7 @@ apiLoginUrl="${baseUrl}/login"
 apiRegUrl="${baseUrl}/register"
 wladderUrl="${baseUrl}/ladder"
 wgameresUrl="${baseUrl}/wgameres"
+errorReportUrl="${baseUrl}/errorreport"
 `;
         return withCors(new Response(ini, { headers: { "Content-Type": "text/plain" } }), config, req);
     }
@@ -217,6 +223,10 @@ wgameresUrl="${baseUrl}/wgameres"
     }
     if (req.method === "POST" && pathParts[0] === "wgameres") {
         return handleWgameres(req, deps, config, pathParts, log);
+    }
+
+    if (req.method === "POST" && pathParts[0] === "errorreport") {
+        return handleErrorReport(req, deps, config, pathParts, log);
     }
 
     if (req.method === "GET" && url.pathname === "/auth/session") {
@@ -457,6 +467,86 @@ function completionToResult(status: number): WolGameReportResult | undefined {
         default:
             return undefined;
     }
+}
+
+/**
+ * POST /errorreport/{sku} — an auto-submitted crash/desync diagnostic report
+ * (src/network/ErrorReportService.ts), JSON body, player-consented on the
+ * client side before it's ever sent. See ERROR_REPORTING_PLAN.md.
+ *
+ * Deliberately unlike handleWgameres in two ways:
+ *   - No mandatory Bearer token: single-player/LAN sessions (no WOL session
+ *     relationship required) must be able to submit too. A valid token, when
+ *     present, upgrades the report to `authenticated: true` with the trusted
+ *     session username; otherwise the client-supplied `nick` is used as-is,
+ *     informational only.
+ *   - No requirement that gameId resolve to a known ranked gserv instance —
+ *     accepted and persisted regardless of mode.
+ * Since auth can't be the abuse gate here, validity is enforced by a per-IP
+ * rate limiter plus strict schema/size validation instead.
+ */
+async function handleErrorReport(req: Request, deps: HttpDeps, config: ServerConfig, parts: string[], log: Logger): Promise<Response> {
+    const sku = Number(parts[1]);
+    if (!Number.isInteger(sku)) {
+        return withCors(json({ error: "Invalid sku", errorCode: "invalid_request" }, 400), config, req);
+    }
+    const ip = remoteOf(req);
+    if (!limitersFor(config).errorReport.allow(ip)) {
+        log.warn(`errorreport: rate limited for ${ip}`);
+        return withCors(json({ error: "Too many reports, try again later", errorCode: "rate_limited" }, 429), config, req);
+    }
+
+    const contentLength = Number(req.headers.get("content-length") ?? "0");
+    if (contentLength > config.maxErrorReportBytes) {
+        log.warn(`errorreport: oversized report (${contentLength} bytes) from ${ip}`);
+        return withCors(json({ error: "Report too large", errorCode: "too_large" }, 413), config, req);
+    }
+
+    let bodyText: string;
+    try {
+        bodyText = await req.text();
+    }
+    catch {
+        return withCors(json({ error: "Invalid request body", errorCode: "invalid_request" }, 400), config, req);
+    }
+    if (Buffer.byteLength(bodyText, "utf8") > config.maxErrorReportBytes) {
+        log.warn(`errorreport: oversized report (${bodyText.length} chars) from ${ip}`);
+        return withCors(json({ error: "Report too large", errorCode: "too_large" }, 413), config, req);
+    }
+
+    let parsedBody: unknown;
+    try {
+        parsedBody = JSON.parse(bodyText);
+    }
+    catch {
+        return withCors(json({ error: "Invalid request body", errorCode: "invalid_request" }, 400), config, req);
+    }
+
+    let report: ReturnType<typeof validateErrorReport>;
+    try {
+        report = validateErrorReport(parsedBody);
+    }
+    catch (error) {
+        if (error instanceof ErrorReportValidationError) {
+            log.warn(`errorreport: ${error.message} from ${ip}`);
+            return withCors(json({ error: "Invalid report", errorCode: "invalid_report" }, 400), config, req);
+        }
+        throw error;
+    }
+
+    const authorization = req.headers.get("authorization") ?? "";
+    const token = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
+    const session = token ? deps.sessions.validate(token) : undefined;
+    const authenticated = session !== undefined;
+    const nick = authenticated ? session!.username : report.nick;
+
+    deps.gservs.recordErrorReport(
+        { ...report, nick },
+        { errorReportsDir: config.errorReportsDir, desyncReportTimeoutMillis: config.desyncReportTimeoutMillis },
+        log,
+    );
+    log.info(`errorreport: accepted ${report.errorType} for ${report.gameId} from "${nick}" (authenticated=${authenticated}) sku=${sku}`);
+    return withCors(json({ accepted: true, authenticated }), config, req);
 }
 
 function samePlayers(instancePlayers: string[], reportPlayers: string[]): boolean {

@@ -10,6 +10,7 @@ export interface Region {
     wgameresUrl?: string;
     mapTransferUrl?: string;
     leaderboardUrl?: string;
+    errorReportUrl?: string;
 }
 
 export class ServerRegions {
@@ -30,6 +31,7 @@ export class ServerRegions {
                 wgameresUrl: section.getString("wgameresUrl") || undefined,
                 mapTransferUrl: section.getString("mapTransferUrl") || undefined,
                 leaderboardUrl: section.getString("leaderboardUrl") || undefined,
+                errorReportUrl: section.getString("errorReportUrl") || undefined,
             });
         }
     }
