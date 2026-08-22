@@ -3,6 +3,7 @@ export enum StorageKey {
     Options = "_r_opts_v3",
     Mixer = "_r_mixer_v3",
     MusicOpts = "_r_opts_music",
+    MuteMusicOnBlur = "_r_muteMusicBlur",
     LastGpuTier = "_r_last_gpu",
     LastSeenPatch = "_r_last_patch",
     LastMap = "_r_lastMap",

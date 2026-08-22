@@ -21,6 +21,7 @@ import { UiAnimationLoop } from './engine/UiAnimationLoop.js';
 import { Mixer } from './engine/sound/Mixer.js';
 import { ChannelType } from './engine/sound/ChannelType.js';
 import { AudioSystem } from './engine/sound/AudioSystem.js';
+import { FocusMusicMuter } from './engine/sound/FocusMusicMuter.js';
 import { Sound } from './engine/sound/Sound.js';
 import { SoundSpecs } from './engine/sound/SoundSpecs.js';
 import { Music } from './engine/sound/Music.js';
@@ -67,6 +68,7 @@ export class Gui {
     private gameResConfig?: GameResConfig;
     private mixer?: Mixer;
     private audioSystem?: AudioSystem;
+    private focusMusicMuter?: FocusMusicMuter;
     private sound?: Sound;
     private music?: Music;
     private localPrefs: LocalPrefs;
@@ -623,6 +625,9 @@ export class Gui {
         if (this.messageBoxApi) {
             this.messageBoxApi.destroy();
         }
+        if (this.focusMusicMuter) {
+            this.focusMusicMuter.stop();
+        }
         if (this.music) {
             this.music.stopPlaying();
             this.music.dispose();
@@ -687,6 +692,8 @@ export class Gui {
             }
             this.mixer = mixer;
             this.audioSystem = new AudioSystem(mixer as any);
+            this.focusMusicMuter = new FocusMusicMuter(mixer, this.localPrefs);
+            this.focusMusicMuter.start();
             const debugRoot = ((window as any).__ra2debug ??= {});
             debugRoot.audioSystem = this.audioSystem;
             debugRoot.mixer = this.mixer;
