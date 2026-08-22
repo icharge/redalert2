@@ -212,6 +212,104 @@ describe("GservServer action relay", () => {
     });
 });
 
+describe("GservServer.getReplaySnapshot", () => {
+    test("returns a live in-progress replay for a still-running instance, well before finalize() ever runs", () => {
+        const replaysDir = __dirname + "/tmp-replays";
+        rmSync(replaysDir, { recursive: true, force: true });
+        mkdirSync(replaysDir, { recursive: true });
+        const { manager, server } = setup(replaysDir);
+        const instance = manager.create(["alice", "bob"], "ws://gserv");
+        instance.gameopts = buildGameOpts(["alice", "bob"]);
+        const alice = join(server, manager, instance, "alice");
+        const bob = join(server, manager, instance, "bob");
+        server.handleMessage(alice.client, "loaded 100");
+        server.handleMessage(bob.client, "loaded 100");
+        server.handleMessage(alice.client, buildRequestFrame(0, serializePlayerActions([{ id: 5, params: new Uint8Array([1, 2, 3]) }])));
+        server.handleMessage(bob.client, buildRequestFrame(0, serializePlayerActions([{ id: 0, params: new Uint8Array() }])));
+
+        // Nobody has left; there is no rejoin window and finalize() has not
+        // run (this exact instance is still fully live, exactly like a
+        // desync report's mid-game state, only without the actual desync).
+        const snapshot = server.getReplaySnapshot(instance.gameId);
+        expect(snapshot).toBeDefined();
+        const lines = snapshot!.split("\n").filter(Boolean);
+        expect(lines[0]).toBe("RA2TSREPL_v6");
+        expect(lines[lines.length - 1]).toMatch(/^END \d+$/);
+        expect(lines.some(line => line.match(/^(\d+)=0\|/))).toBe(true);
+
+        // Both members are still connected -- this call must not have
+        // disturbed the relay or ended the instance.
+        expect(readDir(replaysDir).length).toBe(0);
+    });
+
+    test("a snapshot taken mid-game does not prevent or corrupt a later real finalize(), which still captures everything including events recorded after the snapshot", () => {
+        const replaysDir = __dirname + "/tmp-replays";
+        rmSync(replaysDir, { recursive: true, force: true });
+        mkdirSync(replaysDir, { recursive: true });
+        const { config, manager, server } = setup(replaysDir);
+        const instance = manager.create(["alice", "bob"], "ws://gserv");
+        instance.gameopts = buildGameOpts(["alice", "bob"]);
+        const alice = join(server, manager, instance, "alice");
+        const bob = join(server, manager, instance, "bob");
+        server.handleMessage(alice.client, "loaded 100");
+        server.handleMessage(bob.client, "loaded 100");
+        server.handleMessage(alice.client, buildRequestFrame(0, serializePlayerActions([{ id: 5, params: new Uint8Array([1, 2, 3]) }])));
+        server.handleMessage(bob.client, buildRequestFrame(0, serializePlayerActions([{ id: 0, params: new Uint8Array() }])));
+
+        const midGameSnapshot = server.getReplaySnapshot(instance.gameId)!;
+        expect(midGameSnapshot.split("\n").filter(l => l.match(/^(\d+)=0\|/)).length).toBe(1);
+
+        // Play continues after the snapshot was taken.
+        server.handleMessage(alice.client, buildRequestFrame(1, serializePlayerActions([{ id: 6, params: new Uint8Array([9]) }])));
+        server.handleMessage(bob.client, buildRequestFrame(1, serializePlayerActions([{ id: 0, params: new Uint8Array() }])));
+
+        server.handleClose(alice.client);
+        server.handleClose(bob.client);
+        server.runSweepPass(Date.now() + config.abandonedInstanceTimeoutSeconds * 1000 + 1);
+
+        const files = readDir(replaysDir);
+        expect(files.length).toBe(1);
+        const finalText = readFileSync(files[0], "utf8");
+        const actionLines = finalText.split("\n").filter(line => line.match(/^(\d+)=0\|/));
+        // Both turn 0 (present in the mid-game snapshot already) and turn 1
+        // (recorded only after that snapshot was taken) must both be here.
+        expect(actionLines.length).toBe(2);
+    });
+
+    test("returns undefined before any turn has been recorded, for an unknown gameId, and when recording is disabled", () => {
+        const replaysDir = __dirname + "/tmp-replays";
+        rmSync(replaysDir, { recursive: true, force: true });
+        mkdirSync(replaysDir, { recursive: true });
+        const { manager, server } = setup(replaysDir);
+        const instance = manager.create(["alice", "bob"], "ws://gserv");
+        instance.gameopts = buildGameOpts(["alice", "bob"]);
+        const alice = join(server, manager, instance, "alice");
+        const bob = join(server, manager, instance, "bob");
+        server.handleMessage(alice.client, "loaded 100");
+        server.handleMessage(bob.client, "loaded 100");
+
+        // Instance is live and started, but no turn has been relayed yet.
+        expect(server.getReplaySnapshot(instance.gameId)).toBeUndefined();
+        // No such instance at all.
+        expect(server.getReplaySnapshot("g-does-not-exist")).toBeUndefined();
+
+        // Recording disabled entirely: events never accumulate even once
+        // actions start flowing, so there is nothing to snapshot.
+        const disabledConfig = loadConfig({ REPLAYS_DIR: replaysDir, GSERV_NET_RATE_MS: "33" });
+        const disabledManager = new GservManager({ id: "gs2", url: "ws://test.local/gserv" });
+        const disabledServer = new GservServer(disabledConfig, disabledManager);
+        const disabledInstance = disabledManager.create(["alice", "bob"], "ws://gserv");
+        disabledInstance.gameopts = buildGameOpts(["alice", "bob"]);
+        const dAlice = join(disabledServer, disabledManager, disabledInstance, "alice");
+        const dBob = join(disabledServer, disabledManager, disabledInstance, "bob");
+        disabledServer.handleMessage(dAlice.client, "loaded 100");
+        disabledServer.handleMessage(dBob.client, "loaded 100");
+        disabledServer.handleMessage(dAlice.client, buildRequestFrame(0, serializePlayerActions([{ id: 5, params: new Uint8Array([1]) }])));
+        disabledServer.handleMessage(dBob.client, buildRequestFrame(0, serializePlayerActions([{ id: 0, params: new Uint8Array() }])));
+        expect(disabledServer.getReplaySnapshot(disabledInstance.gameId)).toBeUndefined();
+    });
+});
+
 function readDir(dir: string): string[] {
     const { readdirSync } = require("node:fs") as typeof import("node:fs");
     try {

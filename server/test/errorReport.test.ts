@@ -28,7 +28,7 @@ function makeTestLogger() {
     } as any;
 }
 
-function setup(errorReportsDir: string, desyncTimeoutMillis = 30) {
+function setup(errorReportsDir: string, desyncTimeoutMillis = 30, replaySnapshot?: HttpDeps["replaySnapshot"]) {
     const config = loadConfig({
         ERROR_REPORTS_DIR: errorReportsDir,
         GSERV_DESYNC_REPORT_TIMEOUT_MILLIS: String(desyncTimeoutMillis),
@@ -43,7 +43,7 @@ function setup(errorReportsDir: string, desyncTimeoutMillis = 30) {
         startingRating: config.startingRating,
         placementMatches: config.placementMatches,
     });
-    const deps: HttpDeps = { accounts, sessions, ladder, gservs, wol };
+    const deps: HttpDeps = { accounts, sessions, ladder, gservs, wol, replaySnapshot };
     return { config, deps };
 }
 
@@ -284,6 +284,57 @@ describe("POST /errorreport", () => {
         const debugJson = JSON.parse(await extractOneFile(archiveBytes, "desync-debug.json"));
         expect(debugJson.stateDump).toEqual([1, 2, 3]);
         expect(debugJson.lockstepLog).toBe("line1\nline2");
+    });
+
+    test("a live in-progress replay snapshot is folded into the persisted archive as game.rpl", async () => {
+        const dir = __dirname + "/tmp-error-reports-replay";
+        rmSync(dir, { recursive: true, force: true });
+        mkdirSync(dir, { recursive: true });
+        const replayText = "RA2TSREPL_v6\nENGINE 0.83 0\ng-replay 1700000000 \n30=0|abcd\nEND 30\n";
+        const { config, deps } = setup(dir, 20, (gameId) => gameId === "g-replay" ? replayText : undefined);
+
+        const res = await post(deps, config, baseReport({ gameId: "g-replay", errorType: "desync_error", nick: "charge" }));
+        expect(res.status).toBe(200);
+        await Bun.sleep(60);
+
+        const gameDir = path.join(dir, "g-replay");
+        const archiveName = readdirSync(gameDir).find(name => name.endsWith(".7z"))!;
+        const archiveBytes = new Uint8Array(readFileSync(path.join(gameDir, archiveName)));
+        expect(await extractOneFile(archiveBytes, "game.rpl")).toBe(replayText);
+        // report.json must still be present and intact alongside it.
+        const reportJson = JSON.parse(await extractOneFile(archiveBytes, "report.json"));
+        expect(reportJson.gameId).toBe("g-replay");
+    });
+
+    test("no live instance for the gameId (replaySnapshot returns undefined) still persists the report, with no game.rpl entry", async () => {
+        const dir = __dirname + "/tmp-error-reports-noreplay";
+        rmSync(dir, { recursive: true, force: true });
+        mkdirSync(dir, { recursive: true });
+        const { config, deps } = setup(dir, 5000, () => undefined);
+
+        const res = await post(deps, config, baseReport({ gameId: "g-noreplay", errorType: "game_crash", nick: "charge" }));
+        expect(res.status).toBe(200);
+
+        const gameDir = path.join(dir, "g-noreplay");
+        const archiveName = readdirSync(gameDir).find(name => name.endsWith(".7z"))!;
+        const archiveBytes = new Uint8Array(readFileSync(path.join(gameDir, archiveName)));
+        expect(await extractOneFile(archiveBytes, "game.rpl")).toBe("");
+        const reportJson = JSON.parse(await extractOneFile(archiveBytes, "report.json"));
+        expect(reportJson.gameId).toBe("g-noreplay");
+    });
+
+    test("a replaySnapshot lookup that throws doesn't prevent the report from being persisted", async () => {
+        const dir = __dirname + "/tmp-error-reports-replaythrows";
+        rmSync(dir, { recursive: true, force: true });
+        mkdirSync(dir, { recursive: true });
+        const { config, deps } = setup(dir, 5000, () => {
+            throw new Error("simulated live-instance lookup failure");
+        });
+
+        const res = await post(deps, config, baseReport({ gameId: "g-replaythrows", errorType: "game_crash", nick: "charge" }));
+        expect(res.status).toBe(200);
+        const files = readReportFiles(dir, "g-replaythrows");
+        expect(files.length).toBe(1);
     });
 
     test("an oversized request body is rejected before extraction", async () => {

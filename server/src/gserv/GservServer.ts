@@ -183,6 +183,24 @@ export class GservServer {
         }
     }
 
+    // A live instance's replay serialized up to right now, for an
+    // auto-submitted error report to attach (see routes.ts's
+    // handleErrorReport) -- well before the instance's normal end-of-game
+    // finalize() writes an .rpl file to disk, which on a desync doesn't
+    // happen until both players' rejoin windows expire (see
+    // finalizeInstance's `state.members.size === 0 && state.departedAt.size
+    // === 0` guard). Returns undefined when there's no live instance for
+    // this gameId, or nothing worth attaching yet (recording disabled, or
+    // no turns captured -- hasEvents covers both: recordTurn() no-ops
+    // entirely when the recorder is disabled, so events never accumulate).
+    getReplaySnapshot(gameId: string): string | undefined {
+        const state = this.instanceStates.get(gameId);
+        if (!state || !state.recorder.hasEvents) {
+            return undefined;
+        }
+        return state.recorder.serialize();
+    }
+
     dispose(): void {
         if (this.sweepInterval) {
             clearInterval(this.sweepInterval);

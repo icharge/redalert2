@@ -10,7 +10,7 @@ import { LadderError, LadderService } from "../ladder/LadderService";
 import { isLadderType, WolGameReportResult } from "../ladder/LadderService";
 import { decodeGameRes, GameResDecodeError, GameResType } from "../ladder/gameResCodec";
 import { validateErrorReport, ErrorReportValidationError } from "../diagnostics/errorReportCodec";
-import { extractReportJson, ErrorReportArchiveError } from "../diagnostics/errorReportArchive";
+import { extractReportJson, appendReplayEntry, ErrorReportArchiveError } from "../diagnostics/errorReportArchive";
 import { GservManager } from "../gserv/GservManager";
 import { WolServer } from "../server/WolServer";
 import { numeric, WOL_SERVER_NAME } from "../protocol/replies";
@@ -105,6 +105,12 @@ export interface HttpDeps {
     ladder: LadderService;
     gservs: GservManager;
     wol: WolServer;
+    // Live-instance replay lookup for handleErrorReport (see GservServer.
+    // getReplaySnapshot) -- optional because GservManager alone (what tests
+    // construct HttpDeps with today) has no notion of a live WS instance to
+    // ask; a report submitted with no live instance to query, or in a test
+    // that doesn't wire this up, just never gets a replay attached.
+    replaySnapshot?: (gameId: string) => string | undefined;
 }
 
 export async function handleHttp(req: Request, deps: HttpDeps, config: ServerConfig, log: Logger = makeLogger("error", "http")): Promise<Response> {
@@ -558,6 +564,23 @@ async function handleErrorReport(req: Request, deps: HttpDeps, config: ServerCon
     const session = token ? deps.sessions.validate(token) : undefined;
     const authenticated = session !== undefined;
     const nick = authenticated ? session!.username : report.nick;
+
+    // Fold a live in-progress replay of this match into the same archive,
+    // if one is available (see GservServer.getReplaySnapshot -- this is
+    // normally the case for a desync report: the instance is still alive,
+    // just paused in its rejoin window, well before its own end-of-game
+    // replay file gets written to disk). Best-effort end to end, including
+    // the lookup itself: a report must never be lost just because the
+    // replay attach failed for some reason.
+    try {
+        const replayText = deps.replaySnapshot?.(report.gameId);
+        if (replayText !== undefined) {
+            archiveBytes = await appendReplayEntry(archiveBytes, replayText);
+        }
+    }
+    catch (error) {
+        log.warn(`errorreport: failed to attach live replay for ${report.gameId}: ${String((error as Error).message)}`);
+    }
 
     deps.gservs.recordErrorReport(
         { ...report, nick },

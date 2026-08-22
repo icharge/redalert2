@@ -154,10 +154,14 @@ export class GservReplayRecorder {
         return this.lastTurnNo >= 0 ? this.tickForTurn(this.lastTurnNo) : 0;
     }
 
-    finalize(): string {
-        if (!this.options.enabled) {
-            throw new Error("Replay recorder is disabled");
-        }
+    // Serializes the events captured so far into the .rpl text format,
+    // without touching disk or disturbing ongoing recording -- safe to call
+    // at any point, including mid-game, and safe to call more than once (a
+    // later real finalize() still captures every event, including ones
+    // recorded after an earlier serialize() call). This is what lets a
+    // mid-game desync error report attach a replay of the match up to that
+    // point, well before the instance's normal end-of-game finalize() runs.
+    serialize(): string {
         this.events.sort((a, b) => a.tickNo - b.tickNo || a.type - b.type);
         const engineVersion = this.options.gameVersion.split(".").slice(0, 2).join(".");
         const modHash = this.options.modHash ?? "0";
@@ -170,13 +174,21 @@ export class GservReplayRecorder {
             lines.push(`${event.tickNo}=${event.type}|${event.payload}`);
         }
         lines.push("END " + this.currentTick());
+        return lines.join("\n") + "\n";
+    }
+
+    finalize(): string {
+        if (!this.options.enabled) {
+            throw new Error("Replay recorder is disabled");
+        }
+        const content = this.serialize();
         const dir = this.options.replaysDir;
         mkdirSync(dir, { recursive: true });
         const name = sanitizeFileName(
             `game-${this.instance.gameId} ${new Date().toISOString().replace(/(\.|,)\d+Z$/, "Z")}`,
         ) + ".rpl";
         const filePath = path.join(dir, name);
-        writeFileSync(filePath, lines.join("\n") + "\n");
+        writeFileSync(filePath, content);
         return filePath;
     }
 }

@@ -33,7 +33,14 @@ const ladder = new LadderService(storage, makeLogger(config.logLevel, "ladder", 
     startingRating: config.startingRating,
     placementMatches: config.placementMatches,
 });
-const httpDeps: HttpDeps = { accounts, sessions, ladder, gservs: gservManager, wol };
+const httpDeps: HttpDeps = {
+    accounts,
+    sessions,
+    ladder,
+    gservs: gservManager,
+    wol,
+    replaySnapshot: (gameId) => gserv.getReplaySnapshot(gameId),
+};
 
 // Archive every finished game (public + ranked) with its replay file name so
 // the admin console can list and serve replays. Ranked reports later upgrade
