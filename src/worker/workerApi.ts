@@ -38,7 +38,7 @@ function generateVxlGeometry(plainVxl: any, _modelQuality: any): ArrayBuffer[] {
     return results;
 }
 
-async function compressFile(data: Uint8Array, filename: string): Promise<Uint8Array> {
+async function compressFiles(files: { name: string; data: Uint8Array | string }[]): Promise<Uint8Array> {
     const SevenZip = (await import("7z-wasm")).default as any;
     // Same locateFile override GameResImporter.ts needs for this library: the
     // default locateFile can't resolve 7zz.wasm's URL from inside a module
@@ -47,11 +47,21 @@ async function compressFile(data: Uint8Array, filename: string): Promise<Uint8Ar
         noInitialRun: true,
         locateFile: (path: string) => path === "7zz.wasm" ? "/7zz.wasm" : path,
     } as any);
-    const safeName = filename.split("/").pop() ?? "file";
-    const inputPath = "/input_" + safeName;
-    const outputPath = "/output.7z";
-    module.FS.writeFile(inputPath, data);
-    const exitCode = module.callMain(["a", "-t7z", "-mx=9", outputPath, inputPath]);
+    // 7z stores each input's path exactly as given (minus the leading "/"),
+    // so every entry is written straight to FS root under its own real
+    // name -- a server extracting a known entry (e.g. "report.json", see
+    // server/src/diagnostics/errorReportArchive.ts) needs that exact name
+    // inside the archive, not some workspace-scoped rename. "__archive_
+    // output.7z" is deliberately distinctive so it can't collide with any
+    // real entry name a caller passes in.
+    const outputPath = "/__archive_output.7z";
+    const inputPaths = files.map((file) => {
+        const safeName = file.name.split("/").pop() ?? "file";
+        const inputPath = "/" + safeName;
+        module.FS.writeFile(inputPath, file.data);
+        return inputPath;
+    });
+    const exitCode = module.callMain(["a", "-t7z", "-mx=9", outputPath, ...inputPaths]);
     if (exitCode !== 0) {
         throw new Error(`7z compression failed with exit code ${exitCode}`);
     }
@@ -59,10 +69,15 @@ async function compressFile(data: Uint8Array, filename: string): Promise<Uint8Ar
     return new Uint8Array(output);
 }
 
+async function compressFile(data: Uint8Array, filename: string): Promise<Uint8Array> {
+    return compressFiles([{ name: filename, data }]);
+}
+
 const handlers: Record<string, (...args: any[]) => any> = {
     decodeWav,
     generateVxlGeometry,
     compressFile,
+    compressFiles,
 };
 
 self.onmessage = async (event: MessageEvent<WorkerRequest>) => {

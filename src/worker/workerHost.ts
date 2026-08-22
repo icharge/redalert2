@@ -45,6 +45,10 @@ export class WorkerHandle {
         return this.call("compressFile", [data, filename]);
     }
 
+    async compressFiles(files: { name: string; data: Uint8Array | string }[]): Promise<Uint8Array> {
+        return this.call("compressFiles", [files]);
+    }
+
     private call(method: string, args: any[]): Promise<any> {
         const id = this.nextId++;
         return new Promise((resolve, reject) => {

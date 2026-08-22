@@ -10,6 +10,7 @@ import { LadderError, LadderService } from "../ladder/LadderService";
 import { isLadderType, WolGameReportResult } from "../ladder/LadderService";
 import { decodeGameRes, GameResDecodeError, GameResType } from "../ladder/gameResCodec";
 import { validateErrorReport, ErrorReportValidationError } from "../diagnostics/errorReportCodec";
+import { extractReportJson, ErrorReportArchiveError } from "../diagnostics/errorReportArchive";
 import { GservManager } from "../gserv/GservManager";
 import { WolServer } from "../server/WolServer";
 import { numeric, WOL_SERVER_NAME } from "../protocol/replies";
@@ -471,8 +472,14 @@ function completionToResult(status: number): WolGameReportResult | undefined {
 
 /**
  * POST /errorreport/{sku} — an auto-submitted crash/desync diagnostic report
- * (src/network/ErrorReportService.ts), JSON body, player-consented on the
- * client side before it's ever sent. See ERROR_REPORTING_PLAN.md.
+ * (src/network/ErrorReportService.ts), player-consented on the client side
+ * before it's ever sent. See ERROR_REPORTING_PLAN.md.
+ *
+ * Unlike the original JSON-with-embedded-base64-debugBundle design, the
+ * whole POST body is a single 7z archive: a required "report.json" entry
+ * (decodes to the shape validateErrorReport() checks) plus an optional
+ * opaque "desync-debug.json" entry this server never parses. One upload
+ * instead of two, and no base64 inflation of an already-compressed blob.
  *
  * Deliberately unlike handleWgameres in two ways:
  *   - No mandatory Bearer token: single-player/LAN sessions (no WOL session
@@ -502,21 +509,33 @@ async function handleErrorReport(req: Request, deps: HttpDeps, config: ServerCon
         return withCors(json({ error: "Report too large", errorCode: "too_large" }, 413), config, req);
     }
 
-    let bodyText: string;
+    let archiveBytes: Uint8Array;
     try {
-        bodyText = await req.text();
+        archiveBytes = new Uint8Array(await req.arrayBuffer());
     }
     catch {
         return withCors(json({ error: "Invalid request body", errorCode: "invalid_request" }, 400), config, req);
     }
-    if (Buffer.byteLength(bodyText, "utf8") > config.maxErrorReportBytes) {
-        log.warn(`errorreport: oversized report (${bodyText.length} chars) from ${ip}`);
+    if (archiveBytes.byteLength === 0 || archiveBytes.byteLength > config.maxErrorReportBytes) {
+        log.warn(`errorreport: oversized or empty report (${archiveBytes.byteLength} bytes) from ${ip}`);
         return withCors(json({ error: "Report too large", errorCode: "too_large" }, 413), config, req);
+    }
+
+    let reportJsonBytes: Uint8Array;
+    try {
+        reportJsonBytes = await extractReportJson(archiveBytes);
+    }
+    catch (error) {
+        if (error instanceof ErrorReportArchiveError) {
+            log.warn(`errorreport: ${error.message} from ${ip}`);
+            return withCors(json({ error: "Invalid report archive", errorCode: "invalid_request" }, 400), config, req);
+        }
+        throw error;
     }
 
     let parsedBody: unknown;
     try {
-        parsedBody = JSON.parse(bodyText);
+        parsedBody = JSON.parse(new TextDecoder().decode(reportJsonBytes));
     }
     catch {
         return withCors(json({ error: "Invalid request body", errorCode: "invalid_request" }, 400), config, req);
@@ -542,6 +561,7 @@ async function handleErrorReport(req: Request, deps: HttpDeps, config: ServerCon
 
     deps.gservs.recordErrorReport(
         { ...report, nick },
+        archiveBytes,
         { errorReportsDir: config.errorReportsDir, desyncReportTimeoutMillis: config.desyncReportTimeoutMillis },
         log,
     );

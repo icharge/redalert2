@@ -176,7 +176,7 @@ export class GservManager {
     // Lives here rather than on GservServer's private per-connection state so the
     // plain HTTP route handler (which only has this manager, not a live WS relay)
     // can reach it too.
-    recordErrorReport(report: ErrorReport, options: RecordErrorReportOptions, log: Logger): void {
-        this.errorReports.record(report, options, log);
+    recordErrorReport(report: ErrorReport, archiveBytes: Uint8Array, options: RecordErrorReportOptions, log: Logger): void {
+        this.errorReports.record(report, archiveBytes, options, log);
     }
 }

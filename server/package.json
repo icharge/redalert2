@@ -13,6 +13,9 @@
     "smoke": "bun run scripts/wol-smoke-client.ts && bun run scripts/wol-two-player.ts && bun run scripts/wol-gserv-test.ts",
     "perf": "bun run scripts/gserv-tick-perf.ts"
   },
+  "dependencies": {
+    "7z-wasm": "^1.1.0"
+  },
   "devDependencies": {
     "@types/bun": "latest",
     "typescript": "5.9.3"

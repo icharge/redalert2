@@ -96,14 +96,21 @@ function diffReports(reports: ErrorReport[]): ErrorReportDiff | undefined {
     return { hashBreakdownMismatches, objectMismatches };
 }
 
-// The JSON report with `debugBundle` swapped out for a filename reference --
-// keeps the persisted report human-diffable (a raw base64 blob dozens of KB
-// long would dwarf every other field and isn't directly usable inline
-// anyway) and leaves the decoded 7z sitting right next to it, ready to open.
-type PersistedErrorReport = Omit<ErrorReport, "debugBundle"> & { debugBundleFile?: string };
+// One report plus the exact raw 7z archive bytes the client uploaded for it
+// (report.json + optional desync-debug.json -- see errorReportArchive.ts).
+export interface ReceivedErrorReport {
+    report: ErrorReport;
+    archiveBytes: Uint8Array;
+}
 
-function persistReports(reports: ErrorReport[], diff: ErrorReportDiff | undefined, errorReportsDir: string, log: Logger): void {
-    const dir = path.join(errorReportsDir, sanitizePathComponent(reports[0]!.gameId, 128));
+// The JSON report with an `archiveFile` reference alongside it -- keeps the
+// persisted report human-diffable (the archive itself isn't directly usable
+// inline) and leaves the raw upload, exactly as the client sent it, sitting
+// right next to it, ready to open.
+type PersistedErrorReport = ErrorReport & { archiveFile: string };
+
+function persistReports(received: ReceivedErrorReport[], diff: ErrorReportDiff | undefined, errorReportsDir: string, log: Logger): void {
+    const dir = path.join(errorReportsDir, sanitizePathComponent(received[0]!.report.gameId, 128));
     try {
         mkdirSync(dir, { recursive: true });
     }
@@ -111,20 +118,17 @@ function persistReports(reports: ErrorReport[], diff: ErrorReportDiff | undefine
         log.error(`errorreport: failed to create ${dir}: ${String((error as Error).message)}`);
         return;
     }
-    for (const report of reports) {
+    for (const { report, archiveBytes } of received) {
         const baseName = `${report.timestamp}-${sanitizePathComponent(report.nick, 64)}`;
-        const { debugBundle, ...reportWithoutBundle } = report;
-        const persisted: PersistedErrorReport = reportWithoutBundle;
-        if (debugBundle) {
-            const bundleFileName = `${baseName}.debug.7z`;
-            try {
-                writeFileSync(path.join(dir, bundleFileName), Buffer.from(debugBundle, "base64"));
-                persisted.debugBundleFile = bundleFileName;
-            }
-            catch (error) {
-                log.error(`errorreport: failed to write debug bundle ${bundleFileName}: ${String((error as Error).message)}`);
-            }
+        const archiveFileName = `${baseName}.7z`;
+        try {
+            writeFileSync(path.join(dir, archiveFileName), archiveBytes);
         }
+        catch (error) {
+            log.error(`errorreport: failed to write archive ${archiveFileName}: ${String((error as Error).message)}`);
+            continue;
+        }
+        const persisted: PersistedErrorReport = { ...report, archiveFile: archiveFileName };
         const fileName = `${baseName}.json`;
         const filePath = path.join(dir, fileName);
         try {
@@ -143,7 +147,7 @@ function persistReports(reports: ErrorReport[], diff: ErrorReportDiff | undefine
 }
 
 interface PendingWindow {
-    reports: ErrorReport[];
+    received: ReceivedErrorReport[];
     timer: ReturnType<typeof setTimeout>;
 }
 
@@ -153,29 +157,30 @@ interface PendingWindow {
 export class ErrorReportCorrelator {
     private pending = new Map<string, PendingWindow>();
 
-    record(report: ErrorReport, options: RecordErrorReportOptions, log: Logger): void {
+    record(report: ErrorReport, archiveBytes: Uint8Array, options: RecordErrorReportOptions, log: Logger): void {
+        const entry: ReceivedErrorReport = { report, archiveBytes };
         if (report.errorType !== "desync_error") {
-            persistReports([report], undefined, options.errorReportsDir, log);
+            persistReports([entry], undefined, options.errorReportsDir, log);
             return;
         }
         let window = this.pending.get(report.gameId);
         if (!window) {
-            window = { reports: [], timer: undefined as unknown as ReturnType<typeof setTimeout> };
+            window = { received: [], timer: undefined as unknown as ReturnType<typeof setTimeout> };
             this.pending.set(report.gameId, window);
         }
         else {
             clearTimeout(window.timer);
         }
-        window.reports.push(report);
-        if (window.reports.length >= 2) {
+        window.received.push(entry);
+        if (window.received.length >= 2) {
             this.pending.delete(report.gameId);
-            persistReports(window.reports, diffReports(window.reports), options.errorReportsDir, log);
+            persistReports(window.received, diffReports(window.received.map(r => r.report)), options.errorReportsDir, log);
             return;
         }
         const gameId = report.gameId;
         const finalize = () => {
             this.pending.delete(gameId);
-            persistReports(window!.reports, diffReports(window!.reports), options.errorReportsDir, log);
+            persistReports(window!.received, diffReports(window!.received.map(r => r.report)), options.errorReportsDir, log);
         };
         window.timer = setTimeout(finalize, options.desyncReportTimeoutMillis);
         // Never let a pending correlation window keep the process alive on its own.

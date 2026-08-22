@@ -1,7 +1,12 @@
-// Server-side validator for the client's auto-submitted crash/desync report
-// (src/network/ErrorReportService.ts posts this as a JSON body to
-// /errorreport/{sku}). Unlike gameResCodec's binary GameRes packet, this
-// wire format is just JSON, but the validation shape mirrors it: a single
+// Server-side validator for the client's auto-submitted crash/desync report.
+// The wire format is a single 7z archive POSTed to /errorreport/{sku} (see
+// src/network/ErrorReportService.ts) containing a "report.json" entry that
+// decodes to the shape validated here, plus an optional opaque
+// "desync-debug.json" entry this server never parses (server/src/diagnostics/
+// errorReportArchive.ts pulls report.json's bytes out of the archive and
+// hands them to validateErrorReport() below; the whole archive is then
+// persisted byte-for-byte by errorReportStore.ts). The validation shape
+// mirrors gameResCodec's binary GameRes packet: a single
 // validateErrorReport(body) that throws a typed error on any failure, so the
 // route handler can 400 with a consistent errorCode the same way it does for
 // GameResDecodeError. See ERROR_REPORTING_PLAN.md's "Validity checking" section.
@@ -41,15 +46,6 @@ const MAX_CLIENT_VERSION_LENGTH = 64;
 const MAX_OBJECT_NAME_LENGTH = 128;
 const MAX_MESSAGE_LENGTH = 8_000;
 const MAX_STACK_LENGTH = 20_000;
-// Courtesy cap, not the primary guard -- handleErrorReport in routes.ts
-// already rejects the whole request body above config.maxErrorReportBytes
-// (default 4 MiB) before this validator ever runs. Base64 of a compressed
-// desync bundle runs ~20-40KB in practice (see GameScreen's debugBundle
-// comment), so this leaves generous headroom while still refusing to persist
-// something absurd. Rejected rather than truncated: unlike message/stack,
-// a truncated base64 string doesn't decode to a valid (partial) 7z file, it
-// just decodes to garbage -- there's no such thing as a "trimmed" archive.
-const MAX_DEBUG_BUNDLE_BASE64_LENGTH = 8 * 1024 * 1024;
 
 export interface ErrorReportObjectHash {
     id: number;
@@ -72,9 +68,6 @@ export interface ErrorReport {
     timestamp: number;
     clientVersion: string;
     gameState?: ErrorReportGameState;
-    // Base64 of a 7z-compressed { stateDump, lockstepLog } bundle -- see
-    // ErrorReportPayload.debugBundle in src/network/ErrorReportService.ts.
-    debugBundle?: string;
 }
 
 export class ErrorReportValidationError extends Error {
@@ -145,19 +138,6 @@ function validateGameState(value: unknown): ErrorReportGameState | undefined {
     };
 }
 
-function validateDebugBundle(value: unknown): string | undefined {
-    if (value === undefined) {
-        return undefined;
-    }
-    if (typeof value !== "string" || value.length === 0) {
-        throw new ErrorReportValidationError(`"debugBundle" must be a non-empty base64 string`);
-    }
-    if (value.length > MAX_DEBUG_BUNDLE_BASE64_LENGTH) {
-        throw new ErrorReportValidationError(`"debugBundle" too large (${value.length} > ${MAX_DEBUG_BUNDLE_BASE64_LENGTH} chars)`);
-    }
-    return value;
-}
-
 export function validateErrorReport(body: unknown): ErrorReport {
     if (typeof body !== "object" || body === null) {
         throw new ErrorReportValidationError("body must be a JSON object");
@@ -176,6 +156,5 @@ export function validateErrorReport(body: unknown): ErrorReport {
         timestamp: requireFiniteNumber(record.timestamp, "timestamp"),
         clientVersion: requireString(record.clientVersion, "clientVersion", MAX_CLIENT_VERSION_LENGTH),
         gameState: validateGameState(record.gameState),
-        debugBundle: validateDebugBundle(record.debugBundle),
     };
 }

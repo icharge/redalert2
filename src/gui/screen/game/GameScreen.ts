@@ -44,9 +44,19 @@ const REJOIN_RESYNC_TIMEOUT_MILLIS = 30_000;
 const REJOIN_CATCHUP_STALL_LIMIT = 32;
 import { GameRes } from '@/network/gameres/GameRes';
 import type { ErrorReportType, ErrorReportPayload } from '@/network/ErrorReportService';
+
+// Extra, error-type-specific files (raw bytes or JSON-serializable data) a
+// debugDataPromise producer wants folded into the single combined archive
+// buildErrorReport() compresses -- e.g. the desync path's stateDump/
+// lockstepLog as "desync-debug.json", or a corrupted rejoin snapshot's raw
+// bytes as "rejoin-snapshot.bin". Compression itself happens exactly once,
+// in buildErrorReport(), alongside "report.json" -- producers just hand over
+// named, uncompressed content.
+interface ErrorReportExtraFiles {
+    files: { name: string; data: Uint8Array | string }[];
+}
 import { ERROR_REPORT_UI_TIMEOUT_MILLIS } from '@/network/errorReport/errorReportConfig';
 import React from 'react';
-import { CrashReportPrompt } from '@/gui/screen/game/component/CrashReportPrompt';
 import { Task } from '@puzzl/core/lib/async/Task';
 import { IrcConnection } from '@/network/IrcConnection';
 import { GservError } from '@/network/GservError';
@@ -59,7 +69,7 @@ import { CommandBarButtonType } from '@/gui/screen/game/component/hud/commandBar
 import { LoadingScreenType } from '@/gui/screen/game/loadingScreen/LoadingScreenApiFactory';
 import { MapFile } from '@/data/MapFile';
 import { VirtualFile } from '@/data/vfs/VirtualFile';
-import { base64StringToUint8Array, binaryStringToUint8Array, uint8ArrayToBase64String } from '@/util/string';
+import { base64StringToUint8Array, binaryStringToUint8Array } from '@/util/string';
 import { MapDigest } from '@/engine/MapDigest';
 import { MapSupport } from '@/engine/MapSupport';
 import { OBS_COUNTRY_ID } from '@/game/gameopts/constants';
@@ -618,7 +628,7 @@ export class GameScreen extends RootScreen {
         });
     }
     private onGservClose: (error: any) => void;
-    private handleError(error: any, message: string, skipGoToMenu?: boolean, game?: any, errorType: ErrorReportType = 'other', skipReport: boolean = false, debugDataPromise?: Promise<{ debugBundle?: Uint8Array } | undefined>): void {
+    private handleError(error: any, message: string, skipGoToMenu?: boolean, game?: any, errorType: ErrorReportType = 'other', skipReport: boolean = false, debugDataPromise?: Promise<ErrorReportExtraFiles | undefined>): void {
         if (this.gameTurnMgr) {
             this.gameTurnMgr.setErrorState();
         }
@@ -663,48 +673,35 @@ export class GameScreen extends RootScreen {
         }
         // setErrorState() above already halted this client's turn processing
         // for good (LockstepManager.doGameTurn is a permanent no-op once set)
-        // -- if anything in the report/consent flow throws or its promise
-        // rejects, the player must still see the real error and get routed
-        // back to the menu, not sit on a silently frozen game screen forever.
-        this.maybeSubmitErrorReport(errorType, error, message, game, debugDataPromise)
-            .then(shown => {
-                if (shown) {
-                    // The combined dialog already showed the real error message;
-                    // showing ErrorHandler's plain-message dialog again would be
-                    // a redundant second popup for the same failure.
-                    proceed();
-                    return;
-                }
-                this.errorHandler.handle(error, message, proceed);
-            })
+        // -- if anything in the submit flow throws or its promise rejects,
+        // the player must still see the real error and get routed back to
+        // the menu, not sit on a silently frozen game screen forever. The
+        // report always auto-submits (no consent step, no persisted
+        // preference -- see ERROR_REPORTING_PLAN.md); the player always sees
+        // the real error message afterward regardless of whether the upload
+        // itself succeeded, failed, or was skipped.
+        this.submitErrorReportWithProgress(errorType, error, game, debugDataPromise)
             .catch(reportFlowError => {
-                console.error('[GameScreen] Crash-report flow failed; falling back to the plain error dialog', reportFlowError);
+                console.error('[GameScreen] Crash-report submission failed', reportFlowError);
+            })
+            .then(() => {
                 this.errorHandler.handle(error, message, proceed);
             });
     }
-    // Player-consented, best-effort upload of a crash/desync diagnostic report
-    // (see ERROR_REPORTING_PLAN.md). Runs uniformly in single-player, LAN, and
-    // online multiplayer -- the only mode-specific behavior is that
-    // errorReportService silently has no URL configured until login completes,
-    // which single-player also goes through (see MainMenuRootScreen.getOnlineServices).
-    // Returns whether the combined error/report dialog was actually shown --
-    // false means the caller still needs to show the plain error message itself
-    // (no gameId yet, or no report endpoint configured for this session).
-    private async maybeSubmitErrorReport(errorType: ErrorReportType, error: any, message: string, game?: any, debugDataPromise?: Promise<{ debugBundle?: Uint8Array } | undefined>): Promise<boolean> {
+    // Best-effort, unconditional upload of a crash/desync diagnostic report
+    // (see ERROR_REPORTING_PLAN.md) -- no consent prompt, no persisted
+    // preference: this always runs, showing only an upload-progress dialog
+    // for its duration. Runs uniformly in single-player, LAN, and online
+    // multiplayer -- the only mode-specific behavior is that
+    // errorReportService silently has no URL configured until login
+    // completes, which single-player also goes through (see
+    // MainMenuRootScreen.getOnlineServices). The caller always shows the
+    // real error message via ErrorHandler once this resolves, whether or not
+    // there was anything to submit -- the player never needs to know or care
+    // that a report was attempted.
+    private async submitErrorReportWithProgress(errorType: ErrorReportType, error: any, game?: any, debugDataPromise?: Promise<ErrorReportExtraFiles | undefined>): Promise<void> {
         if (!this.gameId || !this.errorReportService?.getUrl?.()) {
-            return false;
-        }
-        const wantsToSubmit = await new Promise<boolean>(resolve => {
-            this.messageBoxApi.show(
-                React.createElement(CrashReportPrompt, { message, discordUrl: this.config.discordUrl, strings: this.strings }),
-                [
-                    { label: this.strings.get('GUI:Submit'), onClick: () => resolve(true) },
-                    { label: this.strings.get('GUI:Skip'), onClick: () => resolve(false) },
-                ],
-            );
-        });
-        if (!wantsToSubmit) {
-            return true;
+            return;
         }
         const cancellationTokenSource = new CancellationTokenSource();
         await new Promise<void>(resolve => {
@@ -727,14 +724,14 @@ export class GameScreen extends RootScreen {
             // smaller) -- a fabricated percentage would just be a lie with
             // extra steps.
             const submittingContent = () => React.createElement('div', { style: { textAlign: 'center' } }, React.createElement('div', { style: { marginBottom: '12px', whiteSpace: 'pre-line' } }, this.strings.get('TXT_SUBMITTING_REPORT')), React.createElement('progress', { style: { width: '100%' } }));
-            // Shown immediately on click, covering both phases below (waiting
-            // out debugDataPromise, then the actual upload) with one
-            // continuous spinner rather than a gap of no dialog while
-            // buildErrorReport awaits the still-compressing debug bundle --
-            // debugDataPromise was kicked off back in handleGameError, in
-            // parallel with the CrashReportPrompt dialog above, so by the
-            // time the player clicks Submit (a few seconds at minimum) the
-            // ~1-2s 7z compression has usually already finished anyway.
+            // Shown immediately, covering both phases below (waiting out
+            // debugDataPromise, then buildErrorReport's compression, then the
+            // actual upload) with one continuous spinner. debugDataPromise
+            // itself was kicked off back in handleGameError, so its (now
+            // cheap, uncompressed) data is normally ready well before this
+            // point -- the one real 7z-compression pass happens here, inside
+            // buildErrorReport, since it needs report.json's contents
+            // (gameId/gameState/...) which aren't assembled until now.
             this.messageBoxApi.show(submittingContent());
             const skipTimer = setTimeout(() => {
                 if (!settled) {
@@ -745,7 +742,7 @@ export class GameScreen extends RootScreen {
                 }
             }, ERROR_REPORT_UI_TIMEOUT_MILLIS);
             this.buildErrorReport(errorType, error, game, debugDataPromise)
-                .then(report => this.errorReportService.submit(report, cancellationTokenSource.token))
+                .then(archiveBytes => this.errorReportService.submit(archiveBytes, cancellationTokenSource.token))
                 .catch((submitError: any) => {
                     if (!(submitError instanceof OperationCanceledError)) {
                         console.warn('[GameScreen] Failed to submit error report', submitError);
@@ -753,9 +750,14 @@ export class GameScreen extends RootScreen {
                 })
                 .then(settle);
         });
-        return true;
     }
-    private async buildErrorReport(errorType: ErrorReportType, error: any, game?: any, debugDataPromise?: Promise<{ debugBundle?: Uint8Array } | undefined>): Promise<ErrorReportPayload> {
+    // Builds the single 7z archive uploaded as the whole error-report POST
+    // body: a "report.json" entry (this method's own gameId/nick/message/
+    // gameState metadata) plus whatever extra named files debugDataPromise
+    // hands over (desync-debug.json, rejoin-snapshot.bin, ...). One
+    // combined compression pass instead of a separate one per producer --
+    // see ErrorReportExtraFiles's doc comment.
+    private async buildErrorReport(errorType: ErrorReportType, error: any, game?: any, debugDataPromise?: Promise<ErrorReportExtraFiles | undefined>): Promise<Uint8Array> {
         const report: ErrorReportPayload = {
             gameId: this.gameId!,
             nick: this.playerName || 'unknown',
@@ -777,22 +779,27 @@ export class GameScreen extends RootScreen {
                 console.warn('[GameScreen] Failed to capture game state for error report', hashError);
             }
         }
+        const files: { name: string; data: Uint8Array | string }[] = [{ name: 'report.json', data: JSON.stringify(report) }];
         if (debugDataPromise) {
-            // Failure here (compression threw, or the shared promise's own
-            // .catch in handleGameError already swallowed it) must never lose
-            // the report entirely -- gameState above is still a real, if
+            // Failure here (the producer's own .catch in handleGameError
+            // already swallowed it, or it rejects here) must never lose the
+            // report entirely -- report.json above is still a real, if
             // thinner, single-tick diagnostic on its own.
             try {
-                const debugData = await debugDataPromise;
-                if (debugData?.debugBundle) {
-                    report.debugBundle = uint8ArrayToBase64String(debugData.debugBundle);
+                const extra = await debugDataPromise;
+                if (extra?.files.length) {
+                    files.push(...extra.files);
                 }
             }
             catch (debugError) {
-                console.warn('[GameScreen] Failed to attach debug bundle to error report', debugError);
+                console.warn('[GameScreen] Failed to attach debug data to error report', debugError);
             }
         }
-        return report;
+        let archiveBytes: Uint8Array = new Uint8Array(0);
+        await this.workerHostApi.queueTask(async (worker: any) => {
+            archiveBytes = await worker.compressFiles(files);
+        });
+        return archiveBytes;
     }
     private saveReplay(replay: any): void {
         if (!this.replayManager?.saveReplay) {
@@ -994,38 +1001,21 @@ export class GameScreen extends RootScreen {
                     this.strings.get("TS:DesyncDetected"),
                     game,
                     debugGameState
-                        ? async () => {
-                            // Bundled into a single archive and downloaded as one file:
-                            // triggering two synthetic downloads back-to-back (no real
-                            // user gesture behind either) is exactly the pattern
-                            // browsers' multi-download blockers suppress, often without
-                            // any visible failure.
-                            let debugBundle: any;
-                            try {
-                                const lockstepLog = stateDumpBuffer
-                                    ? new TextDecoder().decode(new Uint8Array(stateDumpBuffer.buffer, 0, stateDumpBuffer.byteLength))
-                                    : "";
-                                const bundleJson = JSON.stringify({
-                                    stateDump: lockstepManager.debugGameStateHistory,
-                                    lockstepLog,
-                                });
-                                await this.workerHostApi.queueTask(async (worker: any) => {
-                                    debugBundle = await worker.compressFile(bundleJson, "desync-debug.json");
-                                });
-                            }
-                            catch (error) {
-                                console.error("Failed to export debug data", error);
-                            }
-                            // Deliberately not disposing workerHostApi: it's a single
-                            // shared WorkerHost registered once for the GameScreen's
-                            // whole app-session lifetime (Gui.ts registers GameScreen
-                            // once and reuses it for every game played in the tab,
-                            // including map loading via the shared GameLoader).
-                            // WorkerHost.dispose() is permanent and makes queueTask a
-                            // silent no-op afterward, which would kill map loading for
-                            // the rest of the session and silently blank out every
-                            // subsequent desync export with no error at all.
-                            return { debugBundle };
+                        ? async (): Promise<ErrorReportExtraFiles> => {
+                            // No compression here -- buildErrorReport() folds this
+                            // straight into the SAME archive as report.json and
+                            // compresses everything together in one pass, so there's
+                            // only ever one upload, not a second synthetic download/
+                            // upload racing the first (exactly the multi-download-
+                            // blocker trap a two-file version would hit).
+                            const lockstepLog = stateDumpBuffer
+                                ? new TextDecoder().decode(new Uint8Array(stateDumpBuffer.buffer, 0, stateDumpBuffer.byteLength))
+                                : "";
+                            const debugJson = JSON.stringify({
+                                stateDump: lockstepManager.debugGameStateHistory,
+                                lockstepLog,
+                            });
+                            return { files: [{ name: "desync-debug.json", data: debugJson }] };
                         }
                         : undefined,
                 );
@@ -1994,7 +1984,7 @@ export class GameScreen extends RootScreen {
         }
         this.handleError(error, errorMessage, undefined, undefined, 'game_load_error');
     }
-    private handleGameError(error: any, message: string, game: any, debugDataProvider?: () => Promise<any>, isCustomMap?: boolean): void {
+    private handleGameError(error: any, message: string, game: any, debugDataProvider?: () => Promise<ErrorReportExtraFiles>, isCustomMap?: boolean): void {
         const replay = this.replay;
         if (replay) {
             replay.name += " (crashdump)";
@@ -2005,16 +1995,20 @@ export class GameScreen extends RootScreen {
         const errorType: ErrorReportType = error === 'desync_error' ? 'desync_error' : 'game_crash';
         // Upstream hands debug data to Sentry; this fork has no Sentry backend
         // (src/Application.ts's mockSentry.captureException is a no-op stub
-        // that never invokes the scope callback), so the compressed
-        // statedump/lockstep-log rides along in the uploaded error report
-        // instead (see buildErrorReport's debugBundle field) -- there is no
-        // local-download fallback, so a report that fails to include this
-        // (compression threw, or the player skips/never gets a URL) is the
-        // only copy of this data that ever existed anywhere.
+        // that never invokes the scope callback), so the statedump/lockstep-
+        // log rides along in the uploaded error report instead (see
+        // buildErrorReport, which folds this provider's files into the same
+        // archive as report.json) -- there is no local-download fallback, so
+        // a report that fails to include this (the provider throws, or the
+        // player skips/never gets a URL) is the only copy of this data that
+        // ever existed anywhere.
         // Kicked off here, in parallel with the handleError() dialog below,
-        // rather than awaited: compression takes ~1-2s and the player needs a
-        // moment to read the prompt anyway, so by the time (if ever) they hit
-        // Submit in maybeSubmitErrorReport this has usually already resolved.
+        // rather than awaited -- cheap now (just string-building, no
+        // compression: buildErrorReport() does the one real 7z-compression
+        // pass later, over report.json plus whatever this resolves to), but
+        // still fired eagerly rather than inline in buildErrorReport() so a
+        // slow game.getObjectHashList()-adjacent capture isn't on the
+        // critical path of the player clicking Submit.
         const debugDataPromise = debugDataProvider?.().catch((error: any) => {
             console.error("[GameScreen] Failed to export desync debug bundle", error);
             return undefined;

@@ -29,19 +29,17 @@ export interface ErrorReportPayload {
     timestamp: number;
     clientVersion: string;
     gameState?: ErrorReportGameState;
-    // Base64 of a 7z-compressed { stateDump, lockstepLog } bundle (see
-    // GameScreen.initOnlineLockstep's desync callback) -- the full per-turn
-    // history that lets a developer pinpoint *when* two clients' state first
-    // diverged, not just that they currently differ. Only ever populated for
-    // desync_error reports with debugGameState enabled.
-    debugBundle?: string;
 }
 
 // Mirrors WGameResService almost exactly (same retry-within-a-deadline shape),
-// but posts a plain JSON body instead of a binary GameRes packet, and its auth
-// is opportunistic rather than required: the server (see server/src/http/routes.ts's
-// handleErrorReport) accepts the report with or without a valid session token,
-// since single-player/LAN play has no guaranteed WOL session to attach.
+// but posts a single 7z archive as a raw binary body instead of a JSON body
+// or a binary GameRes packet -- see GameScreen.buildErrorReport, which
+// 7z-compresses the ErrorReportPayload above (as "report.json") together
+// with an optional opaque debug-data entry ("desync-debug.json") into the
+// Uint8Array this method takes. Its auth is opportunistic rather than
+// required: the server (see server/src/http/routes.ts's handleErrorReport)
+// accepts the report with or without a valid session token, since
+// single-player/LAN play has no guaranteed WOL session to attach.
 export class ErrorReportService {
     static MIN_RETRY_MILLIS = 2_000;
     static MAX_RETRY_MILLIS = 15_000;
@@ -60,15 +58,23 @@ export class ErrorReportService {
         return this.url;
     }
 
-    async submit(report: ErrorReportPayload, cancellationToken?: any): Promise<void> {
+    async submit(archiveBytes: Uint8Array, cancellationToken?: any): Promise<void> {
         if (!this.url) {
             throw new Error("No error report URL is set");
         }
         const url = this.url;
         const gameSku = this.wolConfig.getClientSku();
-        const body = JSON.stringify(report);
+        // fetch's BodyInit doesn't accept a generic Uint8Array<ArrayBufferLike>
+        // in this lib/TS version (unlike a plain ArrayBuffer -- see
+        // MapTransferService.putMap's identical binary-upload pattern), so
+        // slice out exactly this view's bytes as an ArrayBuffer. The cast is
+        // just narrowing away the SharedArrayBuffer half of ArrayBufferLike
+        // that BodyInit's typing doesn't include -- archiveBytes always
+        // wraps a plain ArrayBuffer at runtime (it comes straight out of
+        // worker.compressFiles()'s Uint8Array result), never a shared one.
+        const body = archiveBytes.buffer.slice(archiveBytes.byteOffset, archiveBytes.byteOffset + archiveBytes.byteLength) as ArrayBuffer;
         const sessionToken = this.wolService.getSession?.()?.sessionToken;
-        const headers: Record<string, string> = { "content-type": "application/json" };
+        const headers: Record<string, string> = { "content-type": "application/x-7z-compressed" };
         if (sessionToken) {
             headers.authorization = "Bearer " + sessionToken;
         }
