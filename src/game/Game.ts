@@ -718,11 +718,23 @@ export class Game {
         if (obj.isBuilding() && obj.rules.leaveRubble && obj.deathType !== DeathType.Temporal) {
             obj.owner.removeOwnedObject(obj);
             this.unitSelection.cleanupUnit(obj);
+            this.map.technosByTile.remove(obj);
             const tiles = this.map.tileOccupation.calculateTilesForGameObject(obj.tile, obj);
             this.map.terrain.invalidateTiles(tiles);
             if (obj.art.canHideThings) {
                 this.map.tileOcclusion.removeOccluder(obj);
             }
+            // Unlike doUnspawnObject()'s unoccupyTileRange() above, this
+            // branch deliberately leaves tile *occupation* (as opposed to
+            // registry membership) alone -- rubble has its own passability
+            // semantics via terrain.invalidateTiles(), not a plain
+            // unoccupy. But the object itself still needs to leave
+            // World.allObjects/technosByTile the same way doUnspawnObject()
+            // does, or it stays reachable via world.getAllObjects() forever
+            // after being disposed -- a real destroyed-but-never-removed
+            // object leak for any system that iterates all objects (e.g.
+            // AI targeting), not just a snapshot-restore artifact.
+            this.world.removeObject(obj);
             this.updatableObjects.delete(obj);
             obj.onUnspawn(this);
             this.traits.filter(NotifyUnspawn).forEach((trait: NotifyUnspawn) => {

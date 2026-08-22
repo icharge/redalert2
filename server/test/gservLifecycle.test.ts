@@ -741,15 +741,24 @@ describe("GservServer abandoned instance (all humans gone)", () => {
         expect(manager.get(instance.gameId)).toBeDefined();
     });
 
-    test("a human reconnecting into an abandoned (auto-paused) instance un-pauses it", async () => {
+    test("a human reconnecting into an abandoned (auto-paused) instance un-pauses it once everyone is back", async () => {
         const { manager, server, instance, alice, bob } = startGame({ GSERV_ABANDONED_TIMEOUT_SECONDS: "120" });
         server.handleClose(alice.client);
         server.handleClose(bob.client);
         const state = (server as any).instanceStates.get(instance.gameId);
         expect(state.paused).toBe(true);
 
+        // Both players were required and both are still away: only alice
+        // being back must not clear the flag, or a resume broadcast would lie
+        // to her while the relay keeps holding on bob.
         const aliceRejoin = join(server, manager, instance, "alice");
         server.handleMessage(aliceRejoin.client, "ready 0");
+        await Bun.sleep(20);
+        expect(state.paused).toBe(true);
+
+        // Once bob is back too, the instance actually un-pauses.
+        const bobRejoin = join(server, manager, instance, "bob");
+        server.handleMessage(bobRejoin.client, "ready 0");
         await Bun.sleep(20);
         expect(state.paused).toBe(false);
     });

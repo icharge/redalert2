@@ -79,6 +79,12 @@ export class Gui {
     private lastTime: number = 0;
     private appLocale: string;
     private cfTurnstile?: any;
+    // Built once in navigateToMainMenu() and reused for every screen
+    // (including the singleton GameScreen) -- kept here too so
+    // routeToInitialScreen()'s page-refresh reconnect path (which runs after
+    // navigateToMainMenu() returns) can reach it. See
+    // configureOnlineServicesForReconnect().
+    private onlineServices?: any;
     constructor(appVersion: string, strings: Strings, config: Config, viewport: BoxedVar<ViewportRect>, rootEl: HTMLElement, cdnResourceLoader?: any, gameResConfig?: GameResConfig, runtimeVars?: any, generalOptions?: GeneralOptions, fullScreen?: FullScreen, appLocale?: string, cfTurnstile?: any) {
         this.appVersion = appVersion;
         this.strings = strings;
@@ -419,6 +425,7 @@ export class Gui {
                     this.strings.get('gui:quit')
                 );
                 if (shouldReconnect) {
+                    await this.configureOnlineServicesForReconnect();
                     this.rootController!.goToScreen(ScreenType.Game, {
                         ...reconnectParams,
                         reconnect: true,
@@ -535,6 +542,7 @@ export class Gui {
         (mainMenuRootScreen as any).replayManager = replayManager;
         this.rootController.addScreen(ScreenType.MainMenuRoot, mainMenuRootScreen);
         const onlineServices = await mainMenuRootScreen.getOnlineServices();
+        this.onlineServices = onlineServices;
         const { GameScreen } = await import('./gui/screen/game/GameScreen.js');
         const errorHandler = new ErrorHandler(this.messageBoxApi, this.strings);
         const gameResBaseUrl = this.config.gameresBaseUrl ?? '';

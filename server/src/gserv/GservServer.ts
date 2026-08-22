@@ -90,14 +90,15 @@ interface InstanceState {
     // catching up (sent "ready"). Their action submissions are ignored.
     rejoiningNicks: Set<string>;
     // Nicks that just finished rejoining (sent "ready") and are waiting for
-    // the resume countdown to actually fire. A rejoiner's LockstepManager is
-    // seeded from its snapshot's turnNo and never submits anything for a
-    // turn before that point -- so any turn another player kept submitting
-    // (unconfirmed) to state.pending *while* this nick was rejoining can
-    // never pick up this nick's entry on its own. See schedulePauseTimer's
-    // resume branch, which backfills exactly these turns with NO_ACTION_BLOB
-    // before flushing, mirroring the same backfill handlePassive/handleLeave
-    // already do when a player stops being required entirely.
+    // the resume countdown to actually fire. A rejoiner's LockstepManager
+    // holds off submitting anything live while it's still replaying from
+    // turn 0 to catch up (setSuppressNetworkSends) -- so any turn another
+    // player kept submitting (unconfirmed) to state.pending *while* this
+    // nick was rejoining can never pick up this nick's entry on its own.
+    // See schedulePauseTimer's resume branch, which backfills exactly these
+    // turns with NO_ACTION_BLOB before flushing, mirroring the same
+    // backfill handlePassive/handleLeave already do when a player stops
+    // being required entirely.
     pendingRejoinBackfill: Set<string>;
     // Nicks that voluntarily left (handleLeave) rather than just dropping.
     // Unlike a dropped/timed-out player, tickets and instance.players are
@@ -690,6 +691,27 @@ export class GservServer {
         this.broadcastAll(state, `:${this.serverName} ${Code.RPL_PLAYER_GAVE_UP} ${client.nick} :${client.nick}`);
     }
 
+    // True while any required (non-observer) player is either still fully
+    // departed or has reconnected but not yet finished catching up. Used both
+    // to hold the relay and to decide whether it is safe to declare the game
+    // "resumed" — with two or more players down at once, the first one to
+    // ready up must not trigger a resume broadcast while another is still
+    // away, or every client sees a false "Game Resumed" while the relay stays
+    // frozen waiting on the straggler.
+    private hasAbsentRequiredPlayers(state: InstanceState): boolean {
+        for (const nick of state.departedAt.keys()) {
+            if (state.recorder.playerIdFor(nick) !== undefined && !state.recorder.isObserver(nick)) {
+                return true;
+            }
+        }
+        for (const nick of state.rejoiningNicks) {
+            if (state.recorder.playerIdFor(nick) !== undefined && !state.recorder.isObserver(nick)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private handleReady(client: GservClient, parts: string[]): void {
         if (!client.instance) {
             return;
@@ -865,6 +887,15 @@ export class GservServer {
             }
             state.departedAt.delete(nick);
             state.rejoiningNicks.delete(nick);
+            // A timed-out rejoin resigns the player for real (their assets
+            // are destroyed and they're defeated, just like a voluntary
+            // leave -- see handleLeave's comment, which already assumed this
+            // happened here) -- found via manual multiplayer testing that it
+            // didn't: handleRejoin only ever checked leftNicks, so a nick
+            // whose grace window expired here could reconnect with the same
+            // ticket and keep playing a match it had already been resigned
+            // out of, potentially well after the other player won/lost.
+            state.leftNicks.add(nick);
             expired = true;
             const playerId = state.recorder.playerIdFor(nick);
             if (playerId !== undefined) {
@@ -1082,6 +1113,10 @@ export class GservServer {
             state.hashByTurn.set(turnNo, hashes);
         }
         hashes.set(client.nick, hash);
+        // Full hash trail, not just the mismatch line, so a repro's server
+        // log alone can show exactly which turn a peer's hash first
+        // disagrees with another's, even before both are in.
+        this.log.info(`hash check: instance ${gameId} turn ${turnNo} ${client.nick}=${hash}`);
         if (hashes.size >= 2) {
             const values = [...hashes.values()];
             const first = values[0];
@@ -1130,11 +1165,11 @@ export class GservServer {
         }
     }
 
-    // A rejoining player's LockstepManager is seeded straight from its
-    // snapshot's turnNo and never submits anything for a turn before that --
-    // so any turn another player kept submitting (unconfirmed) to
-    // state.pending while this nick was still catching up can never
-    // complete on its own. Once we can see the nick's own earliest real
+    // A rejoining player's LockstepManager holds off submitting anything
+    // live while it's still replaying from turn 0 to catch up -- so any
+    // turn another player kept submitting (unconfirmed) to state.pending
+    // while this nick was still catching up can never complete on its own.
+    // Once we can see the nick's own earliest real
     // submission in state.pending, every still-pending turn strictly before
     // it is provably one the nick will never fill in itself, so it's
     // backfilled with a no-op, the same way handlePassive/handleLeave
