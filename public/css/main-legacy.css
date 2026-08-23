@@ -2430,6 +2430,83 @@ input[type="range"]:focus {
     padding: 3px 0;
 }
 
+/* A player who is gone (or mid-rejoin) is dimmed -- except the vote cell,
+   which is the one control the other players still need to act on, and sits
+   on exactly that player's row. See ConInfoForm's `absent` comment. */
+#ra2web-root .con-info-form .player-row-absent > td:not(.player-vote) {
+    opacity: 0.5;
+}
+
+/* Catch-up progress while a rejoiner replays the match from turn 0. Sized to
+   sit inside the same narrow column the reconnect countdown uses. */
+#ra2web-root .con-info-form .player-rejoin-progress {
+    width: 60px;
+    height: 9px;
+    vertical-align: middle;
+}
+
+/* The kick/wait vote column, present only while a vote is actually open. Wider
+   than the default 70px cell because it holds two buttons side by side. */
+#ra2web-root .con-info-form th.player-vote,
+#ra2web-root .con-info-form td.player-vote {
+    width: 108px;
+    padding-left: 10px;
+}
+
+#ra2web-root .con-info-form .vote-controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+/* Deliberately inherits the row's player colour via currentColor, so the
+   controls read as belonging to the player being voted on. */
+#ra2web-root .con-info-form .vote-choice {
+    min-height: 0;
+    padding: 0 6px;
+    line-height: 17px;
+    font-size: 11px;
+    color: inherit;
+    background: rgba(0, 0, 0, 0.45);
+    border: 1px solid currentColor;
+    cursor: pointer;
+}
+
+#ra2web-root .con-info-form .vote-choice:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+#ra2web-root .con-info-form .vote-choice:active:not(:disabled) {
+    background: rgba(255, 255, 255, 0.32);
+}
+
+#ra2web-root .con-info-form .vote-choice:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+/* Shown in place of the buttons once you have voted: a cast vote is final, so
+   there is nothing left to click. */
+#ra2web-root .con-info-form .vote-cast {
+    padding: 0 5px;
+    font-size: 11px;
+    border: 1px solid transparent;
+}
+
+#ra2web-root .con-info-form .vote-cast-kick {
+    color: #ff7676;
+}
+
+#ra2web-root .con-info-form .vote-cast-wait {
+    color: yellow;
+}
+
+#ra2web-root .con-info-form .vote-tally {
+    font-size: 11px;
+    opacity: 0.85;
+}
+
 #ra2web-root .con-info-form th.player-name,
 #ra2web-root .con-info-form td.player-name {
     width: 150px;

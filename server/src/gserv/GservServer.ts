@@ -65,6 +65,32 @@ interface PendingSubmission {
     blob: Uint8Array;
 }
 
+export type VoteChoice = "kick" | "wait";
+
+// An open kick/wait vote on one departed player. Created by openVoteSession
+// when they drop (if enough players remain to vote) and destroyed by
+// closeVoteSession on any outcome: the kick carrying, the player reconnecting,
+// or their grace window running out.
+interface VoteSession {
+    // Voter nick -> their choice. A cast vote is final: handleVote refuses a
+    // second one from the same nick, so an entry here never changes value.
+    votes: Map<string, VoteChoice>;
+    // Remaining "wait" extensions. Each one buys the departed player another
+    // voteExtensionSeconds; at zero, wait votes stop vetoing a kick majority.
+    extensionsRemaining: number;
+    // Wait voters who have already bought an extension, so each of them is
+    // charged exactly once however many times the tally is recomputed.
+    //
+    // This is what replaced the older "spend on the 0 -> nonzero wait
+    // transition" rule, which only worked while votes could be changed: with
+    // final votes the wait count can never fall back to zero, so that rule
+    // could only ever spend a single extension and any voteExtensionsMax above
+    // 1 was dead config. Charging per distinct wait voter keeps the whole pool
+    // reachable and states the rule plainly -- each player voting wait buys
+    // voteExtensionSeconds, up to voteExtensionsMax of them.
+    chargedWaitVoters: Set<string>;
+}
+
 // Live per-instance counters, reset every stats interval to report real
 // frames/s and ticks/s during play.
 interface InstanceStats {
@@ -105,6 +131,19 @@ interface InstanceState {
     // unchanged, so without this a "leave" would be silently undone by a
     // later join with the same ticket — handleRejoin checks this and refuses.
     leftNicks: Set<string>;
+    // Open kick/wait votes, keyed by the departed player they are about. Only
+    // populated when isVotingEligible() held at the moment that player dropped,
+    // so a 1v1 simply never has any and needs no special-casing anywhere else
+    // (including on the client, which renders vote controls only for nicks that
+    // appear here).
+    voteSessions: Map<string, VoteSession>;
+    // Nick -> the pending "should we open a vote on them" timer, scheduled by
+    // scheduleVoteOpen() the moment they drop and cancelled the moment they
+    // come back (handleRejoin) or stop being a departure at all (expireDeparted,
+    // handleLeave). A voteSessions entry never exists for a nick that still has
+    // one of these pending -- the timer firing (still-departed) is what
+    // actually calls openVoteSession.
+    pendingVoteOpens: Map<string, ReturnType<typeof setTimeout>>;
     // Whole-game pause (MOBA-style). While paused the relay holds and every
     // client freezes; resume flushes the small accumulated backlog.
     paused: boolean;
@@ -271,15 +310,39 @@ export class GservServer {
             }
             const state = this.instanceStates.get(gameId);
             if (state) {
-                if (state.requiredNicks.has(client.nick)) {
+                if (this.isRequiredRosterPlayer(state, client.nick)) {
                     // Required player dropped mid-game: open the rejoin grace
                     // window. They stay in requiredNicks so the relay holds and
                     // the game pauses until they rejoin (resync) or the window
                     // expires (resign + continue, see expireDeparted).
+                    //
+                    // Re-add unconditionally (a no-op if they were already
+                    // there): a browser tab-close fires visibilitychange
+                    // (hidden) before the socket actually closes
+                    // (GameAnimationLoop.handleVisibilityChange), which sends
+                    // "active 0" and makes handleActive() remove them from
+                    // requiredNicks moments before this handler runs -- found
+                    // via manual multiplayer testing that a closed tab was
+                    // silently falling into the observer/passive branch below
+                    // (no grace window, no pause, no RPL_PLAYER_RECONNECTING)
+                    // instead of a real disconnect, for exactly this reason.
+                    // Passive only ever means "temporarily excused from
+                    // submitting frames while backgrounded", never "no longer
+                    // a required player" -- isRequiredRosterPlayer(), unlike
+                    // requiredNicks itself, is unaffected by that flag.
+                    state.requiredNicks.add(client.nick);
                     state.departedAt.set(client.nick, Date.now() + this.config.reconnectGraceSeconds * 1000);
                     this.log.info(`player ${client.nick} dropped mid-game; rejoin window opened for instance ${gameId}`);
                     this.broadcastLine(client, `:${this.serverName} ${Code.RPL_PLAYER_DISCONNECT} ${client.nick} :${client.nick}`);
                     this.broadcastLine(client, `:${this.serverName} ${Code.RPL_PLAYER_RECONNECTING} ${client.nick} :${client.nick}`);
+                    // Offer the remaining players a kick/wait vote, so they can
+                    // cut the wait short or buy the departed player more time
+                    // instead of being locked into the fixed grace window --
+                    // but only once voteOpenDelayMillis has passed with them
+                    // still gone (see scheduleVoteOpen): most drops resolve
+                    // themselves in a few seconds and shouldn't force a vote.
+                    // No-ops in games too small to vote fairly.
+                    this.scheduleVoteOpen(state, gameId, client.nick);
                 }
                 else {
                     // Observers / passive players are not required by the relay;
@@ -287,6 +350,16 @@ export class GservServer {
                     this.broadcastLine(client, `:${this.serverName} ${Code.RPL_PLAYER_DISCONNECT} ${client.nick} :${client.nick}`);
                 }
                 state.rejoiningNicks.delete(client.nick);
+                // This player just left the electorate of every *other* open
+                // vote, which lowers those majority thresholds. Re-tally them
+                // so a vote that is now decided resolves immediately instead of
+                // sitting until someone happens to cast another vote. Iterated
+                // over a copy because resolving deletes from voteSessions.
+                for (const targetNick of [...state.voteSessions.keys()]) {
+                    if (targetNick !== client.nick) {
+                        this.resolveVote(state, gameId, targetNick);
+                    }
+                }
                 this.extendAbandonedInstanceDeadlines(state, gameId);
             }
             else {
@@ -367,6 +440,9 @@ export class GservServer {
                 break;
             case "resume":
                 this.handleResume(client);
+                break;
+            case "vote":
+                this.handleVote(client, parts);
                 break;
             case "loadinfo":
                 this.handleLoadInfo(client);
@@ -512,6 +588,17 @@ export class GservServer {
         }
         members.set(client.nick, client);
         state.departedAt.delete(client.nick);
+        // They made it back on their own -- there is nothing left to vote on,
+        // whether a vote was already open (closeVoteSession) or was still
+        // waiting out voteOpenDelayMillis before ever opening one
+        // (cancelPendingVoteOpen) -- this is the common case: most drops
+        // resolve as a reconnect well within that delay, and should never
+        // surface a vote at all. Closed here rather than on
+        // RPL_PLAYER_RECONNECTED, which does not fire until handleReady (i.e.
+        // after the entire turn-0 replay), so the vote UI would otherwise sit
+        // open for the whole catch-up.
+        this.closeVoteSession(state, client.nick);
+        this.cancelPendingVoteOpen(state, client.nick);
         state.rejoiningNicks.add(client.nick);
         // A stuck rejoiner must not hold the relay forever: the sweep expires
         // them from the rejoin window (backfill + continue) if they never ready.
@@ -602,6 +689,8 @@ export class GservServer {
             rejoiningNicks: new Set(),
             pendingRejoinBackfill: new Set(),
             leftNicks: new Set(),
+            voteSessions: new Map(),
+            pendingVoteOpens: new Map(),
             paused: false,
             lastPauseByNick: new Map(),
             lastStaleLogByNick: new Map(),
@@ -675,6 +764,8 @@ export class GservServer {
         state.departedAt.delete(client.nick);
         state.rejoiningNicks.delete(client.nick);
         state.leftNicks.add(client.nick);
+        this.closeVoteSession(state, client.nick);
+        this.cancelPendingVoteOpen(state, client.nick);
         if (!state.requiredNicks.delete(client.nick)) {
             return;
         }
@@ -710,6 +801,235 @@ export class GservServer {
             }
         }
         return false;
+    }
+
+    // Whether a departure in this instance should open a kick/wait vote at all.
+    // Deliberately evaluated against the *live* requirement set rather than the
+    // original lobby size: a 4-player game already whittled down to two active
+    // players is, for voting purposes, a 1v1 -- and a "majority" of one player
+    // deciding another's fate is exactly what the minimum exists to prevent.
+    private isVotingEligible(state: InstanceState): boolean {
+        return state.requiredNicks.size >= this.config.voteMinRequiredPlayers;
+    }
+
+    // Whether `nick` is a real (non-observer) roster player of this match who
+    // is still in it -- independent of whether they are *currently* in
+    // requiredNicks, which handleActive() empties for a player whose tab is
+    // merely backgrounded (see handleClose's use of this: a passive player is
+    // not less of a required player, they're just temporarily excused from
+    // submitting frames while their tab is hidden).
+    //
+    // leftNicks is what excludes the players requiredNicks membership used to
+    // exclude on its own: someone who quit (handleLeave) or was resigned
+    // (resignDeparted) is off the roster for good. That matters most for the
+    // voluntary quit, where handleLeave is always followed a moment later by
+    // handleClose for the very same socket -- without this check that trailing
+    // close would look like a fresh mid-game drop and freeze the relay for a
+    // whole grace window waiting on a player who already resigned.
+    private isRequiredRosterPlayer(state: InstanceState, nick: string): boolean {
+        return !state.leftNicks.has(nick)
+            && state.recorder.playerIdFor(nick) !== undefined
+            && !state.recorder.isObserver(nick);
+    }
+
+    // Who may vote on `targetNick`'s departure: everyone still required by the
+    // relay, still connected, and not themselves away -- excluding the target.
+    // Recomputed fresh on every tally rather than snapshotted at session open,
+    // so a second player dropping mid-vote falls out of both the electorate and
+    // the majority threshold on the next recount, with no bookkeeping.
+    private isEligibleVoter(state: InstanceState, nick: string, targetNick: string): boolean {
+        return nick !== targetNick
+            && state.requiredNicks.has(nick)
+            && state.members.has(nick)
+            && !state.departedAt.has(nick)
+            && state.recorder.playerIdFor(nick) !== undefined
+            && !state.recorder.isObserver(nick);
+    }
+
+    // Called the instant a required player drops. Does NOT open a vote yet --
+    // most drops are a brief network blip that resolves itself well within
+    // voteOpenDelayMillis, and nobody should be asked to weigh in on kicking a
+    // player who is about to reconnect on their own. Schedules the actual
+    // openVoteSession() call for later, and only if they are still gone by
+    // then (cancelPendingVoteOpen, called on rejoin/resign/leave, is what
+    // stops it from ever firing for a drop that resolves itself).
+    private scheduleVoteOpen(state: InstanceState, gameId: string, targetNick: string): void {
+        this.cancelPendingVoteOpen(state, targetNick);
+        const timer = setTimeout(() => {
+            state.pendingVoteOpens.delete(targetNick);
+            // The instance could have finalized (e.g. everyone left) or this
+            // exact state object could have been replaced by the time this
+            // fires -- mirrors schedulePauseTimer's identical staleness guard.
+            if (this.instanceStates.get(gameId) !== state || !state.departedAt.has(targetNick)) {
+                return;
+            }
+            this.openVoteSession(state, gameId, targetNick);
+        }, this.config.voteOpenDelayMillis);
+        state.pendingVoteOpens.set(targetNick, timer);
+    }
+
+    // Cancels a not-yet-opened vote before it fires: the departure it was
+    // scheduled for is no longer relevant, because the player came back, was
+    // resigned outright, or voluntarily left. Safe to call when nothing is
+    // pending, matching closeVoteSession's unconditional-caller style.
+    private cancelPendingVoteOpen(state: InstanceState, targetNick: string): void {
+        const timer = state.pendingVoteOpens.get(targetNick);
+        if (timer === undefined) {
+            return;
+        }
+        clearTimeout(timer);
+        state.pendingVoteOpens.delete(targetNick);
+    }
+
+    private openVoteSession(state: InstanceState, gameId: string, targetNick: string): void {
+        if (!this.isVotingEligible(state) || state.voteSessions.has(targetNick)) {
+            return;
+        }
+        state.voteSessions.set(targetNick, {
+            votes: new Map(),
+            extensionsRemaining: this.config.voteExtensionsMax,
+            chargedWaitVoters: new Set(),
+        });
+        this.log.info(`opened kick/wait vote on ${targetNick} in instance ${gameId}`);
+        this.broadcastAll(
+            state,
+            `:${this.serverName} ${Code.RPL_VOTE_SESSION_OPENED} ${targetNick} ` +
+            `:${targetNick},${this.config.voteExtensionsMax},${this.config.voteExtensionSeconds}`,
+        );
+        // Broadcast the opening (empty) tally through the same path a real vote
+        // takes, so clients get their initial state without a second code path.
+        this.resolveVote(state, gameId, targetNick);
+    }
+
+    // Ends a vote session for any reason (resolved, reconnected, timed out).
+    // Safe to call when no session exists, which is what lets the callers stay
+    // unconditional.
+    private closeVoteSession(state: InstanceState, targetNick: string): void {
+        if (!state.voteSessions.delete(targetNick)) {
+            return;
+        }
+        this.broadcastAll(state, `:${this.serverName} ${Code.RPL_VOTE_SESSION_CLOSED} ${targetNick} :${targetNick}`);
+    }
+
+    private handleVote(client: GservClient, parts: string[]): void {
+        const state = client.instance ? this.instanceStates.get(client.instance.gameId) : undefined;
+        if (!state || !client.instance) {
+            return;
+        }
+        const targetNick = parts[1];
+        const choice = parts[2];
+        if (choice !== "kick" && choice !== "wait") {
+            return;
+        }
+        // No session means nothing to vote on -- a 1v1, a nick who isn't
+        // actually away, or a vote that resolved a moment ago. Silently ignored
+        // rather than answered with an error, exactly like the other
+        // fire-and-forget commands.
+        const session = state.voteSessions.get(targetNick);
+        if (!session || !this.isEligibleVoter(state, client.nick, targetNick)) {
+            return;
+        }
+        // A vote is final. Enforced here rather than only in the UI (which
+        // stops offering the buttons once you have voted): otherwise a modified
+        // client could flip between kick and wait to keep re-earning wait
+        // extensions, which is exactly the abuse the per-voter extension charge
+        // above is designed to rule out.
+        if (session.votes.has(client.nick)) {
+            return;
+        }
+        session.votes.set(client.nick, choice);
+        this.resolveVote(state, client.instance.gameId, targetNick);
+    }
+
+    // Recomputes a vote's tally, spends an extension if this is the moment a
+    // wait vote first appears, broadcasts the result, and resigns the target
+    // early if a kick majority now carries unvetoed.
+    private resolveVote(state: InstanceState, gameId: string, targetNick: string): void {
+        const session = state.voteSessions.get(targetNick);
+        if (!session) {
+            return;
+        }
+        const eligible = [...state.requiredNicks].filter(nick => this.isEligibleVoter(state, nick, targetNick));
+        // isVotingEligible() only gates *opening* a session, against
+        // requiredNicks.size at that instant -- which does not shrink just
+        // because other players are concurrently departed (only resigning or
+        // leaving removes a nick from requiredNicks). So if a second required
+        // player drops while this session is already open, `eligible` here can
+        // fall well below what the original gate intended, letting as few as
+        // one remaining player cast a unilateral "majority" kick -- exactly
+        // what voteMinRequiredPlayers exists to prevent. Re-checked here on
+        // every recount, using eligible.length + 1 (the +1 for the target
+        // themself, who is still nominally required) as the same live count
+        // isVotingEligible would see if evaluated fresh right now. Below the
+        // floor, voting is no longer fair, so the session closes outright
+        // (matching "2-player games get no voting UI at all") rather than
+        // merely refusing to resolve -- any wait extension already granted
+        // stands; only further voting stops.
+        if (eligible.length + 1 < this.config.voteMinRequiredPlayers) {
+            this.closeVoteSession(state, targetNick);
+            return;
+        }
+        let kickVotes = 0;
+        let waitVotes = 0;
+        for (const nick of eligible) {
+            const choice = session.votes.get(nick);
+            if (choice === "kick") {
+                kickVotes += 1;
+            }
+            else if (choice === "wait") {
+                waitVotes += 1;
+            }
+        }
+        const hasWaitVote = waitVotes > 0;
+        // Every wait voter buys one extension, once. Charged here rather than
+        // in handleVote so a voter who was ineligible when they voted (and so
+        // did not count) cannot be charged, and so the ledger is driven by the
+        // same freshly-recomputed electorate as the tally itself.
+        for (const nick of eligible) {
+            if (session.votes.get(nick) !== "wait"
+                || session.chargedWaitVoters.has(nick)
+                || session.extensionsRemaining <= 0) {
+                continue;
+            }
+            session.chargedWaitVoters.add(nick);
+            session.extensionsRemaining -= 1;
+            const expiry = state.departedAt.get(targetNick);
+            if (expiry !== undefined) {
+                state.departedAt.set(targetNick, expiry + this.config.voteExtensionSeconds * 1000);
+            }
+            this.log.info(`${nick}'s wait vote extended ${targetNick}'s rejoin window in instance ${gameId} ` +
+                `(${session.extensionsRemaining} extension(s) left)`);
+        }
+        const majorityThreshold = Math.floor(eligible.length / 2) + 1;
+        // Read *after* the charges above: the wait vote that drains the last
+        // extension does not itself veto, since by the time it is resolved the
+        // pool is empty and wait votes are advisory.
+        const vetoActive = hasWaitVote && session.extensionsRemaining > 0;
+        const resolved = eligible.length > 0 && kickVotes >= majorityThreshold && !vetoActive;
+        const ballot = eligible
+            .filter(nick => session.votes.has(nick))
+            .map(nick => `${nick}=${session.votes.get(nick)}`)
+            .join(";");
+        this.broadcastAll(
+            state,
+            `:${this.serverName} ${Code.RPL_VOTE_UPDATE} ${targetNick} ` +
+            `:${targetNick},${kickVotes},${waitVotes},${session.extensionsRemaining},` +
+            `${eligible.length},${majorityThreshold},${ballot}`,
+        );
+        if (resolved) {
+            this.resignDepartedPlayerEarly(state, gameId, targetNick);
+        }
+    }
+
+    // A kick vote carried: end the departure now instead of waiting out the
+    // rest of the grace window. Same outcome, and the same code, as the window
+    // expiring naturally.
+    private resignDepartedPlayerEarly(state: InstanceState, gameId: string, nick: string): void {
+        state.departedAt.delete(nick);
+        state.rejoiningNicks.delete(nick);
+        this.closeVoteSession(state, nick);
+        this.resignDeparted(state, gameId, nick, "kick vote passed");
+        this.flushPendingTurns(state);
     }
 
     private handleReady(client: GservClient, parts: string[]): void {
@@ -877,7 +1197,45 @@ export class GservServer {
         }
     }
 
-    // Ends the rejoin grace windows that have expired: backfills the departed    // players' missing submissions with NoAction and removes them from the
+    // Resigns a departed player for real: their assets are destroyed and they
+    // are marked defeated, exactly like a voluntary leave. Injects the synthetic
+    // resign into the next pending turn, drops them from the relay requirement
+    // so the game can continue, and permanently blocks a later rejoin.
+    //
+    // Extracted so the two paths that end a departure -- the grace window
+    // running out (expireDeparted) and a kick vote passing early
+    // (resignDepartedPlayerEarly) -- share one implementation rather than two
+    // copies that could drift apart. Callers are responsible for clearing
+    // departedAt/rejoiningNicks and for calling flushPendingTurns afterwards.
+    private resignDeparted(state: InstanceState, gameId: string, nick: string, reason: string): void {
+        // A resigned player must not be able to reconnect with the same ticket
+        // and keep playing a match they were already resigned out of --
+        // handleRejoin only ever checked leftNicks, so this has to be set here
+        // too (found via manual multiplayer testing).
+        state.leftNicks.add(nick);
+        const playerId = state.recorder.playerIdFor(nick);
+        if (playerId !== undefined) {
+            let resignInjected = false;
+            for (const submissions of state.pending.values()) {
+                if (!submissions.has(nick)) {
+                    // The first pending turn resigns the departed player
+                    // (their assets are destroyed and they are defeated);
+                    // any further pending turns treat them as NoAction.
+                    submissions.set(nick, {
+                        playerId,
+                        blob: resignInjected ? NO_ACTION_BLOB : RESIGN_ACTION_BLOB,
+                    });
+                    resignInjected = true;
+                }
+            }
+        }
+        state.requiredNicks.delete(nick);
+        this.log.info(`${reason} for ${nick} in instance ${gameId}; resigning them`);
+        this.broadcastAll(state, `:${this.serverName} ${Code.RPL_PLAYER_GAVE_UP} ${nick} :${nick}`);
+    }
+
+    // Ends the rejoin grace windows that have expired: backfills the departed
+    // players' missing submissions with NoAction and removes them from the
     // relay requirement so the game can continue.
     private expireDeparted(state: InstanceState, gameId: string, nowMs: number = Date.now()): boolean {
         let expired = false;
@@ -887,35 +1245,16 @@ export class GservServer {
             }
             state.departedAt.delete(nick);
             state.rejoiningNicks.delete(nick);
-            // A timed-out rejoin resigns the player for real (their assets
-            // are destroyed and they're defeated, just like a voluntary
-            // leave -- see handleLeave's comment, which already assumed this
-            // happened here) -- found via manual multiplayer testing that it
-            // didn't: handleRejoin only ever checked leftNicks, so a nick
-            // whose grace window expired here could reconnect with the same
-            // ticket and keep playing a match it had already been resigned
-            // out of, potentially well after the other player won/lost.
-            state.leftNicks.add(nick);
+            this.closeVoteSession(state, nick);
+            // Only matters if voteOpenDelayMillis is configured larger than
+            // the grace window, so the vote never got a chance to open before
+            // the timeout beat it to resigning the player -- the timer's own
+            // staleness guard (departedAt no longer has the nick) would
+            // already no-op it harmlessly, this just avoids leaving a dangling
+            // Node timer sitting around until then.
+            this.cancelPendingVoteOpen(state, nick);
             expired = true;
-            const playerId = state.recorder.playerIdFor(nick);
-            if (playerId !== undefined) {
-                let resignInjected = false;
-                for (const submissions of state.pending.values()) {
-                    if (!submissions.has(nick)) {
-                        // The first pending turn resigns the departed player
-                        // (their assets are destroyed and they are defeated);
-                        // any further pending turns treat them as NoAction.
-                        submissions.set(nick, {
-                            playerId,
-                            blob: resignInjected ? NO_ACTION_BLOB : RESIGN_ACTION_BLOB,
-                        });
-                        resignInjected = true;
-                    }
-                }
-            }
-            state.requiredNicks.delete(nick);
-            this.log.info(`rejoin grace expired for ${nick} in instance ${gameId}; resigning them`);
-            this.broadcastAll(state, `:${this.serverName} ${Code.RPL_PLAYER_GAVE_UP} ${nick} :${nick}`);
+            this.resignDeparted(state, gameId, nick, "rejoin grace expired");
         }
         if (expired) {
             this.flushPendingTurns(state);
@@ -977,7 +1316,15 @@ export class GservServer {
         const lines: string[] = [];
         for (const nick of instance.players) {
             const member = members?.get(nick);
-            const status = member ? 1 : 0;
+            // Mirrors the client's PlayerConnectionStatus enum
+            // (src/network/gamestate/PlayerConnectionStatus.ts): 0=NotConnected,
+            // 1=Connected, 4=Rejoining. Hardcoded rather than imported because
+            // server/src and src are separate codebases -- same convention as
+            // RESIGN_GAME_ACTION_ID above. A rejoiner is reported distinctly so
+            // waiting players can be shown catch-up progress instead of a
+            // reconnect countdown, since `loaded` below is the live replay
+            // percentage for exactly that window.
+            const status = !member ? 0 : state?.rejoiningNicks.has(nick) ? 4 : 1;
             const loaded = member?.loaded ?? 0;
             const timeoutAt = state?.departedAt.get(nick) ?? 0;
             lines.push(`${nick},${status},${loaded},0,0,${timeoutAt}`);
@@ -1236,6 +1583,14 @@ export class GservServer {
 
     private finalizeInstance(gameId: string, state: InstanceState): void {
         this.clearPauseTimer(state);
+        // The timer callback's own staleness guard (instanceStates no longer
+        // has this state) would make a leftover pending vote-open harmless,
+        // but clear them outright rather than leaving Node timer handles
+        // dangling until they fire on their own.
+        for (const timer of state.pendingVoteOpens.values()) {
+            clearTimeout(timer);
+        }
+        state.pendingVoteOpens.clear();
         this.instanceStates.delete(gameId);
         // Keep the instance metadata (roster, ranked flag) around until the
         // report-window sweep so the game-res report arriving right after the

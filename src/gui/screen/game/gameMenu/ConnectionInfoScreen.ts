@@ -5,6 +5,7 @@ import { CompositeDisposable } from '@/util/disposable/CompositeDisposable';
 import { ConInfoForm } from '@/gui/screen/game/gameMenu/ConInfoForm';
 import { GameMenuScreen } from '@/gui/screen/game/GameMenuScreen';
 import { LoadInfoParser } from '@/network/gameopt/LoadInfoParser';
+import { VoteChoice, VoteSessionInfo, VoteTally } from '@/network/GservConnection';
 interface Strings {
     get(key: string, ...args: any[]): string;
 }
@@ -43,6 +44,19 @@ interface GservConnection {
         unsubscribe(handler: (data: any) => void): void;
     };
     requestLoadInfo(): void;
+    onVoteSessionOpened: {
+        subscribe(handler: (info: VoteSessionInfo) => void): void;
+        unsubscribe(handler: (info: VoteSessionInfo) => void): void;
+    };
+    onVoteUpdate: {
+        subscribe(handler: (tally: VoteTally) => void): void;
+        unsubscribe(handler: (tally: VoteTally) => void): void;
+    };
+    onVoteSessionClosed: {
+        subscribe(handler: (targetNick: string) => void): void;
+        unsubscribe(handler: (targetNick: string) => void): void;
+    };
+    sendVote(targetNick: string, choice: VoteChoice): void;
 }
 interface ChatNetHandler {
     submitMessage(message: string, recipient: any): void;
@@ -79,6 +93,11 @@ export class ConnectionInfoScreen extends GameMenuScreen {
     private strings: Strings;
     private jsxRenderer: JsxRenderer;
     private messages: ChatMessage[] = [];
+    // Keyed by the departed player each open vote session is about. Empty for
+    // games too small to vote (the server never opens a session), so the
+    // "Vote" column in ConInfoForm renders nothing without any special-casing
+    // here for that case.
+    private voteTallies = new Map<string, VoteTally>();
     private disposables = new CompositeDisposable();
     private params?: ConnectionInfoParams;
     private form?: FormRef;
@@ -99,6 +118,38 @@ export class ConnectionInfoScreen extends GameMenuScreen {
             options.conInfos = new LoadInfoParser().parse(data);
         });
     };
+    private handleVoteSessionOpened = (info: VoteSessionInfo): void => {
+        // The opening broadcast always carries a zero tally (see
+        // GservServer.openVoteSession), so seed a placeholder here and let the
+        // RPL_VOTE_UPDATE that follows immediately after fill in the real
+        // numbers -- this just guarantees the column appears the instant the
+        // session opens rather than waiting a round trip.
+        this.voteTallies.set(info.targetNick, {
+            targetNick: info.targetNick,
+            kickVotes: 0,
+            waitVotes: 0,
+            extensionsRemaining: info.extensionsMax,
+            eligibleCount: 0,
+            majorityThreshold: 0,
+            votesByNick: new Map(),
+        });
+        this.refreshVoteTallies();
+    };
+    private handleVoteUpdate = (tally: VoteTally): void => {
+        this.voteTallies.set(tally.targetNick, tally);
+        this.refreshVoteTallies();
+    };
+    private handleVoteSessionClosed = (targetNick: string): void => {
+        this.voteTallies.delete(targetNick);
+        this.refreshVoteTallies();
+    };
+    private refreshVoteTallies(): void {
+        // A fresh Map so React (comparing the prop reference) actually re-renders.
+        const voteTallies = new Map(this.voteTallies);
+        this.form?.applyOptions((options: any) => {
+            options.voteTallies = voteTallies;
+        });
+    }
     onEnter(params: ConnectionInfoParams): void {
         this.params = params;
         this.controller?.toggleContentAreaVisibility(true);
@@ -107,6 +158,15 @@ export class ConnectionInfoScreen extends GameMenuScreen {
             params.gservCon.onLoadInfo.subscribe(this.handleConInfoUpdate);
             this.disposables.add(() => params.gservCon.onLoadInfo.unsubscribe(this.handleConInfoUpdate));
             params.gservCon.requestLoadInfo();
+            params.gservCon.onVoteSessionOpened.subscribe(this.handleVoteSessionOpened);
+            params.gservCon.onVoteUpdate.subscribe(this.handleVoteUpdate);
+            params.gservCon.onVoteSessionClosed.subscribe(this.handleVoteSessionClosed);
+            this.disposables.add(
+                () => params.gservCon.onVoteSessionOpened.unsubscribe(this.handleVoteSessionOpened),
+                () => params.gservCon.onVoteUpdate.unsubscribe(this.handleVoteUpdate),
+                () => params.gservCon.onVoteSessionClosed.unsubscribe(this.handleVoteSessionClosed),
+                () => (this.voteTallies = new Map()),
+            );
             const interval = setInterval(() => {
                 if (params.gservCon.isOpen()) {
                     params.gservCon.requestLoadInfo();
@@ -166,6 +226,8 @@ export class ConnectionInfoScreen extends GameMenuScreen {
                 strings: this.strings,
                 messages: this.messages,
                 chatHistory: params.chatHistory,
+                voteTallies: new Map(this.voteTallies),
+                onVote: (targetNick: string, choice: VoteChoice) => params.gservCon.sendVote(targetNick, choice),
                 onSendMessage: (message: ChatMessage) => {
                     if (message.value && message.recipient) {
                         params.chatNetHandler.submitMessage(message.value, message.recipient);

@@ -291,6 +291,44 @@ describe("GservServer loading screen info", () => {
         expect(timeoutAt).toBeGreaterThan(Date.now());
         expect(timeoutAt).toBeLessThanOrEqual(Date.now() + config.reconnectGraceSeconds * 1000 + 5);
     });
+
+    test("loadinfo reports a still-catching-up rejoiner as status 4 with live replay progress", () => {
+        const config = loadConfig({ GSERV_NET_RATE_MS: "33", GSERV_RECONNECT_GRACE_SECONDS: "30" });
+        const manager = new GservManager({ id: "gs1", url: "ws://test.local/gserv" });
+        const server = new GservServer(config, manager);
+        const instance = manager.create(["alice", "bob"], "ws://gserv");
+        instance.gameopts = buildGameOpts(["alice", "bob"]);
+        const alice = join(server, manager, instance, "alice");
+        const bob = join(server, manager, instance, "bob");
+        server.handleMessage(alice.client, "loaded 100");
+        server.handleMessage(bob.client, "loaded 100");
+
+        const lastLoadInfo = () => alice.socket.sent
+            .filter((data): data is string => typeof data === "string")
+            .join("\n")
+            .split("\n")
+            .filter((line) => line.includes(" 600 "))
+            .at(-1)!;
+
+        // Dropped but not yet back: status 0 (NotConnected).
+        server.handleClose(bob.client);
+        server.handleMessage(alice.client, "loadinfo");
+        expect(lastLoadInfo()).toMatch(/bob,0,\d+,0,0,\d+/);
+
+        // Reconnected, but still replaying from turn 0 -- status 4 (Rejoining),
+        // so waiting players can be shown catch-up progress rather than a
+        // reconnect countdown. The percentage rides the ordinary "loaded"
+        // message, which is inert mid-game (checkAllLoaded no-ops once started).
+        const bobRejoin = join(server, manager, instance, "bob");
+        server.handleMessage(bobRejoin.client, "loaded 37");
+        server.handleMessage(alice.client, "loadinfo");
+        expect(lastLoadInfo()).toContain("bob,4,37,");
+
+        // Caught up and readied: back to status 1 (Connected).
+        server.handleMessage(bobRejoin.client, "ready 0");
+        server.handleMessage(alice.client, "loadinfo");
+        expect(lastLoadInfo()).toContain("bob,1,37,");
+    });
 });
 
 describe("GservServer mid-game reconnect", () => {
@@ -352,7 +390,49 @@ describe("GservServer mid-game reconnect", () => {
         expect(alice.socket.lines().join("\n")).toContain(" 807 ");
     });
 
-    test("relay holds while a non-required player rejoins, then resumes cleanly", async () => {
+    test("the socket closing after a voluntary leave does not reopen a rejoin window", () => {
+        // "Abort Mission" sends `leave` and *then* the page tears the socket
+        // down, so handleClose always runs a moment after handleLeave for the
+        // same nick. handleClose must not treat that trailing close as a fresh
+        // mid-game drop: the player already resigned, so re-adding them to
+        // requiredNicks would freeze the relay for the whole grace window
+        // waiting on someone who is never coming back, then resign them a
+        // second time when it expired. isRequiredRosterPlayer() checks the
+        // roster rather than requiredNicks, so leftNicks is what has to
+        // exclude them.
+        const { server, alice, bob } = startGameWithConfig(fastRejoinConfig());
+        server.handleMessage(alice.client, buildRequestFrame(0, noop()));
+        server.handleMessage(bob.client, buildRequestFrame(0, noop()));
+        expect(countBinary(alice.socket)).toBe(1);
+
+        server.handleMessage(bob.client, "leave");
+        server.handleClose(bob.client);
+
+        const state = (server as any).instanceStates.get((server as any).clients.get(alice.socket).instance.gameId);
+        expect(state.requiredNicks.has("bob")).toBe(false);
+        expect(state.departedAt.has("bob")).toBe(false);
+        // No rejoin window was announced, so nobody is told to wait for him.
+        expect(alice.socket.lines().join("\n")).not.toContain(" 806 ");
+        // And the relay keeps flowing on alice's submissions alone.
+        server.handleMessage(alice.client, buildRequestFrame(1, noop()));
+        expect(countBinary(alice.socket)).toBe(2);
+    });
+
+    test("a passive player who then disconnects is still treated as a full required drop", async () => {
+        // A backgrounded browser tab going passive (active 0) immediately
+        // before its socket actually closes is exactly what happens when a
+        // tab is closed: visibilitychange fires (hidden) before the socket
+        // does, so GameAnimationLoop's handleVisibilityChange sends "active 0"
+        // moments ahead of the real disconnect. Found via manual multiplayer
+        // testing that this made handleClose take the observer/passive branch
+        // (bob was no longer in requiredNicks at that instant) instead of the
+        // required-player branch -- no grace window ever opened, no pause, no
+        // RPL_PLAYER_RECONNECTING -- silently ending bob's participation
+        // instead of giving him a chance to reconnect. isRequiredRosterPlayer()
+        // fixes this: it's checked against the roster (unaffected by passive
+        // status), and handleClose now unconditionally re-adds a required
+        // player to requiredNicks on drop regardless of whether they were
+        // already there.
         const { manager, server, instance, alice, bob } = startGameWithConfig(fastRejoinConfig());
         const noop = () => serializePlayerActions([{ id: 0, params: new Uint8Array() }]);
         const countBinary = (socket: FakeSocket) => socket.sent.filter((data): data is Uint8Array => data instanceof Uint8Array).length;
@@ -363,26 +443,32 @@ describe("GservServer mid-game reconnect", () => {
         }
         expect(countBinary(alice.socket)).toBe(3);
 
-        // Bob goes passive then drops: not required, so the game continues.
         server.handleMessage(bob.client, "active 0");
         server.handleClose(bob.client);
+        const aliceLines = alice.socket.lines().join("\n");
+        expect(aliceLines).toContain(" 804 ");
+        expect(aliceLines).toContain(" 806 "); // RPL_PLAYER_RECONNECTING -- was never sent before the fix.
+
+        // The relay must hold (no backfill) exactly like any other required
+        // drop, not continue as if bob no longer mattered.
         for (let turnNo = 3; turnNo < 6; turnNo++) {
             server.handleMessage(alice.client, buildRequestFrame(turnNo, noop()));
         }
-        expect(countBinary(alice.socket)).toBe(6);
+        expect(countBinary(alice.socket)).toBe(3);
 
         // Bob rejoins: the relay must hold during his catch-up.
         const bobRejoin = join(server, manager, instance, "bob");
         expect(bobRejoin.socket.lines().join("\n")).toContain(" 701 ");
-        server.handleMessage(alice.client, buildRequestFrame(6, noop()));
-        expect(countBinary(alice.socket)).toBe(6);
+        server.handleMessage(alice.client, buildRequestFrame(3, noop()));
+        expect(countBinary(alice.socket)).toBe(3);
 
         // Bob readies and submits the next turn: after the resume countdown the
-        // relay resumes.
-        server.handleMessage(bobRejoin.client, "ready 5");
-        server.handleMessage(bobRejoin.client, buildRequestFrame(6, noop()));
+        // relay resumes and flushes the whole backlog.
+        server.handleMessage(bobRejoin.client, "ready 2");
+        server.handleMessage(bobRejoin.client, buildRequestFrame(3, noop()));
         await Bun.sleep(20);
-        expect(countBinary(alice.socket)).toBe(7);
+        expect(countBinary(alice.socket)).toBe(4);
+        expect(alice.socket.lines().join("\n")).toContain(" 807 ");
     });
 
     test("desync detection broadcasts RPL_GAME_DESYNC when client hashes differ", () => {
@@ -761,5 +847,324 @@ describe("GservServer abandoned instance (all humans gone)", () => {
         server.handleMessage(bobRejoin.client, "ready 0");
         await Bun.sleep(20);
         expect(state.paused).toBe(false);
+    });
+});
+
+describe("GservServer kick/wait voting", () => {
+    // Observers get the sentinel country id (OBSERVER_COUNTRY_ID = -3) so
+    // isObserverPlayer() picks them out; everyone else keeps a real country.
+    function buildGameOptsWithObserver(names: string[], observerName: string): string {
+        const optionsPart = "0,0,0,10000,50,0,0,0,1,0,0,0,SXNsYW5kIFdhcg==,8,1,100,mpdefault,abc,1,0,0,1,0";
+        const playersPart = names
+            .map((name, i) => `${name},${name === observerName ? -3 : 1},${i + 1},${i + 1},1,0,0,0`)
+            .join(",");
+        return `${optionsPart}:${playersPart}:@:,-1,-1,-1,-1,`;
+    }
+
+    function startVoteGame(names: string[], env: Record<string, string> = {}, gameopts?: string) {
+        const config = loadConfig({
+            GSERV_NET_RATE_MS: "33",
+            GSERV_RECONNECT_GRACE_SECONDS: "30",
+            // A real drop only becomes vote-eligible after voteOpenDelayMillis
+            // (10s in production -- see config.ts's rationale comment): most
+            // drops are a brief blip that resolves itself well within that
+            // window and should never surface a vote. Shortened here so tests
+            // can drive it with a short real sleep instead of waiting 10s.
+            GSERV_VOTE_OPEN_DELAY_MILLIS: "5",
+            ...env,
+        });
+        const manager = new GservManager({ id: "gs1", url: "ws://test.local/gserv" });
+        const server = new GservServer(config, manager);
+        const instance = manager.create(names, "ws://gserv");
+        instance.gameopts = gameopts ?? buildGameOpts(names);
+        const clients = new Map<string, { socket: FakeSocket; client: GservClient }>();
+        for (const nick of names) {
+            clients.set(nick, join(server, manager, instance, nick));
+        }
+        for (const nick of names) {
+            server.handleMessage(clients.get(nick)!.client, "loaded 100");
+        }
+        const state = (server as any).instanceStates.get(instance.gameId);
+        return { config, manager, server, instance, clients, state };
+    }
+
+    // Drops `nick` and waits past voteOpenDelayMillis, so any vote session the
+    // drop is eligible for has actually opened by the time this returns --
+    // mirroring how a real client only sees the vote appear a while after the
+    // drop, not instantly. Most tests below care about the vote itself, not
+    // this delay mechanism (which has its own dedicated test), so they all
+    // route through here rather than each re-deriving the wait.
+    async function dropAndWaitForVote(server: GservServer, clients: Map<string, { socket: FakeSocket; client: GservClient }>, nick: string): Promise<void> {
+        server.handleClose(clients.get(nick)!.client);
+        await Bun.sleep(20);
+    }
+
+    const linesOf = (socket: FakeSocket) => socket.sent
+        .filter((data): data is string => typeof data === "string")
+        .join("")
+        .split("\r\n")
+        .filter(Boolean);
+
+    const lastVoteUpdate = (socket: FakeSocket) => linesOf(socket).filter((line) => line.includes(" 814 ")).at(-1);
+    // ":<target>,<kick>,<wait>,<extLeft>,<eligible>,<threshold>,<ballot>"
+    const tallyOf = (socket: FakeSocket) => {
+        const line = lastVoteUpdate(socket);
+        if (!line) return undefined;
+        const payload = line.slice(line.indexOf(" :") + 2).split(",");
+        return {
+            target: payload[0],
+            kick: Number(payload[1]),
+            wait: Number(payload[2]),
+            extensionsRemaining: Number(payload[3]),
+            eligible: Number(payload[4]),
+            threshold: Number(payload[5]),
+        };
+    };
+
+    test("a vote does not open until the departed player is still away after the open delay", async () => {
+        const { manager, server, instance, clients, state } = startVoteGame(["alice", "bob", "carol"]);
+        server.handleClose(clients.get("carol")!.client);
+        // Immediately after the drop: nothing has opened yet. This is the
+        // entire point of the delay -- a brief blip must not force a vote.
+        expect(state.voteSessions.has("carol")).toBe(false);
+        expect(state.pendingVoteOpens.has("carol")).toBe(true);
+
+        // She reconnects well within the delay: the pending open is cancelled
+        // outright and never fires, so this drop never offers a vote at all.
+        join(server, manager, instance, "carol");
+        expect(state.pendingVoteOpens.has("carol")).toBe(false);
+        await Bun.sleep(20);
+        expect(state.voteSessions.has("carol")).toBe(false);
+    });
+
+    test("a 2-player game never opens a vote session", async () => {
+        const { server, clients, state } = startVoteGame(["alice", "bob"]);
+        await dropAndWaitForVote(server, clients, "bob");
+
+        expect(state.voteSessions.size).toBe(0);
+        // A vote command against a nick with no session is silently ignored.
+        server.handleMessage(clients.get("alice")!.client, "vote bob kick");
+        expect(state.voteSessions.size).toBe(0);
+        expect(linesOf(clients.get("alice")!.socket).some((line) => line.includes(" 813 ") || line.includes(" 814 "))).toBe(false);
+        expect(state.requiredNicks.has("bob")).toBe(true);
+    });
+
+    test("a kick majority with no wait votes resigns the departed player early", async () => {
+        const { server, clients, state } = startVoteGame(["alice", "bob", "carol", "dave"]);
+        await dropAndWaitForVote(server, clients, "dave");
+        expect(state.voteSessions.has("dave")).toBe(true);
+
+        // 3 eligible voters (alice, bob, carol) -> majority is 2.
+        server.handleMessage(clients.get("alice")!.client, "vote dave kick");
+        expect(tallyOf(clients.get("alice")!.socket)).toMatchObject({ kick: 1, wait: 0, eligible: 3, threshold: 2 });
+        expect(state.requiredNicks.has("dave")).toBe(true);
+
+        server.handleMessage(clients.get("bob")!.client, "vote dave kick");
+        // Resolved: resigned early, well inside the 30s grace window.
+        expect(state.voteSessions.has("dave")).toBe(false);
+        expect(state.requiredNicks.has("dave")).toBe(false);
+        expect(state.leftNicks.has("dave")).toBe(true);
+        expect(state.departedAt.has("dave")).toBe(false);
+        const aliceLines = linesOf(clients.get("alice")!.socket);
+        expect(aliceLines.some((line) => line.includes(" 815 ") && line.includes("dave"))).toBe(true);
+        expect(aliceLines.some((line) => line.includes(" 808 ") && line.includes("dave"))).toBe(true);
+    });
+
+    test("a single wait vote spends one extension and vetoes an otherwise-passing kick", async () => {
+        const { config, server, clients, state } = startVoteGame(["alice", "bob", "carol", "dave"]);
+        await dropAndWaitForVote(server, clients, "dave");
+        const deadlineBefore = state.departedAt.get("dave");
+
+        server.handleMessage(clients.get("carol")!.client, "vote dave wait");
+        expect(state.departedAt.get("dave")).toBe(deadlineBefore + config.voteExtensionSeconds * 1000);
+        expect(state.voteSessions.get("dave").extensionsRemaining).toBe(config.voteExtensionsMax - 1);
+
+        // A standing wait vote with extensions left blocks the kick even once
+        // the majority threshold is met.
+        server.handleMessage(clients.get("alice")!.client, "vote dave kick");
+        server.handleMessage(clients.get("bob")!.client, "vote dave kick");
+        expect(tallyOf(clients.get("alice")!.socket)).toMatchObject({ kick: 2, wait: 1, threshold: 2 });
+        expect(state.voteSessions.has("dave")).toBe(true);
+        expect(state.requiredNicks.has("dave")).toBe(true);
+    });
+
+    test("each wait voter buys one extension, and only one", async () => {
+        const { config, server, clients, state } = startVoteGame(["alice", "bob", "carol", "dave"], {
+            GSERV_VOTE_EXTENSIONS_MAX: "2",
+        });
+        await dropAndWaitForVote(server, clients, "dave");
+        const deadlineBefore = state.departedAt.get("dave");
+
+        server.handleMessage(clients.get("carol")!.client, "vote dave wait");
+        expect(state.voteSessions.get("dave").extensionsRemaining).toBe(1);
+        expect(state.departedAt.get("dave")).toBe(deadlineBefore + config.voteExtensionSeconds * 1000);
+
+        // The same voter cannot buy a second one, however many times the tally
+        // is recomputed -- another player's vote forces a recount here.
+        server.handleMessage(clients.get("alice")!.client, "vote dave kick");
+        expect(state.voteSessions.get("dave").extensionsRemaining).toBe(1);
+        expect(state.departedAt.get("dave")).toBe(deadlineBefore + config.voteExtensionSeconds * 1000);
+
+        // A *different* wait voter buys the second one, draining the pool.
+        // Total purchasable time is therefore capped at
+        // extensionsMax * extensionSeconds regardless of roster size.
+        server.handleMessage(clients.get("bob")!.client, "vote dave wait");
+        expect(state.voteSessions.get("dave").extensionsRemaining).toBe(0);
+        expect(state.departedAt.get("dave")).toBe(deadlineBefore + 2 * config.voteExtensionSeconds * 1000);
+    });
+
+    test("a cast vote is final: a second vote from the same player is ignored", async () => {
+        const { config, server, clients, state } = startVoteGame(["alice", "bob", "carol", "dave"], {
+            GSERV_VOTE_EXTENSIONS_MAX: "2",
+        });
+        await dropAndWaitForVote(server, clients, "dave");
+        const deadlineBefore = state.departedAt.get("dave");
+
+        server.handleMessage(clients.get("carol")!.client, "vote dave wait");
+        expect(state.voteSessions.get("dave").votes.get("carol")).toBe("wait");
+        expect(state.voteSessions.get("dave").extensionsRemaining).toBe(1);
+
+        // Flipping to kick and back is exactly how a modified client would try
+        // to re-earn wait extensions. The server refuses the second vote
+        // outright, so the choice stands and the pool is untouched.
+        server.handleMessage(clients.get("carol")!.client, "vote dave kick");
+        expect(state.voteSessions.get("dave").votes.get("carol")).toBe("wait");
+        server.handleMessage(clients.get("carol")!.client, "vote dave wait");
+        expect(state.voteSessions.get("dave").extensionsRemaining).toBe(1);
+        expect(state.departedAt.get("dave")).toBe(deadlineBefore + config.voteExtensionSeconds * 1000);
+        expect(tallyOf(clients.get("alice")!.socket)).toMatchObject({ kick: 0, wait: 1 });
+    });
+
+    test("once the extension pool is spent, wait votes are advisory and a kick majority carries", async () => {
+        const { server, clients, state } = startVoteGame(["alice", "bob", "carol", "dave"], {
+            GSERV_VOTE_EXTENSIONS_MAX: "1",
+        });
+        await dropAndWaitForVote(server, clients, "dave");
+
+        // Drain the single extension.
+        server.handleMessage(clients.get("carol")!.client, "vote dave wait");
+        expect(state.voteSessions.get("dave").extensionsRemaining).toBe(0);
+
+        // carol keeps voting wait, but the veto is spent -- the majority wins.
+        server.handleMessage(clients.get("alice")!.client, "vote dave kick");
+        server.handleMessage(clients.get("bob")!.client, "vote dave kick");
+        expect(state.voteSessions.has("dave")).toBe(false);
+        expect(state.requiredNicks.has("dave")).toBe(false);
+        expect(state.leftNicks.has("dave")).toBe(true);
+    });
+
+    test("the departed player reconnecting cancels the vote immediately", async () => {
+        const { manager, server, instance, clients, state } = startVoteGame(["alice", "bob", "carol", "dave"]);
+        await dropAndWaitForVote(server, clients, "dave");
+        server.handleMessage(clients.get("alice")!.client, "vote dave kick");
+        expect(state.voteSessions.has("dave")).toBe(true);
+
+        // Closed on rejoin, not on ready: otherwise the vote UI would stay open
+        // for the whole turn-0 replay.
+        const daveRejoin = join(server, manager, instance, "dave");
+        expect(state.voteSessions.has("dave")).toBe(false);
+        expect(linesOf(clients.get("alice")!.socket).some((line) => line.includes(" 815 ") && line.includes("dave"))).toBe(true);
+        expect(state.requiredNicks.has("dave")).toBe(true);
+        expect(state.leftNicks.has("dave")).toBe(false);
+
+        // The ordinary rejoin flow is unaffected.
+        server.handleMessage(daveRejoin.client, "ready 0");
+        expect(state.rejoiningNicks.has("dave")).toBe(false);
+    });
+
+    test("each player's vote counts exactly once", async () => {
+        const { server, clients } = startVoteGame(["alice", "bob", "carol", "dave"]);
+        await dropAndWaitForVote(server, clients, "dave");
+
+        server.handleMessage(clients.get("alice")!.client, "vote dave kick");
+        expect(tallyOf(clients.get("alice")!.socket)).toMatchObject({ kick: 1, wait: 0, eligible: 3 });
+
+        // Re-sending the same choice must not double-count it either.
+        server.handleMessage(clients.get("alice")!.client, "vote dave kick");
+        expect(tallyOf(clients.get("alice")!.socket)).toMatchObject({ kick: 1, wait: 0 });
+
+        server.handleMessage(clients.get("bob")!.client, "vote dave wait");
+        expect(tallyOf(clients.get("alice")!.socket)).toMatchObject({ kick: 1, wait: 1 });
+    });
+
+    test("observers cannot vote", async () => {
+        const names = ["alice", "bob", "carol", "dave"];
+        const { server, clients, state } = startVoteGame(
+            names,
+            {},
+            buildGameOptsWithObserver(names, "carol"),
+        );
+        await dropAndWaitForVote(server, clients, "dave");
+
+        // carol is an observer, so she is neither required by the relay nor an
+        // eligible voter: 2 eligible (alice, bob), majority 2.
+        server.handleMessage(clients.get("carol")!.client, "vote dave kick");
+        expect(tallyOf(clients.get("alice")!.socket)).toMatchObject({ kick: 0, eligible: 2, threshold: 2 });
+        expect(state.voteSessions.has("dave")).toBe(true);
+    });
+
+    test("a second departure shrinks the electorate and re-tallies the open vote", async () => {
+        const { server, clients, state } = startVoteGame(["alice", "bob", "carol", "dave"]);
+        await dropAndWaitForVote(server, clients, "dave");
+
+        // 3 eligible -> majority 2; a lone kick vote is not enough.
+        server.handleMessage(clients.get("alice")!.client, "vote dave kick");
+        expect(tallyOf(clients.get("alice")!.socket)).toMatchObject({ kick: 1, eligible: 3, threshold: 2 });
+        expect(state.voteSessions.has("dave")).toBe(true);
+
+        // carol drops: 2 eligible (alice, bob) -> majority is still 2, and only
+        // alice has voted, so dave's vote stays open rather than resolving off
+        // a shrinking electorate. This re-tally is synchronous (handleClose
+        // resolves every *other* open session immediately, independent of the
+        // new open-delay, which only gates *opening a fresh* session), so no
+        // extra wait is needed here.
+        server.handleClose(clients.get("carol")!.client);
+        expect(tallyOf(clients.get("alice")!.socket)).toMatchObject({ kick: 1, eligible: 2, threshold: 2 });
+        expect(state.voteSessions.has("dave")).toBe(true);
+
+        // bob agreeing now carries it.
+        server.handleMessage(clients.get("bob")!.client, "vote dave kick");
+        expect(state.voteSessions.has("dave")).toBe(false);
+        expect(state.requiredNicks.has("dave")).toBe(false);
+    });
+
+    test("a second concurrent departure closes an open vote rather than letting one voter carry it alone", async () => {
+        // Exactly at the 3-player minimum: carol dropping opens a vote on her
+        // (requiredNicks.size === 3 satisfies voteMinRequiredPlayers). Before
+        // anyone votes, bob *also* drops -- isVotingEligible() was only ever
+        // checked once, at session-open time, against requiredNicks.size,
+        // which does not shrink just because someone is merely departed
+        // (only resigning does). Left unguarded, alice would become the sole
+        // eligible voter on carol's session (majorityThreshold 1) and could
+        // single-handedly kick her -- exactly the "lone remaining player
+        // decides another's fate" outcome voteMinRequiredPlayers exists to
+        // prevent, just reached via a second disconnect instead of a
+        // resignation.
+        const { server, clients, state } = startVoteGame(["alice", "bob", "carol"]);
+        await dropAndWaitForVote(server, clients, "carol");
+        expect(state.voteSessions.has("carol")).toBe(true);
+
+        // bob's own drop only schedules *his own* pending vote open (subject to
+        // the same delay); the re-tally of carol's *already-open* session is
+        // synchronous, so no extra wait is needed to observe it closing.
+        server.handleClose(clients.get("bob")!.client);
+        // The re-tally triggered by bob's own drop must close carol's vote
+        // outright (not just refuse to resolve it): with only alice left
+        // eligible, eligible.length + 1 (accounting for carol herself) is 2,
+        // below the minimum of 3.
+        expect(state.voteSessions.has("carol")).toBe(false);
+        expect(
+            linesOf(clients.get("alice")!.socket).some((line) => line.includes(" 815 ") && line.includes("carol")),
+        ).toBe(true);
+
+        // Confirms the exploit is actually closed, not just untested: alice
+        // voting kick now has no session to land on at all.
+        server.handleMessage(clients.get("alice")!.client, "vote carol kick");
+        expect(state.requiredNicks.has("carol")).toBe(true);
+        expect(state.leftNicks.has("carol")).toBe(false);
+
+        // The grace timer (untouched by voting closing) still governs carol's
+        // fate normally, exactly as in a 2-player game.
+        expect(state.departedAt.has("carol")).toBe(true);
     });
 });

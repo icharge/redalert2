@@ -370,7 +370,38 @@ export class GameScreen extends RootScreen {
                     uiInitResult.chatHistory?.addChatMessage?.({ text });
                 }
             };
-            const reconnectingHandler = (nick: string) => playerNoticeHandler(nick, 'ts:player_reconnecting');
+            const reconnectingHandler = (nick: string) => {
+                playerNoticeHandler(nick, 'ts:player_reconnecting');
+                // Open the Connection Info screen the moment the *server* says
+                // someone dropped, rather than waiting for LockstepManager's
+                // local lag heuristic to notice the relay has stalled (1s stall
+                // threshold + a 2s CON_INFO_THRESH_MILLIS debounce, see
+                // initOnlineLockstep). The relay is provably held the instant a
+                // required player departs, so that delay was pure dead air with
+                // no explanation on screen. The lag path still owns *closing*
+                // the screen, so this is purely an earlier open.
+                //
+                // Deliberately hooked on RPL_PLAYER_RECONNECTING rather than the
+                // more general RPL_PLAYER_DISCONNECT: the server only ever
+                // broadcasts RECONNECTING for a *required* player (see
+                // GservServer.handleClose's requiredNicks branch) -- an
+                // observer/passive drop fires DISCONNECT alone, and does not
+                // pause the relay, so it must not pop this screen open.
+                if (nick !== playerName && this.game && !(this.menu?.getCurrentScreen() instanceof ConnectionInfoScreen)) {
+                    // goToScreen tears the screen down and rebuilds it, so
+                    // re-opening one that is already showing would visibly
+                    // flicker -- hence the instanceof guard above. The other
+                    // open call site (the lag-heuristic path below, which still
+                    // owns *closing* the screen) carries the identical guard for
+                    // the same reason: without it, that path's later, delayed
+                    // open would tear down and rebuild this screen a few
+                    // seconds in, silently wiping any vote tally accumulated so
+                    // far (ConnectionInfoScreen re-seeds voteTallies fresh on
+                    // every onEnter, and there is no equivalent of
+                    // requestLoadInfo() to eagerly refetch it).
+                    this.menu?.openConnectionInfo(this.game.getCombatants(), this.gservCon, this.chatNetHandler);
+                }
+            };
             const reconnectedHandler = (nick: string) => playerNoticeHandler(nick, 'ts:player_reconnected');
             // Grace-window timeout (auto-resign) and a deliberate quit both
             // resolve to "left the game" — from a peer's perspective they're
@@ -1027,29 +1058,55 @@ export class GameScreen extends RootScreen {
             debugGameState,
         );
         let connectionInfoTimer: any;
-        lockstepManager.onLagStateChange.subscribe((lagState: boolean) => {
-            this.lagState = lagState;
+        // Debounces BOTH opening and closing by the same CON_INFO_THRESH_MILLIS
+        // window, and cancels whatever transition is still pending whenever a
+        // fresh lagState event arrives -- so a lag state that flaps
+        // true/false/true within the window never actually mounts or unmounts
+        // the screen, it just keeps deferring. ConnectionInfoScreen is a real
+        // react-dom root (HtmlReactElement), not a cheap toggle: closing it
+        // instantly on every brief lag recovery (the previous behavior) meant
+        // a genuinely flapping connection could tear it down and rebuild it
+        // over and over, which is expensive enough on its own to help keep the
+        // connection flapping -- found via a live multiplayer report of a
+        // sustained ~80s throughput collapse (ticks/s near zero) that only
+        // cleared once a peer forced a full page reload, well past the point
+        // any single mount/unmount could plausibly explain it alone.
+        const scheduleConnectionInfoTransition = (open: boolean) => {
             connectionInfoTimer?.cancel?.();
-            connectionInfoTimer = undefined;
-            if (lagState) {
-                connectionInfoTimer = new Task(async (token: any) => {
-                    await sleep(CON_INFO_THRESH_MILLIS, token);
-                    if (!token.isCancelled()) {
+            connectionInfoTimer = new Task(async (token: any) => {
+                await sleep(CON_INFO_THRESH_MILLIS, token);
+                if (token.isCancelled()) {
+                    return;
+                }
+                // Guarded against the *other* open trigger (reconnectingHandler
+                // above) the same way either direction already needed to be:
+                // goToScreen tears down and rebuilds a screen that's already
+                // showing, which would visibly flicker and (for open) discard
+                // any vote tally accumulated so far.
+                if (open) {
+                    if (!(this.menu?.getCurrentScreen() instanceof ConnectionInfoScreen)) {
                         this.menu?.openConnectionInfo(game.getCombatants(), this.gservCon, this.chatNetHandler);
                     }
-                });
-                connectionInfoTimer.start().catch((error: any) => {
-                    if (!(error instanceof OperationCanceledError)) {
-                        throw error;
-                    }
-                });
-                this.disposables.add(() => connectionInfoTimer?.cancel?.());
-            }
-            else {
-                if (this.menu?.getCurrentScreen() instanceof ConnectionInfoScreen) {
+                }
+                else if (this.menu?.getCurrentScreen() instanceof ConnectionInfoScreen) {
                     this.menu.close();
                 }
-            }
+            });
+            connectionInfoTimer.start().catch((error: any) => {
+                if (!(error instanceof OperationCanceledError)) {
+                    throw error;
+                }
+            });
+        };
+        // Registered once, not per lagState event: the closure always cancels
+        // whichever task is current, so one disposer suffices. The original
+        // per-event `this.disposables.add(...)` here leaked a new no-op
+        // closure into this screen-level CompositeDisposable on every single
+        // lagState flip for the entire life of the match.
+        this.disposables.add(() => connectionInfoTimer?.cancel?.());
+        lockstepManager.onLagStateChange.subscribe((lagState: boolean) => {
+            this.lagState = lagState;
+            scheduleConnectionInfoTransition(lagState);
         });
         return lockstepManager;
     }
@@ -1603,7 +1660,16 @@ export class GameScreen extends RootScreen {
         let noAdvanceCount = 0;
         let chunkStart = performance.now();
         const updateProgress = () => {
-            this.loadingScreenApi?.setSynchronizing?.(Math.floor((lockstepManager.getCurrentNetworkTurn() / targetTurn) * 100));
+            const percent = Math.floor((lockstepManager.getCurrentNetworkTurn() / targetTurn) * 100);
+            this.loadingScreenApi?.setSynchronizing?.(percent);
+            // Also report upstream so the players *waiting* on this rejoin can
+            // see the progress bar, not just the rejoiner. Reuses the ordinary
+            // "loaded" message: checkAllLoaded() no-ops once instance.started,
+            // so mid-game use only updates the value broadcast in RPL_LOAD_INFO.
+            // Sent via gservCon directly, so it is unaffected by the
+            // setSuppressNetworkSends(true) that gates lockstep submissions
+            // for the duration of the catch-up.
+            this.gservCon.sendLoadedPercent(percent);
         };
         while (lockstepManager.getCurrentNetworkTurn() < targetTurn) {
             if (cancellationToken.isCancelled()) {

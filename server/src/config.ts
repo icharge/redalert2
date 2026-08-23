@@ -64,6 +64,10 @@ export interface ServerConfig {
     pauseCountdownMillis: number;
     pauseCooldownMillis: number;
     rejoinResumeCountdownMillis: number;
+    voteMinRequiredPlayers: number;
+    voteExtensionsMax: number;
+    voteExtensionSeconds: number;
+    voteOpenDelayMillis: number;
     gservRateLimitEnabled: boolean;
     gservStatsIntervalSeconds: number;
     loginMaxPerMin: number;
@@ -146,6 +150,29 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
         // Countdown between a rejoining player signalling ready and the relay
         // resuming, so everyone is ready to continue.
         rejoinResumeCountdownMillis: Number(env.GSERV_REJOIN_RESUME_COUNTDOWN_MILLIS ?? 3000),
+        // Kick/wait voting on a mid-game departure. Only offered when at least
+        // this many players are still required by the relay at the moment
+        // someone drops -- below it (i.e. a 1v1) a "majority" would be a single
+        // player unilaterally deciding another's fate, so the plain grace timer
+        // decides instead.
+        voteMinRequiredPlayers: Number(env.GSERV_VOTE_MIN_REQUIRED_PLAYERS ?? 3),
+        // A "wait" vote vetoes a kick, but only while extensions remain: each
+        // one pushes the departed player's deadline out by
+        // voteExtensionSeconds. Once the pool is spent, wait votes are advisory
+        // and a kick majority carries -- so one holdout cannot stall a match
+        // indefinitely, but the group can still buy a reconnecting player a
+        // bounded amount of extra time.
+        voteExtensionsMax: Number(env.GSERV_VOTE_EXTENSIONS_MAX ?? 2),
+        voteExtensionSeconds: Number(env.GSERV_VOTE_EXTENSION_SECONDS ?? 30),
+        // A drop is very often just a brief network blip that resolves itself
+        // in a few seconds -- the connection-info screen can already open off
+        // a much shorter lag heuristic client-side (LAG_STATE_THRESH_MILLIS,
+        // ~1s) or the moment the socket actually closes, well before anyone
+        // should be asked to weigh in on kicking someone. The vote itself only
+        // becomes available after this much longer delay, and only if the
+        // player is still away when it elapses -- a reconnect within the
+        // window cancels it outright, never opening at all.
+        voteOpenDelayMillis: Number(env.GSERV_VOTE_OPEN_DELAY_MILLIS ?? 10_000),
         // Disable per-connection flood limiting on the match relay (testing
         // only): set GSERV_RATE_LIMIT=disabled to turn it off.
         gservRateLimitEnabled: env.GSERV_RATE_LIMIT !== "disabled",
