@@ -40,7 +40,7 @@ const channelLabels = new Map<ChannelType, string>([
     [ChannelType.CreditTicks, "GUI:CreditsVolume"],
 ]);
 export const SoundOpts: React.FC<SoundOptsProps> = ({ strings, music, mixer, localPrefs }) => {
-    const [muteOnBlur, setMuteOnBlur] = useState(() => localPrefs?.getBool(StorageKey.MuteMusicOnBlur, true) ?? true);
+    const [muteOnBlur, setMuteOnBlur] = useState(() => localPrefs?.getBool(StorageKey.MuteMusicOnBlur, false) ?? false);
     return (<div className="opts sound-opts">
     <div className="sound-sliders">
       {[...channelLabels].map(([channelType, labelKey]) => (<div className="slider-item" key={channelType}>

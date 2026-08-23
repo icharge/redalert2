@@ -28,7 +28,7 @@ export class FocusMusicMuter {
     }
     private handleChange = (): void => {
         const isUnfocused = this.doc.hidden || !this.doc.hasFocus();
-        const enabled = this.localPrefs.getBool(StorageKey.MuteMusicOnBlur, true);
+        const enabled = this.localPrefs.getBool(StorageKey.MuteMusicOnBlur, false);
         this.applyMute(enabled && isUnfocused);
     };
     private applyMute(mute: boolean): void {
