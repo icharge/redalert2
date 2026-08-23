@@ -113,6 +113,7 @@ export class TestEntryScreen implements Screen {
         ];
         const sceneButtons: SidebarButton[] = [
             this.createRouteButton('Lobby Test', 'Open the lobby test tool', '/lobbytest'),
+            this.createRouteButton('Connection Info Test', 'Simulate disconnects, rejoin progress and kick/wait votes on the Connection Info screen', '/coninfotest'),
             this.createRouteButton('World Test', 'Open the world scene test tool', '/worldscenetest'),
             this.createRouteButton('Movement Test', 'Open the unit movement test tool', '/unitmovementtest'),
             this.createRouteButton('Scene Sandbox', 'Open the map sandbox where units can be placed manually', '/scenesandbox'),

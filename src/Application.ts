@@ -43,6 +43,7 @@ function isEditableElementFocused(): boolean {
 const optionalDevModuleImporters: Record<string, () => Promise<any>> = {
     './tools/VxlTester': () => import('./tools/VxlTester'),
     './tools/LobbyFormTester': () => import('./tools/LobbyFormTester'),
+    './tools/ConInfoFormTester': () => import('./tools/ConInfoFormTester'),
     './tools/SoundTester': () => import('./tools/SoundTester'),
     './tools/BuildingTester': () => import('./tools/BuildingTester'),
     './tools/InfantryTester': () => import('./tools/InfantryTester'),
@@ -976,6 +977,23 @@ export class Application {
             const { LobbyFormTester } = await this.importOptionalDevModule('./tools/LobbyFormTester');
             await LobbyFormTester.main(this.rootEl!, this.strings, this.createTestToolContext());
             this.currentRouteHandler = LobbyFormTester;
+        });
+        // The in-game Connection Info screen, driven by a simulated match: lets
+        // the pause/rejoin/kick-vote UI be inspected without three real clients
+        // and a real disconnect, which is otherwise the only way to see it.
+        this.routing.addRoute("/coninfotest", async () => {
+            if (!Engine.vfs) {
+                throw new Error("Original game files must be provided.");
+            }
+            console.log('[Application] Initializing ConInfoFormTester');
+            const { TestToolSupport } = await this.importOptionalDevModule('./tools/TestToolSupport');
+            // The screen lives in the in-game HUD, so a real Hud has to be
+            // stood up around it, and that needs a map — same shape as
+            // /shptest, which is the existing precedent for a standalone Hud.
+            const gameMap = await TestToolSupport.loadMap(this.createTestToolContext().mapResourceLoader!, "mp03t4.map");
+            const { ConInfoFormTester } = await this.importOptionalDevModule('./tools/ConInfoFormTester');
+            await ConInfoFormTester.main(gameMap, this.rootEl!, this.strings, this.createTestToolContext());
+            this.currentRouteHandler = ConInfoFormTester;
         });
         this.routing.addRoute("/soundtest", async () => {
             if (!Engine.vfs) {
