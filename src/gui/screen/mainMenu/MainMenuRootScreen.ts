@@ -363,7 +363,7 @@ export class MainMenuRootScreen extends RootScreen {
                     screen = new screenClass(
                         this.config.unrankedQueueEnabled,
                         this.appVersion,
-                        Engine.getActiveMod?.() ?? '',
+                        Engine.getModHashString(),
                         this.appLocale,
                         rules,
                         services.wolService,
@@ -383,7 +383,7 @@ export class MainMenuRootScreen extends RootScreen {
                     screen = new screenClass(
                         this.config.botsEnabled,
                         this.appVersion,
-                        Engine.getActiveMod?.() ?? '',
+                        Engine.getModHashString(),
                         activeModMeta,
                         this.rootController,
                         errorHandler,
@@ -394,7 +394,6 @@ export class MainMenuRootScreen extends RootScreen {
                         services.wolService,
                         services.wladderService,
                         services.mapTransferService,
-                        services.gservCon,
                         rules,
                         new (await import('../../../network/gameopt/Parser.js')).Parser(),
                         new (await import('../../../network/gameopt/Serializer.js')).Serializer(),
@@ -408,7 +407,7 @@ export class MainMenuRootScreen extends RootScreen {
                     break;
                 case MainMenuScreenType.CustomGame:
                     screen = new screenClass(
-                        Engine.getActiveMod?.() ?? '',
+                        Engine.getModHashString(),
                         this.strings,
                         services.wolCon,
                         services.wolService,
@@ -441,7 +440,11 @@ export class MainMenuRootScreen extends RootScreen {
             const rules = new Rules(Engine.getRules());
             const replayManager = (this as any).replayManager;
             const engineVersion = this.appVersion;
-            const engineModHash = Engine.getActiveMod?.() ?? '';
+            // Engine.getModHashString() gives the CRC of the currently loaded rules,
+            // not Engine.getActiveMod() (the mod *name*) which this used to call --
+            // a same-named mistake that meant every modHash comparison fed from
+            // here compared a name string against a hash and never matched.
+            const engineModHash = Engine.getModHashString();
             screen = new screenClass(engineVersion, engineModHash, undefined, undefined, this.rootController, this.strings, this.jsxRenderer, errorHandler, this.messageBoxApi, replayManager, this.uiScene, rules);
         }
         else if (screenType === MainMenuScreenType.OptionsManageGame) {

@@ -588,14 +588,6 @@ export class WolConnection {
         }
     }
 
-    sendGservPing(playerName: string, pingMillis: number): void {
-        if (!this.currentGameChannel) {
-            throw new Error("No game channel active");
-        }
-        const escapedChannel = IrcProtocol.escapeChannelName(this.currentGameChannel);
-        this.con.sendMessage(`gping ${escapedChannel} ${playerName} ` + Math.floor(pingMillis));
-    }
-
     startGame(players: string[]): void {
         if (!this.currentGameChannel) {
             throw new Error("No game channel active");
