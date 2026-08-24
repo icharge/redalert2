@@ -57,7 +57,7 @@ export class Sound {
         this.audioVisualRules = audioVisualRules;
         this.document = document;
     }
-    private handleClick = (event: Event): void => {
+    private handleMouseDown = (event: Event): void => {
         const target = event.target as Element;
         if (target.matches("button, .menu-button:not(.disabled)")) {
             this.play(SoundKey.GUIMainButtonSound, ChannelType.Ui);
@@ -77,11 +77,11 @@ export class Sound {
     };
     initialize(): void {
         this.audioSystem.initialize();
-        this.document.addEventListener("click", this.handleClick);
+        this.document.addEventListener("mousedown", this.handleMouseDown);
     }
     dispose(): void {
         this.audioSystem.dispose();
-        this.document.removeEventListener("click", this.handleClick);
+        this.document.removeEventListener("mousedown", this.handleMouseDown);
     }
     private getSoundKey(key: SoundKey | string): string | undefined {
         let soundKey: string | undefined;

@@ -12,7 +12,6 @@ import { ManageGameScreen } from './gui/screen/options/ManageGameScreen.js';
 import { Config } from './Config.js';
 import { Strings } from './data/Strings.js';
 import { Engine } from './engine/Engine.js';
-import { MusicType } from './engine/sound/Music.js';
 import { MessageBoxApi } from './gui/component/MessageBoxApi.js';
 import { ToastApi } from './gui/component/ToastApi';
 import { ShpFile } from './data/ShpFile.js';
@@ -752,13 +751,13 @@ export class Gui {
     }
     private createDefaultMixer(): Mixer {
         const mixer = new Mixer();
-        mixer.setVolume(ChannelType.Master, 0.4);
-        mixer.setVolume(ChannelType.CreditTicks, 0.2);
-        mixer.setVolume(ChannelType.Music, 0.3);
-        mixer.setVolume(ChannelType.Ambient, 0.3);
-        mixer.setVolume(ChannelType.Effect, 0.5);
-        mixer.setVolume(ChannelType.Voice, 0.7);
-        mixer.setVolume(ChannelType.Ui, 0.5);
+        mixer.setVolume(ChannelType.Master, 1);
+        mixer.setVolume(ChannelType.CreditTicks, 0.5);
+        mixer.setVolume(ChannelType.Music, 0.6);
+        mixer.setVolume(ChannelType.Ambient, 0.7);
+        mixer.setVolume(ChannelType.Effect, 0.8);
+        mixer.setVolume(ChannelType.Voice, 0.8);
+        mixer.setVolume(ChannelType.Ui, 0.7);
         console.log('[Gui] Created default mixer settings');
         return mixer;
     }

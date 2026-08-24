@@ -31,7 +31,7 @@ export class Music {
     private musicSpecs: MusicSpecs;
     private playlist: MusicSpec[] = [];
     private currentPlaylistIdx: number = -1;
-    private shuffle: boolean = false;
+    private shuffle: boolean = true;
     private repeat: boolean = false;
     private currentMusicType?: MusicType;
     private initialRepeatName?: string;
