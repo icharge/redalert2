@@ -41,35 +41,38 @@ export class GameResBoxApi {
                     if (dataTransfer.items && dataTransfer.items.length > 0) {
                         try {
                             const handle = await (dataTransfer.items[0] as any).getAsFileSystemHandle();
-                            if (!handle)
-                                return;
-                            handleSelection(handle as FileSystemDirectoryHandle | FileSystemFileHandle);
+                            return handle as FileSystemDirectoryHandle | FileSystemFileHandle | undefined;
                         }
                         catch (e) {
                             console.error("Error getting handle from drop:", e);
                         }
                     }
+                    return undefined;
                 },
                 onBrowseFolder: async () => {
                     try {
-                        const handle = await this.fsAccessLib.showDirectoryPicker({ _preferPolyfill: true });
-                        handleSelection(handle);
+                        return await this.fsAccessLib.showDirectoryPicker({ _preferPolyfill: true }) as FileSystemDirectoryHandle | undefined;
                     }
                     catch (e) {
                         console.error("Error browsing folder:", e);
+                        return undefined;
                     }
                 },
                 onBrowseArchive: async () => {
                     try {
                         const handle = await FileSystemUtil.showArchivePicker(this.fsAccessLib as any);
-                        handleSelection(handle as FileSystemFileHandle);
+                        return handle as FileSystemFileHandle | undefined;
                     }
                     catch (e) {
                         console.error("Error browsing archive:", e);
+                        return undefined;
                     }
                 },
                 onDownloadArchive: async (url: URL) => {
                     handleSelection(url);
+                },
+                onProceed: async (selection: FileSystemHandle | undefined) => {
+                    handleSelection(selection as GameResSourceSelection);
                 },
                 onClose: () => {
                     handleSelection(undefined);
