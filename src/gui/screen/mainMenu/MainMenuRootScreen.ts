@@ -102,7 +102,7 @@ export class MainMenuRootScreen extends RootScreen {
             this.mainMenu.setViewport(this.uiScene.menuViewport);
         }
         if (this.mainMenuCtrl) {
-            this.mainMenuCtrl.rerenderCurrentScreen(true);
+            this.mainMenuCtrl.rerenderCurrentScreen();
         }
     }
     async onEnter(params?: any): Promise<void> {
