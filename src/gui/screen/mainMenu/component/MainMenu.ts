@@ -224,11 +224,18 @@ export class MainMenu extends UiObject {
     showVersion(version: string): void {
         console.log('[MainMenu] showVersion called, version:', version, 'version element exists:', !!this.version);
         this.version.getUiObject().setVisible(true);
-        this.version.getElement().applyOptions((options: any) => (options.value = version));
+        this.version.getElement().applyOptions((options: any) => {
+            options.value = version;
+            options.dimmed = false;
+        });
         console.log('[MainMenu] Version shown:', version);
     }
     hideVersion(): void {
         this.version.getUiObject().setVisible(false);
+    }
+    dimVersion(): void {
+        this.version.getUiObject().setVisible(true);
+        this.version.getElement().applyOptions((options: any) => (options.dimmed = true));
     }
     setSidebarMpContent(content: SidebarMpContent): void {
         this.sidebarMpSlotContent = content;

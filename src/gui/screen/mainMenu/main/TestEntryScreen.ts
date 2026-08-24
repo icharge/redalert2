@@ -32,6 +32,8 @@ export class TestEntryScreen implements Screen {
         this.renderButtons();
         if (this.controller) {
             this.controller.toggleMainVideo(false);
+            // Version string is visible on every main-menu screen (see MainMenuRootScreen.createViewAndController);
+            // Test Entry just makes it fully opaque instead of dimmed.
             this.controller.showVersion(this.appVersion);
         }
     }
@@ -139,7 +141,7 @@ export class TestEntryScreen implements Screen {
         if (this.controller) {
             await this.controller.hideSidebarButtons();
             this.controller.setSidebarTitle('');
-            this.controller.hideVersion();
+            this.controller.dimVersion();
         }
     }
     async onStack(): Promise<void> {

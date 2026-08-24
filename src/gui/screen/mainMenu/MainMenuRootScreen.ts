@@ -81,6 +81,7 @@ export class MainMenuRootScreen extends RootScreen {
         console.log('[MainMenuRootScreen] Creating view and controller');
         this.createView();
         this.mainMenuCtrl = new MainMenuController(this.mainMenu, this.sound, this.music);
+        this.mainMenuCtrl.showVersion(this.appVersion);
         const debugRoot = ((window as any).__ra2debug ??= {});
         debugRoot.mainMenu = this.mainMenu;
         debugRoot.mainMenuController = this.mainMenuCtrl;

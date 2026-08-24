@@ -215,6 +215,12 @@ html:-moz-full-screen body {
 
 #ra2web-root .menu-version-string {
     text-align: center;
+    opacity: 1;
+    transition: opacity 300ms ease;
+}
+
+#ra2web-root .menu-version-string.menu-version-string--dimmed {
+    opacity: 0.4;
 }
 
 #ra2web-root .menu-mp-slot {

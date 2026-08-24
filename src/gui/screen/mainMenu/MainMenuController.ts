@@ -120,6 +120,12 @@ export class MainMenuController extends Controller {
             this.mainMenu.hideVersion();
         }
     }
+    dimVersion(): void {
+        console.log('[MainMenuController] Dimming version');
+        if (this.mainMenu && this.mainMenu.dimVersion) {
+            this.mainMenu.dimVersion();
+        }
+    }
     setSidebarTitle(title: string): void {
         console.log(`[MainMenuController] Setting sidebar title: ${title}`);
         if (this.mainMenu && this.mainMenu.setSidebarTitle) {
