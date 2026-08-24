@@ -72,7 +72,7 @@ describe("E2E: kick/wait voting over the real gserv stack", () => {
             gserv.onVoteUpdate.subscribe((tally: VoteTally) => tallies.push(tally));
             gserv.onPlayerGaveUp.subscribe((nick: string) => gaveUp.push(nick));
             server.handleMessage(client, `ticket ${instance.tickets.get(nick)}`);
-            server.handleMessage(client, `join ${instance.gameId} 0.83 `);
+            server.handleMessage(client, `join ${instance.gameId}`);
             const pump = makePump(irc, socket);
             pump();
             return { socket, client, irc, gserv, pump, sessionsOpened, sessionsClosed, tallies, gaveUp };

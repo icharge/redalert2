@@ -32,7 +32,7 @@ function join(server: GservServer, manager: GservManager, instance: GservInstanc
     const socket = new FakeSocket();
     const client = server.handleOpen(socket);
     server.handleMessage(client, `ticket ${ticket}`);
-    server.handleMessage(client, `join ${instance.gameId} 0.83 `);
+    server.handleMessage(client, `join ${instance.gameId}`);
     return { socket, client };
 }
 

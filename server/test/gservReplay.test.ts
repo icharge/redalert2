@@ -49,7 +49,7 @@ function join(server: GservServer, manager: GservManager, instance: GservInstanc
     const socket = new FakeSocket();
     const client = server.handleOpen(socket);
     server.handleMessage(client, `ticket ${ticket}`);
-    server.handleMessage(client, `join ${instance.gameId} 0.83 `);
+    server.handleMessage(client, `join ${instance.gameId}`);
     return { socket, client };
 }
 
@@ -152,8 +152,9 @@ describe("GservServer action relay", () => {
         const text = readFileSync(files[0], "utf8");
         const lines = text.split("\n").filter(Boolean);
         expect(lines[0]).toBe("RA2TSREPL_v6");
-        expect(lines[1]).toMatch(/^ENGINE \d+\.\d+( \d+)?$/);
-        expect(lines[1]).toBe("ENGINE 0.83 0");
+        // Full config.gameVersion now, not truncated to major.minor.
+        expect(lines[1]).toMatch(/^ENGINE \d+\.\d+\.\d+(-[\w.]+)?( \d+)?$/);
+        expect(lines[1]).toBe("ENGINE 0.83.4 0");
         expect(lines[2]).toMatch(/^g1-[\w-]+ \d+ .+$/);
 
         // Turn-actions event for turn 0 must be at tick (0+2)*S.

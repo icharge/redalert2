@@ -163,7 +163,11 @@ export class GservReplayRecorder {
     // point, well before the instance's normal end-of-game finalize() runs.
     serialize(): string {
         this.events.sort((a, b) => a.tickNo - b.tickNo || a.type - b.type);
-        const engineVersion = this.options.gameVersion.split(".").slice(0, 2).join(".");
+        // Full major.minor.patch-githash (config.gameVersion), not truncated
+        // to major.minor: an investigator diffing a desync report against its
+        // attached replay needs to know the exact build that produced it, not
+        // just the release family.
+        const engineVersion = this.options.gameVersion;
         const modHash = this.options.modHash ?? "0";
         const lines: string[] = [
             "RA2TSREPL_v" + REPLAY_VERSION,

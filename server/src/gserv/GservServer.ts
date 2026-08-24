@@ -528,7 +528,7 @@ export class GservServer {
             client.socket.send(`:${this.serverName} ${Code.RPL_INSTANCE_NONEXISTENT} ${client.nick} :no such instance\r\n`);
             return;
         }
-        if (version && version.split(".").slice(0, 2).join(".") !== this.config.gameVersion.split(".").slice(0, 2).join(".")) {
+        if (version && !this.isVersionCompatible(version, this.config.gameVersion)) {
             client.socket.send(`:${this.serverName} ${Code.RPL_INSTANCE_VERS_MISMATCH} ${client.nick} :version mismatch\r\n`);
             return;
         }
@@ -801,6 +801,23 @@ export class GservServer {
             }
         }
         return false;
+    }
+
+    // Compares a client-submitted "major.minor.patch-githash" version string
+    // against this.config.gameVersion. If the configured expected version
+    // carries a git-hash suffix, the match must be exact (same build) --
+    // deterministic lockstep means even two builds of the same patch could
+    // in principle differ in game logic, so an operator who wants that
+    // guarantee sets GAME_VERSION to the exact build they deployed (e.g.
+    // "0.83.4-a1b2c3d"). If they left the hash off (the default,
+    // "0.83.4"), only major.minor.patch need match, so any build of that
+    // release can connect -- this keeps every existing deployment and test
+    // that doesn't configure GAME_VERSION working exactly as before.
+    private isVersionCompatible(clientVersion: string, expectedVersion: string): boolean {
+        if (expectedVersion.includes("-")) {
+            return clientVersion === expectedVersion;
+        }
+        return clientVersion.split("-")[0] === expectedVersion;
     }
 
     // Whether a departure in this instance should open a kick/wait vote at all.

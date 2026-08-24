@@ -220,6 +220,16 @@ export class Engine {
         }
         return this.modHash;
     }
+    // Non-throwing counterpart to getModHash(), for callers that need "the
+    // current mod hash as a comparable string, or '' if rules aren't loaded
+    // yet" -- e.g. threading it into a screen constructed before a game
+    // starts. Several call sites used to call getActiveMod() here instead,
+    // which returns the *mod name* (e.g. "myMod"), not this CRC -- a
+    // same-named mistake that made every modHash comparison fed from those
+    // call sites compare a name against a hash and never usefully match.
+    static getModHashString(): string {
+        return this.modHash !== undefined ? String(this.modHash) : '';
+    }
     static getActiveMod(): string | undefined {
         return this.activeMod;
     }

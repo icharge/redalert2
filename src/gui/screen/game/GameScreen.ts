@@ -287,7 +287,12 @@ export class GameScreen extends RootScreen {
         replay.gameTimestamp = Math.floor(timestamp / 1000);
         replay.gameOpts = gameOpts;
         replay.engineVersion = this.engineVersion;
-        replay.modHash = this.engineModHash;
+        // Read live rather than this.engineModHash: GameScreen is a singleton
+        // constructed once during Gui.init(), before any specific game (and
+        // its mod, if any) is selected, so the constructor-time value can be
+        // stale by the time a game actually starts and rules are (re)loaded
+        // for whatever mod is active.
+        replay.modHash = Engine.getModHashString();
         replay.timestamp = Date.now();
         const playerNames = (gameOpts.humanPlayers ?? []).map((p: any) => p.name).join(' vs ');
         const mapTitle = gameOpts.mapTitle ?? gameOpts.mapName ?? 'Unknown';
@@ -885,7 +890,7 @@ export class GameScreen extends RootScreen {
             while (retries--) {
                 try {
                     console.log(`Attempting to join game with id ${gameId}...`, retries + ' retries left');
-                    await this.gservCon.joinGame(gameId, this.engineVersion, this.engineModHash);
+                    await this.gservCon.joinGame(gameId, this.engineVersion, Engine.getModHashString());
                     return;
                 }
                 catch (error) {
@@ -896,7 +901,7 @@ export class GameScreen extends RootScreen {
             this.localPrefs.removeItem(StorageKey.LastConnection);
             throw lastError;
         }
-        await this.gservCon.joinGame(gameId, this.engineVersion, this.engineModHash);
+        await this.gservCon.joinGame(gameId, this.engineVersion, Engine.getModHashString());
     }
     private async transferAndLoadMapFile(params: any, mapName: string, mapDigest: string, cancellationToken: any): Promise<any> {
         let mapFileData: any;

@@ -79,6 +79,7 @@ interface RuntimeVars {
 }
 interface MessageBoxApi {
     show(message: string, buttonText: string, onClose?: () => void): void;
+    confirm(message: string, confirmLabel: string, cancelLabel: string): Promise<boolean>;
 }
 interface UiAnimationLoop {
     stop(): void;
@@ -247,21 +248,36 @@ export class ReplayScreen extends RootScreen {
         this.pointer.setVisible(false);
         await this.music?.play(MusicType.Loading);
         const { gameId, gameTimestamp, gameOpts, engineVersion, modHash } = params.replay;
-        let errorMessage: string | undefined;
-        if (engineVersion.split(".").slice(0, 2).join(".") !== this.engineVersion) {
-            errorMessage = this.strings.get("GUI:ReplayVersionMismatch", engineVersion);
+        // Compared as full major.minor.patch-githash strings now (both sides
+        // are stamped/threaded fully -- see Engine.getModHashString()'s doc
+        // comment and Gui.ts's ReplayScreen/GameScreen construction), not the
+        // major.minor-only truncation this used to do. A mismatch no longer
+        // hard-blocks playback: this is the one authoritative compatibility
+        // gate for every way a replay can be opened (the in-client list, a
+        // deep link, ...), so it has to be the place that asks rather than
+        // refuses -- most version/build differences don't actually break
+        // playback, and the player is in the best position to just try it.
+        let confirmMessageKey: string | undefined;
+        let confirmMessageArg: string | undefined;
+        if (engineVersion !== this.engineVersion) {
+            confirmMessageKey = "GUI:ReplayVersionMismatchConfirm";
+            confirmMessageArg = engineVersion;
         }
         // Only gate on the mod hash when the client itself runs a mod: server
         // replays record "0" (or the expected mod hash) as the sentinel for
         // an unmodded game, which never equals the client's empty mod hash.
         else if (this.engineModHash && modHash !== this.engineModHash) {
-            errorMessage = this.strings.get("GUI:ReplayModMismatch");
+            confirmMessageKey = "GUI:ReplayModMismatchConfirm";
         }
-        if (errorMessage) {
-            this.messageBoxApi.show(errorMessage, this.strings.get("GUI:Ok"), () => {
+        if (confirmMessageKey) {
+            const message = confirmMessageArg !== undefined
+                ? this.strings.get(confirmMessageKey, confirmMessageArg)
+                : this.strings.get(confirmMessageKey);
+            const continueAnyway = await this.messageBoxApi.confirm(message, this.strings.get("GUI:ModActionLoadAnyway"), this.strings.get("GUI:Close"));
+            if (!continueAnyway) {
                 this.leaveAction();
-            });
-            return;
+                return;
+            }
         }
         const loadingScreenApi = this.loadingScreenApiFactory.create(LoadingScreenType.Replay);
         this.loadingScreenApi = loadingScreenApi;

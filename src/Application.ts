@@ -930,16 +930,14 @@ export class Application {
             showError(String(error instanceof Error ? error.message : error));
             return;
         }
-        const engineVersion = Engine.getVersion();
-        const engineModHash = Engine.getActiveMod?.() ?? '';
-        if (replay.engineVersion !== engineVersion) {
-            showError(this.strings.get("GUI:ReplayVersionMismatch", replay.engineVersion));
-            return;
-        }
-        if (engineModHash && replay.modHash !== engineModHash) {
-            showError(this.strings.get("GUI:ReplayModMismatch"));
-            return;
-        }
+        // No version/modHash check here: ScreenType.Replay's own onEnter is the
+        // single authoritative compatibility gate (it runs for every entry
+        // point -- this deep link, the in-client replay list, and any future
+        // one) and, unlike this duplicate, actually offers a confirm dialog
+        // instead of a hard block. This used to also duplicate that gate, with
+        // its own copy of the getActiveMod()-instead-of-getModHash() bug (see
+        // Engine.getModHashString()'s doc comment) -- comparing a mod name to
+        // a CRC, which could never match.
         this.gui?.getRootController().goToScreen(ScreenType.Replay, { replay });
     }
 

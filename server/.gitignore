@@ -4,6 +4,8 @@ data/
 logs/
 replays/
 !scripts/
+error-reports/
+test/tmp-error-reports*
 
 # Environment variables
 .env
