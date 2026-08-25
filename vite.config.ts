@@ -56,6 +56,7 @@ const backendProxyTarget = `${hasTls ? 'https' : 'http'}://127.0.0.1:9090`;
 const backendProxy = Object.fromEntries([
     '/login', '/register', '/servers.ini', '/admin',
     '/replays', '/ladder', '/wgameres', '/errorreport', '/auth', '/health',
+    '/maps', '/maptransfer',
 ].map((path) => [path, {
     target: backendProxyTarget,
     changeOrigin: true,
