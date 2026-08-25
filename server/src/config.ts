@@ -94,6 +94,14 @@ export interface ServerConfig {
     desyncReportTimeoutMillis: number;
     maxErrorReportBytes: number;
     errorReportMaxPerMin: number;
+    // Map service (content-addressed map store + live maps.pkt + game-time
+    // map transfer). Blobs live on disk; metadata/stats/ratings in the DB.
+    mapServiceEnabled: boolean;
+    mapsDir: string;
+    /** Whether freshly uploaded maps are publicly visible without moderation. */
+    mapPublishDefault: boolean;
+    /** Upper bound for a single uploaded/transferred map blob. */
+    mapMaxUploadBytes: number;
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env as Record<string, string | undefined>): ServerConfig {
@@ -231,5 +239,15 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
         maxErrorReportBytes: Number(env.GSERV_MAX_ERROR_REPORT_BYTES ?? 4 * 1024 * 1024),
         // Per-IP limiter (no mandatory auth on this endpoint, so no account to key by).
         errorReportMaxPerMin: Number(env.GSERV_ERROR_REPORT_MAX_PER_MIN ?? 20),
+        // Map service: set MAP_SERVICE=disabled to turn the whole feature off
+        // (routes 404 and /servers.ini stops advertising mapTransferUrl).
+        mapServiceEnabled: env.MAP_SERVICE !== "disabled",
+        mapsDir: env.MAPS_DIR ?? path.join(import.meta.dir, "..", "data", "maps"),
+        // Moderation is opt-in: publish immediately unless MAP_PUBLISH_DEFAULT=false.
+        mapPublishDefault: env.MAP_PUBLISH_DEFAULT !== "false",
+        // The client's lobby only offers transfer for maps up to
+        // MAX_MAP_TRANSFER_BYTES (2 MiB); 4 MiB headroom keeps the store
+        // useful for direct uploads/browsing beyond the lobby path.
+        mapMaxUploadBytes: Number(env.MAP_MAX_UPLOAD_BYTES ?? 4 * 1024 * 1024),
     };
 }

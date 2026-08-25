@@ -16,7 +16,9 @@ import { WolServer } from "../server/WolServer";
 import { numeric, WOL_SERVER_NAME } from "../protocol/replies";
 import * as Code from "../protocol/wolCodes";
 import { handleAdmin } from "./adminRoutes";
+import { handleMapTransfer, handleMaps } from "./mapRoutes";
 import { corsHeaders, withCors } from "./cors";
+import { MapStore } from "../mapstore/MapStore";
 
 function json(body: unknown, status = 200): Response {
     return new Response(JSON.stringify(body), {
@@ -111,6 +113,11 @@ export interface HttpDeps {
     // ask; a report submitted with no live instance to query, or in a test
     // that doesn't wire this up, just never gets a replay attached.
     replaySnapshot?: (gameId: string) => string | undefined;
+    // Map service (content-addressed map store + live maps.pkt + game-time
+    // map transfer). Absent when the feature is disabled; the /maps* and
+    // /maptransfer* routes then 404 and /servers.ini stops advertising
+    // mapTransferUrl.
+    maps?: MapStore;
 }
 
 export async function handleHttp(req: Request, deps: HttpDeps, config: ServerConfig, log: Logger = makeLogger("error", "http")): Promise<Response> {
@@ -182,6 +189,9 @@ export async function handleHttp(req: Request, deps: HttpDeps, config: ServerCon
         const externalUrl = externalUrlFor(req, config);
         const baseUrl = httpUrlOf(externalUrl);
         const wsUrl = wolExternalUrlFor(req, config) + config.wolUrlPath;
+        const mapTransferLine = config.mapServiceEnabled && deps.maps
+            ? `mapTransferUrl="${baseUrl}/maptransfer"\n`
+            : "";
         const ini = `[local]
 label="Local Dev"
 available=yes
@@ -192,7 +202,7 @@ apiRegUrl="${baseUrl}/register"
 wladderUrl="${baseUrl}/ladder"
 wgameresUrl="${baseUrl}/wgameres"
 errorReportUrl="${baseUrl}/errorreport"
-`;
+${mapTransferLine}`;
         return withCors(new Response(ini, { headers: { "Content-Type": "text/plain" } }), config, req);
     }
 
@@ -204,7 +214,17 @@ errorReportUrl="${baseUrl}/errorreport"
             accounts: deps.accounts,
             wol: deps.wol,
             replaysDir: config.replaysDir,
+            maps: deps.maps,
         }, config, pathParts, log);
+    }
+    // Map service (see mapRoutes.ts). deps.maps is absent when MAP_SERVICE=
+    // disabled, so these namespaces 404 without touching any other routing.
+    if (deps.maps && (pathParts[0] === "maps" || url.pathname === "/maps.pkt")) {
+        const mapParts = url.pathname === "/maps.pkt" ? ["maps", "pkt"] : pathParts;
+        return handleMaps(req, { sessions: deps.sessions, maps: deps.maps }, config, mapParts, log);
+    }
+    if (deps.maps && pathParts[0] === "maptransfer") {
+        return handleMapTransfer(req, { sessions: deps.sessions, maps: deps.maps }, config, pathParts, log);
     }
     // GET /replays/{gameId} — public .rpl download powering the in-game
     // replay deeplink (#/replay/...). Replays are game recordings, not
