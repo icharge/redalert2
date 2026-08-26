@@ -1,5 +1,5 @@
 import { EventDispatcher } from "@/util/event";
-import { IrcConnection, IrcRawReply } from "@/network/IrcConnection";
+import { IrcConnection, IrcRawReply, type ConnectOptions } from "@/network/IrcConnection";
 import { WolError } from "@/network/WolError";
 import { isNotNullOrUndefined } from "@/util/typeGuard";
 import { ChatRecipientType, ChatMessage } from "@/network/chat/ChatMessage";
@@ -10,9 +10,10 @@ import { IrcProtocol } from "@/network/IrcProtocol";
 import { WolLocale } from "@/network/WolLocale";
 import { MATCH_BOT_NAME } from "@/network/WolConfig";
 import { Parser } from "@/network/gameopt/Parser";
-import { Serializer } from "@/network/gameopt/Serializer";
+import { Serializer, type GameTopic } from "@/network/gameopt/Serializer";
 import { escape } from "@puzzl/core/lib/regexp";
 import { WolGameReport } from "@/network/WolGameReport";
+import type { Logger } from "@/network/Logger";
 
 export enum WolHasMapStatus {
     NoMap = 0,
@@ -141,7 +142,7 @@ export class WolConnection {
         return this._onPartyUpdate.asEvent();
     }
 
-    static factory(logger: any): WolConnection {
+    static factory(logger: Logger): WolConnection {
         return new this(new IrcConnection({
             mode: "text",
             logFilter: (message) => message
@@ -156,8 +157,8 @@ export class WolConnection {
         }, logger), logger);
     }
 
-    constructor(private con: IrcConnection, private logger: any) {
-        this.handleMessage = (message: any) => {
+    constructor(private con: IrcConnection, private logger: Logger) {
+        this.handleMessage = (message: string | Uint8Array) => {
             if (typeof message === "string") {
                 const parts = message.split(" ");
                 const command = parts[0]?.toLowerCase();
@@ -237,7 +238,7 @@ export class WolConnection {
         };
     }
 
-    private handleMessage: (message: any) => void;
+    private handleMessage: (message: string | Uint8Array) => void;
     private handleClose: () => void;
 
     getCurrentUser(): string | undefined {
@@ -256,7 +257,7 @@ export class WolConnection {
         return this.serverName;
     }
 
-    async connect(url: string, options?: any): Promise<void> {
+    async connect(url: string, options?: ConnectOptions): Promise<void> {
         this.con.onMessage.subscribe(this.handleMessage);
         this.con.onClose.subscribeOnce(this.handleClose);
         await this.con.connect(url, options);
@@ -343,11 +344,11 @@ export class WolConnection {
         const command = "join " + escapedChannel + (password !== undefined ? " " + password : "");
         const replies = await this.con.sendCommand(command, {
             replyCodes: [
-                [WolCode.ERR_NOSUCHCHANNEL, (reply) => !!reply.params && reply.params[1] === this.currentUser && reply.params[2] === escapedChannel],
+                [WolCode.ERR_NOSUCHCHANNEL, (reply: IrcRawReply) => !!reply.params && reply.params[1] === this.currentUser && reply.params[2] === escapedChannel],
                 WolCode.ERR_BADCHANNELKEY,
                 WolCode.ERR_CHANNELISFULL,
                 WolCode.ERR_BANNEDFROMCHAN,
-            ] as any,
+            ] as [number, (reply: IrcRawReply) => boolean][] | number[],
             replyMatch: new RegExp(`^:${escape(this.currentUser)}![^ ]+ JOIN :[^ ]+ ${escape(escapedChannel)}$`, "i"),
         });
         if (replies[0].code !== undefined) {
@@ -638,7 +639,7 @@ export class WolConnection {
         this.gameOpt(this.currentGameChannel, "G");
     }
 
-    sendGameSlotsInfo(slotsInfo: any): void {
+    sendGameSlotsInfo(slotsInfo: string): void {
         if (!this.currentGameChannel) {
             throw new Error("No game channel active");
         }
@@ -677,7 +678,7 @@ export class WolConnection {
         this.con.sendMessage(`MODE ${IrcProtocol.escapeChannelName(channel)} +l ` + maxPlayers);
     }
 
-    sendGameTopic(topic: any): void {
+    sendGameTopic(topic: GameTopic): void {
         if (!this.currentGameChannel) {
             throw new Error("No game channel active");
         }

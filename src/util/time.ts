@@ -16,12 +16,12 @@ export function yieldToEventLoop(): Promise<void> {
         channel.port2.postMessage(undefined);
     });
 }
-export function throttle<T extends (...args: any[]) => Promise<any>>(func: T, delay: number): T {
+export function throttle<T extends (...args: unknown[]) => Promise<unknown>>(func: T, delay: number): T {
     let inProgress = false;
     let lastCallTime = Number.NEGATIVE_INFINITY;
     const throttledFunc = async function (this: ThisParameterType<T>, ...args: Parameters<T>): Promise<ReturnType<T>> {
         if (inProgress) {
-            return Promise.resolve(undefined as any);
+            return Promise.resolve(undefined as unknown as ReturnType<T>);
         }
         const currentTime = Date.now();
         const timeSinceLastCall = currentTime - lastCallTime;
@@ -39,6 +39,6 @@ export function throttle<T extends (...args: any[]) => Promise<any>>(func: T, de
     } as T;
     return throttledFunc;
 }
-export function createThrottledMethod<T extends (...args: any[]) => Promise<any>>(func: T, delay: number): T {
+export function createThrottledMethod<T extends (...args: unknown[]) => Promise<unknown>>(func: T, delay: number): T {
     return throttle(func, delay);
 }

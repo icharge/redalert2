@@ -10,6 +10,8 @@ import { WolConfig } from "@/network/WolConfig";
 import { WolConnection } from "@/network/WolConnection";
 import { WolGameReport } from "@/network/WolGameReport";
 import type { Region } from "@/network/ServerRegions";
+import type { CancellationToken } from "@puzzl/core/lib/async/cancellation";
+import type { WolLoginQueueEvent } from "@/network/WolConnection";
 
 export interface WolConnectOptions {
     url: string;
@@ -22,6 +24,11 @@ export interface WolLoginResult {
     claimToken?: string;
 }
 
+export interface WolApiResponse extends WolLoginResult {
+    error?: string;
+    errorCode?: string;
+}
+
 export class WolService {
     static MIN_RECONNECT_MILLIS = 5_000;
     static MAX_RECONNECT_MILLIS = 60_000;
@@ -31,7 +38,7 @@ export class WolService {
     private ignoreLastWolClose = false;
     private autoReconnect = false;
     private pendingReconnect = false;
-    private reconnectTimeout?: any;
+    private reconnectTimeout?: ReturnType<typeof setTimeout>;
     private lastGameReport?: WolGameReport;
 
     get onWolConnectionLost() {
@@ -96,7 +103,7 @@ export class WolService {
             pass,
             turnstileToken,
         };
-        const response = await this.httpRequest.fetchJson(region.apiLoginUrl, undefined, {
+        const response = await this.httpRequest.fetchJson<WolApiResponse>(region.apiLoginUrl, undefined, {
             method: "POST",
             body: JSON.stringify(body),
         });
@@ -112,7 +119,7 @@ export class WolService {
         throw new WolError("Login error: " + error, code, error);
     }
 
-    async connect(options: WolConnectOptions, onQueueUpdate?: any): Promise<{ text: string }[]> {
+    async connect(options: WolConnectOptions, onQueueUpdate?: (status: WolLoginQueueEvent) => void): Promise<{ text: string }[]> {
         this.cancelReconnect();
         if (this.wolCon.isOpen() && JSON.stringify(this.connectOpts) !== JSON.stringify(options)) {
             this.closeWolConnection();
@@ -145,20 +152,20 @@ export class WolService {
         }
     }
 
-    async loadServerList(url: string, cancellationToken?: any): Promise<IniFile> {
+    async loadServerList(url: string, cancellationToken?: CancellationToken): Promise<IniFile> {
         const resourceLoader = new ResourceLoader("");
         const text = await resourceLoader.loadText(url, cancellationToken);
         return new IniFile().fromString(text);
     }
 
-    async createAccount(region: Region, user: string, pass: string, turnstileToken?: string): Promise<any> {
+    async createAccount(region: Region, user: string, pass: string, turnstileToken?: string): Promise<WolApiResponse> {
         const body = {
             locale: this.clientLocale,
             user,
             pass,
             turnstileToken,
         };
-        return await this.httpRequest.fetchJson(region.apiRegUrl, undefined, {
+        return await this.httpRequest.fetchJson<WolApiResponse>(region.apiRegUrl, undefined, {
             method: "POST",
             body: JSON.stringify(body),
         });

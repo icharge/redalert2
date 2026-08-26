@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { InstancedMesh } from './InstancedMesh';
+import { BatchedMesh } from './BatchedMesh';
 export class MeshInstancingBatch {
     public maxInstances: number;
     private target?: THREE.Object3D;
@@ -35,7 +36,7 @@ export class MeshInstancingBatch {
     set clippingPlanes(value: THREE.Plane[]) {
         this._clippingPlanes = value;
         if (this.instancedMesh) {
-            (this.instancedMesh.material as any).clippingPlanes = value;
+            (this.instancedMesh.material as unknown as { clippingPlanes: THREE.Plane[] }).clippingPlanes = value;
         }
     }
     get renderOrder(): number {
@@ -60,17 +61,17 @@ export class MeshInstancingBatch {
             }
         }
     }
-    setMeshes(meshes: any[]): void {
+    setMeshes(meshes: BatchedMesh[]): void {
         if (meshes.length > this.maxInstances) {
             throw new RangeError('Meshes array exceeds max number of instances');
         }
         if (meshes.length > 0) {
-            const hasPalette = !!meshes[0].material.palette;
+            const hasPalette = !!(meshes[0].material as { palette?: unknown }).palette;
             if (!this.instancedMesh) {
-                this.instancedMesh = new InstancedMesh(meshes[0].geometry, meshes[0].material, this.maxInstances, true);
+                this.instancedMesh = new InstancedMesh(meshes[0].geometry, meshes[0].material as THREE.Material, this.maxInstances, true);
                 this.instancedMesh.castShadow = this._castShadow;
                 this.instancedMesh.renderOrder = this._renderOrder;
-                (this.instancedMesh.material as any).clippingPlanes = this._clippingPlanes;
+                (this.instancedMesh.material as unknown as { clippingPlanes: THREE.Plane[] }).clippingPlanes = this._clippingPlanes;
                 if (hasPalette) {
                     const geometry = this.instancedMesh.geometry as THREE.InstancedBufferGeometry;
                     geometry.setAttribute('instancePaletteOffset', new THREE.InstancedBufferAttribute(new Float32Array(this.maxInstances), 1));

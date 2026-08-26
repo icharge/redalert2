@@ -61,8 +61,7 @@ export class ActivateSuperWeaponAction extends Action {
         const tile2 = this.tile2
             ? this.game.map.tiles.getByMapCoords(this.tile2.x, this.tile2.y)
             : undefined;
-        this.game.traits
-            .get(SuperWeaponsTrait)
+        (this.game.traits.get(SuperWeaponsTrait) as unknown as SuperWeaponsTrait)
             .activateSuperWeapon(this.superWeaponType, player, this.game, tile, tile2);
     }
 }

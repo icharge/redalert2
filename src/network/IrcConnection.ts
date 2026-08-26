@@ -1,14 +1,20 @@
-import { OperationCanceledError } from "@puzzl/core/lib/async/cancellation";
+import { OperationCanceledError, type CancellationToken } from "@puzzl/core/lib/async/cancellation";
 import { EventDispatcher } from "@/util/event";
 import { AppLogger } from "@/util/logger";
 import { uint8ArrayToBinaryString, binaryStringToUint8Array } from "@/util/string";
 import { sleep } from "@/util/time";
+import type { Logger } from "@/network/Logger";
 
 interface IrcConnectionOptions {
     mode: "text" | "binary";
     binaryReqPrefix?: number;
     binaryRplPrefix?: number;
     logFilter?: (message: string) => string;
+}
+
+export interface ConnectOptions {
+    timeoutSeconds?: number;
+    cancelToken?: CancellationToken;
 }
 
 export interface IrcRawReply {
@@ -57,7 +63,7 @@ export class IrcConnection {
     private _onClose = new EventDispatcher<IrcConnection, CloseEvent>();
     private messageBuffer: string = "";
 
-    constructor(private options: IrcConnectionOptions, private logger: any = AppLogger.get("irc")) {
+    constructor(private options: IrcConnectionOptions, private logger: Logger = AppLogger.get("irc")) {
     }
 
     get onMessage() {
@@ -72,7 +78,7 @@ export class IrcConnection {
         return this._onClose.asEvent();
     }
 
-    async connect(url: string, options?: any): Promise<void> {
+    async connect(url: string, options?: ConnectOptions): Promise<void> {
         const timeoutId = options?.timeoutSeconds ? setTimeout(() => this.close(), 1000 * options.timeoutSeconds) : undefined;
         options?.cancelToken?.register(() => {
             if (timeoutId) {
@@ -206,7 +212,7 @@ export class IrcConnection {
                         time,
                     };
                     if (options.replyEndCode) {
-                        if (options.replyCodes && options.replyCodes.some((replyCode) => matchesCode(replyCode as any, reply))) {
+                        if (options.replyCodes && options.replyCodes.some((replyCode) => matchesCode(replyCode, reply))) {
                             resolve([reply]);
                             return true;
                         }
@@ -227,7 +233,7 @@ export class IrcConnection {
                     if (options.replyCodes === undefined) {
                         throw new Error("List of replyCodes must be specified when not using start/end codes");
                     }
-                    if (options.replyCodes.some((replyCode) => matchesCode(replyCode as any, reply))) {
+                    if (options.replyCodes.some((replyCode) => matchesCode(replyCode, reply))) {
                         resolve([reply]);
                         return true;
                     }
@@ -274,21 +280,21 @@ export class IrcConnection {
         }, options.timeout);
     }
 
-    sendRawCommand(command: string | Uint8Array, matcher: (message: string | Uint8Array, time: number, resolve: (replies: any[]) => void, setHeartbeatTimeout: (timeoutSeconds?: number) => void) => boolean, timeoutSeconds?: number): Promise<any> {
+    sendRawCommand<T>(command: string | Uint8Array, matcher: (message: string | Uint8Array, time: number, resolve: (replies: T[]) => void, setHeartbeatTimeout: (timeoutSeconds?: number) => void) => boolean, timeoutSeconds?: number): Promise<T[]> {
         return new Promise((resolve, reject) => {
             let completed = false;
-            let timeoutId: any;
+            let timeoutId: ReturnType<typeof setTimeout> | undefined;
             const setHeartbeatTimeout = (timeout?: number) => {
                 clearTimeout(timeoutId);
                 if (timeout !== undefined && Number.isFinite(timeout)) {
                     timeoutId = setTimeout(onTimeout, 1000 * (timeout ?? timeoutSeconds ?? this.timeout));
                 }
             };
-            const onResolve = (replies: any) => {
+            const onResolve = (replies: T[]) => {
                 clearTimeout(timeoutId);
                 resolve(replies);
             };
-            const onReject = (error: any) => {
+            const onReject = (error: unknown) => {
                 this.socket?.removeEventListener("message", onMessage);
                 this.socket?.removeEventListener("close", onClose);
                 clearTimeout(timeoutId);

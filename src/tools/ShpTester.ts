@@ -112,10 +112,10 @@ export class ShpTester {
         const tileCollection = new TileCollection([], null, rules.general, () => getRandomInt(0, 1000));
         const tileOccupation = new TileOccupation(tileCollection);
         const mapBounds = new MapBounds();
-        const bridges = new Bridges(theater.tileSets, tileCollection, tileOccupation, mapBounds, rules);
+        const bridges = new Bridges(theater.tileSets, tileCollection, tileOccupation as unknown as ConstructorParameters<typeof Bridges>[2], mapBounds, rules);
         const gameSpeedVar = new BoxedVar(1);
         const objectFactory = new ObjectFactory(tileCollection, tileOccupation, bridges, gameSpeedVar);
-        const game = new Game(world, gameMapInstance, rules, art, null, "0", 0, gameOptions, GameModeType.Battle, playerList, unitSelection, alliances, gameSpeedVar, objectFactory, null);
+        const game = new Game(world, gameMapInstance, rules, art, null, "0", 0, gameOptions as unknown as ConstructorParameters<typeof Game>[7], GameModeType.Battle, playerList, unitSelection, alliances, gameSpeedVar, objectFactory, null);
         game.addPlayer(player);
         game.mapShroudTrait = new MapShroudTrait(gameMapInstance, alliances);
         game.traits.add(game.mapShroudTrait);
@@ -190,7 +190,7 @@ export class ShpTester {
         this.disposables.add(pointer);
         uiScene.add(pointer.getSprite());
         const jsxRenderer = new JsxRenderer(Engine.getImages(), Engine.getPalettes(), uiScene.getCamera(), pointer.pointerEvents);
-        const messageList = new MessageList(game.rules.audioVisual.messageDuration, 6, player);
+        const messageList = new MessageList((game.rules.audioVisual as unknown as { messageDuration: number }).messageDuration, 6, player);
         const systemMessages = [
             "txt_low_power",
             "txt_space_cant_save",

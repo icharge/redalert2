@@ -1,3 +1,4 @@
+import type { IniFile } from "../../data/IniFile";
 interface MusicSpec {
     name: string;
     sound: string;
@@ -5,9 +6,9 @@ interface MusicSpec {
     repeat: boolean;
 }
 export class MusicSpecs {
-    private ini: any;
+    private ini: IniFile;
     private specs = new Map<string, MusicSpec>();
-    constructor(ini: any) {
+    constructor(ini: IniFile) {
         this.ini = ini;
         this.parse();
     }
@@ -16,7 +17,7 @@ export class MusicSpecs {
         if (themesSection) {
             for (const themeName of themesSection.entries.values()) {
                 if (themeName) {
-                    let themeSection = this.ini.getSection(themeName);
+                    let themeSection = this.ini.getSection(themeName as string);
                     if (themeSection) {
                         const spec: MusicSpec = {
                             name: themeSection.getString("Name"),
@@ -24,7 +25,7 @@ export class MusicSpecs {
                             normal: themeSection.getBool("Normal", true),
                             repeat: themeSection.getBool("Repeat"),
                         };
-                        this.specs.set(themeName, spec);
+                        this.specs.set(themeName as string, spec);
                     }
                     else {
                         console.warn(`Music section [${themeName}] not found. Skipping.`);

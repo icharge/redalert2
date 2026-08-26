@@ -31,7 +31,7 @@ export class BlowfishKey {
     glob2: Uint32Array<ArrayBuffer>;
     glob1_hi: Uint32Array<ArrayBuffer>;
     glob1_hi_inv: Uint32Array<ArrayBuffer>;
-    glob1_bitlen: any;
+    glob1_bitlen: number;
     glob1_len_x2: number;
     glob1_hi_bitlen: number;
     glob1_hi_inv_lo: number;

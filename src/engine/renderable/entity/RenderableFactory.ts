@@ -28,6 +28,7 @@ import { ShipWakeTrailPlugin } from "@/engine/renderable/entity/plugin/ShipWakeT
 import { ObjectCloakPlugin } from "@/engine/renderable/entity/plugin/ObjectCloakPlugin";
 import { Debris } from "@/engine/renderable/entity/Debris";
 import { ShpAggregator } from "@/engine/renderable/builder/ShpAggregator";
+import * as THREE from 'three';
 interface Position {
     x: number;
     y: number;
@@ -103,8 +104,6 @@ interface Theater {
     animPalette: any;
     isoPalette: any;
 }
-interface Camera {
-}
 interface Lighting {
 }
 interface LightingDirector {
@@ -144,7 +143,7 @@ export class RenderableFactory {
     private voxels: Voxels;
     private voxelAnims: VoxelAnims;
     private theater: Theater;
-    private camera: Camera;
+    private camera: THREE.Camera;
     private lighting: Lighting;
     private lightingDirector: LightingDirector;
     private debugWireframes: DebugWireframes;
@@ -160,7 +159,7 @@ export class RenderableFactory {
     private useMeshInstancing: boolean;
     private forcedYuriDisguise: boolean;
     private bridgeImageCache: Map<any, any>;
-    constructor(localPlayer: LocalPlayer, unitSelection: UnitSelection, alliances: Alliances, rules: Rules, art: Art, mapRenderable: MapRenderable | null, imageFinder: ImageFinder, palettes: Palettes, voxels: Voxels, voxelAnims: VoxelAnims, theater: Theater, camera: Camera, lighting: Lighting, lightingDirector: LightingDirector, debugWireframes: DebugWireframes, debugText: DebugText, gameSpeed: GameSpeed, worldSound: WorldSound | null, strings: Strings, flyerHelperOpt: FlyerHelperOpt, hiddenObjectsOpt: HiddenObjectsOpt, vxlBuilderFactory: VxlBuilderFactory, buildingImageDataCache: BuildingImageDataCache, useSpriteBatching: boolean = false, useMeshInstancing: boolean = false, forcedYuriDisguise: boolean = false) {
+    constructor(localPlayer: LocalPlayer, unitSelection: UnitSelection, alliances: Alliances, rules: Rules, art: Art, mapRenderable: MapRenderable | null, imageFinder: ImageFinder, palettes: Palettes, voxels: Voxels, voxelAnims: VoxelAnims, theater: Theater, camera: THREE.Camera, lighting: Lighting, lightingDirector: LightingDirector, debugWireframes: DebugWireframes, debugText: DebugText, gameSpeed: GameSpeed, worldSound: WorldSound | null, strings: Strings, flyerHelperOpt: FlyerHelperOpt, hiddenObjectsOpt: HiddenObjectsOpt, vxlBuilderFactory: VxlBuilderFactory, buildingImageDataCache: BuildingImageDataCache, useSpriteBatching: boolean = false, useMeshInstancing: boolean = false, forcedYuriDisguise: boolean = false) {
         this.localPlayer = localPlayer;
         this.unitSelection = unitSelection;
         this.alliances = alliances;

@@ -2,6 +2,7 @@ import { RadialTileFinder } from '@/game/map/tileFinder/RadialTileFinder';
 import { MovementZone } from '@/game/type/MovementZone';
 import { SpeedType } from '@/game/type/SpeedType';
 import { Target } from '@/game/Target';
+import type { LandType } from '@/game/type/LandType';
 interface GameObject {
     tile: Tile;
     rules: {
@@ -15,11 +16,13 @@ interface GameObject {
 interface Tile {
     rx: number;
     ry: number;
+    dx: number;
+    dy: number;
     z: number;
-    onBridgeLandType?: boolean;
+    onBridgeLandType?: LandType;
 }
 interface Bridge {
-    isHighBridge(): boolean;
+    isHighBridge?(): boolean;
     tileElevation?: number;
 }
 interface GameMap {
@@ -33,7 +36,7 @@ interface GameMap {
         getBridgeOnTile(tile: Tile): Bridge | undefined;
     };
     terrain: {
-        getPassableSpeed(tile: Tile, speedType: SpeedType, param3: boolean, param4: boolean): boolean;
+        getPassableSpeed(tile: Tile, speedType: SpeedType, param3: boolean, param4: boolean): number;
     };
 }
 interface Cluster {
@@ -136,7 +139,7 @@ export class MovePositionHelper {
             : tileBridge;
     }
     public isEligibleTile(tile: Tile, tileBridge: Bridge | undefined, sourceBridge: Bridge | undefined, targetTile: Tile): boolean {
-        if (sourceBridge?.isHighBridge() || tileBridge?.isHighBridge()) {
+        if (sourceBridge?.isHighBridge?.() || tileBridge?.isHighBridge?.()) {
             return (tile.z + (tileBridge?.tileElevation ?? 0) ===
                 targetTile.z + (sourceBridge?.tileElevation ?? 0));
         }

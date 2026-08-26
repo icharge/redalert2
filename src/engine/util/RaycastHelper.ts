@@ -29,13 +29,13 @@ export class RaycastHelper {
     private intersectLegacy(point: Point, targets: THREE.Object3D[], recursive: boolean): THREE.Intersection[] {
         const raycaster = new THREE.Raycaster();
         const normalizedPointer = this.normalizePointerLegacy(point, this.scene.viewport);
-        raycaster.setFromCamera(normalizedPointer as any, this.scene.camera);
+        raycaster.setFromCamera(normalizedPointer as unknown as THREE.Vector2, this.scene.camera);
         return raycaster.intersectObjects(targets, recursive);
     }
     private intersectOptimized(point: Point, targets: THREE.Object3D[], recursive: boolean): THREE.Intersection[] {
         const raycaster = this.raycaster ?? (this.raycaster = new THREE.Raycaster());
         const normalizedPointer = this.normalizePointerOptimized(point, this.scene.viewport);
-        raycaster.setFromCamera(normalizedPointer as any, this.scene.camera);
+        raycaster.setFromCamera(normalizedPointer as unknown as THREE.Vector2, this.scene.camera);
         return raycaster.intersectObjects(targets, recursive);
     }
     private normalizePointerLegacy(point: Point, viewport: Viewport): Point {

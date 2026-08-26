@@ -279,7 +279,7 @@ export class MoveInWeaponRangeTask extends MoveTask {
             const tileFinder = new RadialTileFinder(map.tiles, map.mapBounds, tile as any, { width: 1, height: 1 }, 0, maxDist, (t) => this.rangeHelper.isInWeaponRange(unit, this.target, this.weapon, this.game.rules, t as any) &&
                 this.losHelper.hasLineOfSight(t, this.target, this.weapon) &&
                 map.terrain.getPassableSpeed(t, unit.rules.speedType, unit.isInfantry(), !!t.onBridgeLandType) > 0 &&
-                !map.terrain.findObstacles({ tile: t, onBridge: !!t.onBridgeLandType }, unit).length);
+                !map.terrain.findObstacles({ tile: t, onBridge: !!t.onBridgeLandType as unknown as NonNullable<Parameters<typeof map.terrain.findObstacles>[0]['onBridge']> }, unit).length);
             return tileFinder.getNextTile();
         }
     }

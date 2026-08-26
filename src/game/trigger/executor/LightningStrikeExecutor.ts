@@ -16,8 +16,7 @@ export class LightningStrikeExecutor extends TriggerExecutor {
         }
         const lightningStormRule = [...game.rules.superWeaponRules.values()].find((rule) => rule.type === SuperWeaponType.LightningStorm);
         if (lightningStormRule) {
-            game.traits
-                .get(SuperWeaponsTrait)
+            (game.traits.get(SuperWeaponsTrait) as unknown as SuperWeaponsTrait)
                 .activateEffect(lightningStormRule, player, game, targetTile, undefined, true);
         }
     }

@@ -2,9 +2,10 @@ import { EventType } from '@/game/event/EventType';
 import { CompositeDisposable } from '@/util/disposable/CompositeDisposable';
 import { Coords } from '@/game/Coords';
 import { SoundKey } from '@/engine/sound/SoundKey';
+import * as THREE from 'three';
 interface Game {
     events: {
-        subscribe: (event: EventType, handler: (event: any) => void) => {
+        subscribe: (event: EventType, handler: (event: unknown) => void) => {
             dispose: () => void;
         };
     };
@@ -19,7 +20,7 @@ interface Game {
 }
 interface Player {
     isObserver: boolean;
-    color: any;
+    color: unknown;
 }
 interface Tile {
     rx: number;
@@ -30,8 +31,15 @@ interface Tile {
 interface Bridge {
     tileElevation: number;
 }
+interface BeaconAnim {
+    setPosition(position: THREE.Vector3): void;
+    setRenderOrder(order: number): void;
+    remapColor(color: unknown): void;
+    create3DObject(): void;
+    endAnimationLoop(): void;
+}
 interface RenderableManager {
-    createTransientAnim: (name: string, callback: (anim: any) => void) => any;
+    createTransientAnim: (name: string, callback: (anim: BeaconAnim) => void) => BeaconAnim;
 }
 interface Renderer {
     onFrame: {
@@ -41,11 +49,11 @@ interface Renderer {
     };
 }
 interface WorldSound {
-    playEffect: (sound: SoundKey, position: any, player: Player) => void;
+    playEffect: (sound: SoundKey, position: THREE.Vector3, player: Player) => void;
 }
 interface Beacon {
     tile: Tile;
-    anim: any;
+    anim: BeaconAnim;
     startTime?: number;
 }
 export class BeaconFxHandler {

@@ -10,7 +10,7 @@ export class CreateRadarEventExecutor extends TriggerExecutor {
             const tile = game.map.getTileAtWaypoint(waypointId);
             if (tile) {
                 for (const combatant of game.getCombatants()) {
-                    game.traits.get(RadarTrait).addEventForPlayer(eventType, combatant, tile, game);
+                    (game.traits.get(RadarTrait) as unknown as RadarTrait).addEventForPlayer(eventType, combatant, tile, game);
                 }
             }
             else {

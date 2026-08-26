@@ -95,7 +95,7 @@ export class SuperWeaponsTrait {
             this.activateEffect(a.rules, e, i, r, s);
         }
     }
-    private activateEffect(e: any, i: any, r: any, s: any, a: any, n: boolean = false) {
+    activateEffect(e: any, i: any, r: any, s: any, a: any, n: boolean = false) {
         const o = e.type;
         if (o !== undefined) {
             const t: SuperWeaponEffect[] = [];

@@ -5,7 +5,7 @@ import type { GatewayConfig } from "@/conf/GatewayConfig";
 export interface AuthSession {
     account?: {
         id: string;
-        [key: string]: any;
+        [key: string]: unknown;
     };
 }
 
@@ -14,13 +14,13 @@ export class AuthService {
     }
 
     async getSession(): Promise<AuthSession> {
-        return await this.httpRequest.fetchJson(this.config.authSessionUrl, undefined, {
+        return await this.httpRequest.fetchJson<AuthSession>(this.config.authSessionUrl, undefined, {
             credentials: "include",
         });
     }
 
     async getCsrfToken(): Promise<string> {
-        return (await this.httpRequest.fetchJson(this.config.authCsrfUrl, undefined, {
+        return (await this.httpRequest.fetchJson<{ csrfToken: string }>(this.config.authCsrfUrl, undefined, {
             credentials: "include",
         })).csrfToken;
     }

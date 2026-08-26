@@ -7,6 +7,12 @@ import { Serializer } from '@/network/gameopt/Serializer';
 import { TURN_TIMEOUT_MILLIS } from '@/network/gservConfig';
 import { LanMatchSession, LanResolvedTurn } from '@/network/lan/LanMatchSession';
 import { EventDispatcher } from '@/util/event';
+import type { Game } from '@/game/Game';
+import type { Player } from '@/game/Player';
+import type { Action } from '@/game/action/Action';
+import type { ActionFactory } from '@/game/action/ActionFactory';
+import type { ProcessableAction } from '@/network/gamestate/PlayerActionPayload';
+import type { RecordedActions } from '@/network/gamestate/ReplayRecorder';
 
 export class LanLockstepTurnManager {
     private readonly serializer = new Serializer();
@@ -24,14 +30,14 @@ export class LanLockstepTurnManager {
     public readonly onLagStateChange = new EventDispatcher<this, boolean>();
 
     constructor(
-        private readonly game: any,
-        private readonly localPlayer: any,
-        private readonly inputActions: { dequeueAll(): any[] },
-        private readonly actionFactory: any,
+        private readonly game: Game,
+        private readonly localPlayer: Player,
+        private readonly inputActions: { dequeueAll(): Action[] },
+        private readonly actionFactory: ActionFactory,
         private readonly matchSession: LanMatchSession,
         private readonly actionLogger?: { debug(message: string): void },
         private readonly lockstepLogger?: { debug?(message: string): void; warn?(message: string): void },
-        private readonly replayRecorder?: { recordActions?(tick: number, actions: any[]): void }
+        private readonly replayRecorder?: { recordActions?(tick: number, actions: RecordedActions): void }
     ) { }
 
     init(): void {
@@ -121,8 +127,8 @@ export class LanLockstepTurnManager {
             actions = [new NoAction()];
         }
 
-        const actionData = this.serializer.serializePlayerActions(actions.map((action: any) => ({
-            id: action.actionType,
+        const actionData = this.serializer.serializePlayerActions(actions.map((action) => ({
+            id: (action as unknown as ProcessableAction).actionType,
             params: action.serialize?.() ?? new Uint8Array(),
         })));
 
@@ -130,8 +136,8 @@ export class LanLockstepTurnManager {
         return this.matchSession.submitLocalTurn(tick, actionData);
     }
 
-    private processResolvedTurn(tick: number, resolvedTurn: LanResolvedTurn): any[] {
-        const processedActions: any[] = [];
+    private processResolvedTurn(tick: number, resolvedTurn: LanResolvedTurn): Action[] {
+        const processedActions: Action[] = [];
 
         resolvedTurn.batches.forEach((batch) => {
             const assignment = this.matchSession.getHumanAssignment(batch.peerId);
@@ -142,7 +148,7 @@ export class LanLockstepTurnManager {
             const player = this.game.getPlayerByName(assignment.name);
             const actionRecords = this.parser.parsePlayerActions(batch.actionData);
             actionRecords.forEach((record) => {
-                const action = this.actionFactory.create(record.id);
+                const action = this.actionFactory.create(record.id as ActionType);
                 action.unserialize?.(record.params);
                 action.player = player;
                 action.process();

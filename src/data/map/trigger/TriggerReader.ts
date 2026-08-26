@@ -1,8 +1,10 @@
 import { TriggerEventType } from './TriggerEventType';
 import { TriggerActionType } from './TriggerActionType';
 import { IniSection } from '@/data/IniSection';
+import type { Tag } from '../tag/Tag';
+import { Trigger } from './Trigger';
 export class TriggerReader {
-    read(triggers: IniSection, events: IniSection, actions: IniSection, tags: Array<any>) {
+    read(triggers: IniSection, events: IniSection, actions: IniSection, tags: Tag[]) {
         const triggerList = this.readTriggers(triggers);
         const { events: eventMap, unknownEventTypes } = this.readEvents(events);
         const { actions: actionMap, unknownActionTypes } = this.readActions(actions);
@@ -53,7 +55,7 @@ export class TriggerReader {
         };
     }
     private readTriggers(triggers: IniSection) {
-        const result: any[] = [];
+        const result: Trigger[] = [];
         for (const [id, raw] of triggers.entries) {
             if (typeof raw !== 'string')
                 continue;
@@ -76,7 +78,7 @@ export class TriggerReader {
                     },
                     events: [],
                     actions: [],
-                    tag: undefined,
+                    tag: undefined as unknown as Tag,
                 };
                 result.push(trigger);
             }
@@ -85,7 +87,7 @@ export class TriggerReader {
     }
     private readEvents(events: IniSection) {
         const eventMap = new Map();
-        const unknownTypes = new Set();
+        const unknownTypes = new Set<number>();
         for (const [triggerId, raw] of events.entries) {
             if (typeof raw !== 'string')
                 continue;
@@ -121,7 +123,7 @@ export class TriggerReader {
     }
     private readActions(actions: IniSection) {
         const actionMap = new Map();
-        const unknownTypes = new Set();
+        const unknownTypes = new Set<number>();
         for (const [triggerId, raw] of actions.entries) {
             if (typeof raw !== 'string')
                 continue;

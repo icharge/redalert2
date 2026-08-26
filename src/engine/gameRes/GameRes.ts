@@ -33,6 +33,7 @@ import SplashScreen from '../../gui/component/SplashScreen';
 import type { Viewport } from '../../gui/Viewport';
 import type { Config } from '../../Config';
 import { RealFileSystemDir } from '../../data/vfs/RealFileSystemDir';
+import type { Adapter, AdapterModule } from 'file-system-access/lib/interfaces.js';
 interface FsAccessLibrary {
     support: {
         adapter: {
@@ -42,10 +43,17 @@ interface FsAccessLibrary {
         };
     };
     adapters: {
-        indexeddb?: any;
-        cache?: any;
+        indexeddb?: Adapter<void>;
+        cache?: Adapter<void>;
     };
-    getOriginPrivateDirectory: (module?: any) => Promise<FileSystemDirectoryHandle>;
+    getOriginPrivateDirectory: (module?: Adapter<void> | AdapterModule<void> | Promise<Adapter<void> | AdapterModule<void>>) => Promise<FileSystemDirectoryHandle>;
+}
+interface SplashScreenInterface {
+    setLoadingText: (text: string) => void;
+    setBackgroundImage: (url: string) => void;
+}
+interface SentryLike {
+    captureException: (error: Error, context?: unknown) => void;
 }
 interface InitResult {
     configToPersist?: GameResConfig;
@@ -62,12 +70,12 @@ export class GameRes {
     private localPrefs: LocalPrefs;
     private strings: Strings;
     private rootEl: HTMLElement;
-    private splashScreen: any;
+    private splashScreen: SplashScreenInterface;
     private viewport: Viewport;
     private appConfig: Config;
     private appResPath: string;
-    private sentry?: any;
-    constructor(appVersion: string, modName: string | undefined, fsAccessLib: FsAccessLibrary, localPrefs: LocalPrefs, strings: Strings, rootEl: HTMLElement, splashScreen: any, viewport: Viewport, appConfig: Config, appResPath: string, sentry?: any) {
+    private sentry?: SentryLike;
+    constructor(appVersion: string, modName: string | undefined, fsAccessLib: FsAccessLibrary, localPrefs: LocalPrefs, strings: Strings, rootEl: HTMLElement, splashScreen: SplashScreenInterface, viewport: Viewport, appConfig: Config, appResPath: string, sentry?: SentryLike) {
         this.appVersion = appVersion;
         this.modName = modName;
         this.fsAccessLib = fsAccessLib;
@@ -121,10 +129,10 @@ export class GameRes {
                 migrationDone = await this.migrateStorageToNative(nativeFsHandle, updateSplashScreen);
             }
         }
-        catch (e: any) {
+        catch (e: unknown) {
             console.warn("Storage migration to native failed", e);
             const error = new Error("Failed to migrate files to native file system");
-            (error as any).cause = e;
+            (error as { cause?: unknown }).cause = e;
             this.sentry?.captureException(error);
             migrationDone = false;
         }
@@ -167,7 +175,7 @@ export class GameRes {
                 modRfsDir = await this.loadMod(rfs, modDirHandle);
             }
             const mapDirHandle = await Engine.getMapDir();
-            if (mapDirHandle && rfs && typeof (rfs as any).addDirectoryHandle === 'function') {
+            if (mapDirHandle && rfs && typeof rfs.addDirectoryHandle === 'function') {
                 const mapRfsDir = new RealFileSystemDir(mapDirHandle);
                 rfs.addDirectory(mapRfsDir);
             }
@@ -188,20 +196,20 @@ export class GameRes {
                 cdnResourceLoader = await this.loadResources(rfs, currentConfig, updateSplashScreen);
                 resourcesLoadedSuccessfully = true;
             }
-            catch (e: any) {
+            catch (e: unknown) {
                 console.error("Failed to load initial game resources", e);
                 console.error("Error details:", {
-                    name: e.name,
-                    message: e.message,
-                    stack: e.stack,
-                    cause: e.cause
+                    name: (e as Error).name,
+                    message: (e as Error).message,
+                    stack: (e as Error).stack,
+                    cause: (e as { cause?: unknown }).cause
                 });
                 this.splashScreen.setLoadingText("");
                 this.splashScreen.setBackgroundImage("");
-                await onFatalError(e, this.strings);
+                await onFatalError(e as Error, this.strings);
             }
         }
-        const gameResBoxApi = new GameResBoxApi(this.viewport, this.strings, this.rootEl, this.fsAccessLib as any);
+        const gameResBoxApi = new GameResBoxApi(this.viewport, this.strings, this.rootEl, this.fsAccessLib as unknown as { polyfillDataTransferItem: () => Promise<void>; showDirectoryPicker: (options?: unknown) => Promise<FileSystemDirectoryHandle> });
         let archiveUrlFallback = this.appConfig.gameResArchiveUrl;
         while (!resourcesLoadedSuccessfully) {
             console.log('[GameRes] Resources not loaded successfully, prompting user for game files');
@@ -231,7 +239,7 @@ export class GameRes {
                         selectedSource = GameResSource.Local;
                     }
                     else {
-                        const kind = (userSelection as any).kind;
+                        const kind = (userSelection as FileSystemHandle).kind;
                         console.error("Unexpected FileSystemHandle kind:", kind, userSelection);
                         throw new Error(`Unexpected FileSystemHandle type from prompt: ${kind}`);
                     }
@@ -263,18 +271,18 @@ export class GameRes {
                     });
                     console.info("Game assets successfully imported.");
                 }
-                catch (e: any) {
+                catch (e: unknown) {
                     console.error("Failed to import game assets", e);
                     console.error("Import error details:", {
-                        name: e.name,
-                        message: e.message,
-                        stack: e.stack,
-                        originalError: e.originalError,
+                        name: (e as Error).name,
+                        message: (e as Error).message,
+                        stack: (e as Error).stack,
+                        originalError: (e as { originalError?: unknown }).originalError,
                         userSelection: userSelection
                     });
                     activeInstallReporter = undefined;
                     promptResult.close();
-                    await onImportError(e, this.strings);
+                    await onImportError(e as Error, this.strings);
                     continue;
                 }
             }
@@ -288,18 +296,18 @@ export class GameRes {
                 cdnResourceLoader = await this.loadResources(rfs, currentConfig, updateSplashScreen);
                 resourcesLoadedSuccessfully = true;
             }
-            catch (e: any) {
+            catch (e: unknown) {
                 console.error("Failed to load game assets after prompt/import", e);
                 console.error("Load error details:", {
-                    name: e.name,
-                    message: e.message,
-                    stack: e.stack,
-                    cause: e.cause,
+                    name: (e as Error).name,
+                    message: (e as Error).message,
+                    stack: (e as Error).stack,
+                    cause: (e as { cause?: unknown }).cause,
                     config: currentConfig
                 });
                 this.splashScreen.setLoadingText("");
                 this.splashScreen.setBackgroundImage("");
-                await onFatalError(e, this.strings);
+                await onFatalError(e as Error, this.strings);
             }
             finally {
                 activeInstallReporter = undefined;
@@ -452,7 +460,7 @@ export class GameRes {
             if (!cdnBaseUrl)
                 throw new Error("CDN base URL not available in config");
             const tempResourceLoader = new ResourceLoader(cdnBaseUrl);
-            const manifest = await tempResourceLoader.loadJson("manifest.json");
+            const manifest = await tempResourceLoader.loadJson("manifest.json") as unknown as { version: number; format: string; checksums: Record<string, number> };
             if (manifest.version !== 2) {
                 throw new Error("Unknown manifest version " + manifest.version);
             }
@@ -490,7 +498,7 @@ export class GameRes {
         await vfs.loadExtraMixFiles(Engine.getActiveEngine());
         await this.loadCustomMix(vfs);
         await this.loadMixes(config, cdnLoader, vfs, onProgress);
-        await Engine.loadMapList();
+        await Engine.loadMapList(this.appConfig.mapsPktUrl);
         await this.initUiCssVariables(this.rootEl);
         return cdnLoader;
     }
@@ -506,13 +514,13 @@ export class GameRes {
                 file = await rfsDir.getRawFile(mixName, true);
                 buffer = await file.arrayBuffer();
             }
-            catch (e: any) {
+            catch (e: unknown) {
                 if (e instanceof VfsFileNotFoundError) {
                     throw new GameResFileNotFoundError(mixName);
                 }
                 if (e instanceof DOMException) {
                     const ioErr = new IOError(`Failed to read file (${e.name}) for CRC check`);
-                    (ioErr as any).cause = e;
+                    ioErr.cause = e;
                     throw ioErr;
                 }
                 throw e;
@@ -662,7 +670,7 @@ export class GameRes {
     private async getBrowserFsHandle(preference: "native" | "fallback"): Promise<FileSystemDirectoryHandle> {
         const adaptersToTry: {
             name: string;
-            module?: any;
+            module?: Adapter<void> | AdapterModule<void> | Promise<Adapter<void> | AdapterModule<void>>;
         }[] = [];
         if (preference === "native" && this.fsAccessLib.support.adapter.native) {
             adaptersToTry.push({ name: "native", module: undefined });
@@ -689,12 +697,12 @@ export class GameRes {
                         console.warn("Browser check: FileHandle.name and File.name mismatch. Polyfill might be needed.");
                     }
                 }
-                catch (checkError: any) {
-                    if (checkError.name === "QuotaExceededError") {
+                catch (checkError: unknown) {
+                    if ((checkError as Error).name === "QuotaExceededError") {
                         console.error(`Storage adapter "${adapterInfo.name}" failed browser check due to QuotaExceededError.`);
                         throw checkError;
                     }
-                    else if (adapterInfo.name === "indexeddb" && checkError.name === "NotFoundError") {
+                    else if (adapterInfo.name === "indexeddb" && (checkError as Error).name === "NotFoundError") {
                         console.warn("IndexedDB NotFoundError during browser check, attempting reset...");
                         await new Promise<void>(resolve => {
                             indexedDB.deleteDatabase("fileSystem");
@@ -715,7 +723,7 @@ export class GameRes {
                 console.info(`Storage adapter "${adapterInfo.name}" loaded successfully.`);
                 return fsHandle;
             }
-            catch (e: any) {
+            catch (e: unknown) {
                 console.warn(`Couldn't load FS adapter "${adapterInfo.name}"`, e);
             }
         }

@@ -13,9 +13,9 @@ interface Mixer {
     isMuted(channel: ChannelType): boolean;
     setMuted(channel: ChannelType, muted: boolean): void;
 }
-interface AudioFile {
-    getData(): ArrayBuffer;
-    asFile(): File;
+export interface AudioFile {
+    getData?(): Uint8Array;
+    asFile?(): File;
 }
 interface MusicState {
     source: MediaElementAudioSourceNode;
@@ -47,7 +47,7 @@ export class AudioSystem {
     initialize(): void {
         if (this.isInitialized())
             return;
-        const AudioContextCtor = (window as any).AudioContext || (window as any).webkitAudioContext;
+        const AudioContextCtor = (window as unknown as { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext }).AudioContext || (window as unknown as { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
         if (!AudioContextCtor) {
             console.warn("[AudioSystem] Web Audio API not available");
             return;
@@ -173,7 +173,7 @@ export class AudioSystem {
     private async decodeFile(file: AudioFile, audioContext: AudioContext): Promise<AudioBuffer> {
         let buffer = this.audioBufferCache.get(file);
         if (!buffer) {
-            const arrayBuffer = new Uint8Array(file.getData()).buffer;
+            const arrayBuffer = new Uint8Array(file.getData!()).buffer;
             buffer = await audioContext.decodeAudioData(arrayBuffer);
             if (this.audioBufferCache.size >= 100) {
                 this.audioBufferCache.delete(this.audioBufferCache.keys().next().value);
@@ -195,7 +195,7 @@ export class AudioSystem {
         else {
             let arrayBuffer: ArrayBuffer;
             try {
-                const data = file.getData();
+                const data = file.getData!();
                 arrayBuffer = new Uint8Array(data).buffer;
             }
             catch (error) {
@@ -220,9 +220,9 @@ export class AudioSystem {
         const gainNode = audioContext.createGain();
         gainNode.gain.value = volume;
         let panNode: AudioNode;
-        if (typeof (audioContext as any).createStereoPanner === "function") {
-            panNode = (audioContext as any).createStereoPanner();
-            (panNode as any).pan.value = pan;
+        if (typeof (audioContext as unknown as { createStereoPanner?: () => StereoPannerNode }).createStereoPanner === "function") {
+            panNode = (audioContext as unknown as { createStereoPanner: () => StereoPannerNode }).createStereoPanner();
+            (panNode as StereoPannerNode).pan.value = pan;
         }
         else {
             panNode = this.createFallbackPanner(audioContext, pan);
@@ -232,10 +232,10 @@ export class AudioSystem {
         sourceNode.playbackRate.value = rate;
         sourceNode.loop = loop;
         sourceNode.connect(panNode).connect(gainNode).connect(this.getChannel(channel));
-        handle.setNodes(sourceNode, gainNode, panNode as any);
+        handle.setNodes(sourceNode, gainNode, panNode as unknown as StereoPannerNode);
         sourceNode.addEventListener("ended", () => {
             this.soundsPlaying.delete(sourceNode);
-            (handle as any).playing = false;
+            (handle as unknown as { playing: boolean }).playing = false;
         });
         this.soundsPlaying.add(sourceNode);
         sourceNode.start(startTime);
@@ -244,8 +244,8 @@ export class AudioSystem {
     private createFallbackPanner(audioContext: BaseAudioContext, pan: number): AudioNode {
         const panNode = audioContext.createGain();
         panNode.gain.value = 1;
-        if (typeof (audioContext as any).createPanner === "function" && pan !== 0) {
-            const panner = (audioContext as any).createPanner();
+        if (typeof audioContext.createPanner === "function" && pan !== 0) {
+            const panner = audioContext.createPanner();
             panner.panningModel = "equalpower";
             panner.positionX.value = pan;
             panner.connect(panNode);
@@ -280,7 +280,7 @@ export class AudioSystem {
         const musicState = this.musicState ?? this.initMusicNode();
         const audioElement = musicState.source.mediaElement;
         audioElement.loop = repeat;
-        const objectUrl = URL.createObjectURL(file.asFile());
+        const objectUrl = URL.createObjectURL(file.asFile!());
         audioElement.src = objectUrl;
         audioElement.onended = audioElement.onpause = () => {
             URL.revokeObjectURL(objectUrl);

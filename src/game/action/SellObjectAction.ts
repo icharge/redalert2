@@ -32,7 +32,7 @@ export class SellObjectAction extends Action {
                 object.isSpawned) {
                 const canSell = object.isBuilding()
                     ? object.buildStatus === BuildStatus.Ready && !object.warpedOutTrait.isActive()
-                    : object.traits.find(DockableTrait)?.dock?.rules.unitSell;
+                    : (object.traits.find(DockableTrait) as unknown as DockableTrait | undefined)?.dock?.rules.unitSell;
                 if (canSell) {
                     this.game.sellTrait.sell(object);
                 }

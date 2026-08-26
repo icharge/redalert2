@@ -4,7 +4,7 @@ export class NameNotAllowedError extends IOError {
         super(message);
         this.name = "NameNotAllowedError";
         if (cause && this instanceof Error) {
-            (this as any).cause = cause;
+            (this as unknown as { cause?: unknown }).cause = cause;
         }
         Object.setPrototypeOf(this, NameNotAllowedError.prototype);
     }

@@ -15,7 +15,7 @@ class PlayerPair {
             (this.first === other.second && this.second === other.first));
     }
 }
-interface Alliance {
+export interface Alliance {
     players: PlayerPair;
     status: AllianceStatus;
 }

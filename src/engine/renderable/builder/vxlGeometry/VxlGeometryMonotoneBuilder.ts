@@ -160,9 +160,9 @@ class VxlGeometryMonotoneBuilder {
     }
 }
 class VxlRun {
-    color: any;
-    left: any[][];
-    right: any[][];
+    color: number;
+    left: number[][];
+    right: number[][];
     constructor(e, t, i, r) {
         this.color = e;
         this.left = [[i, t]];

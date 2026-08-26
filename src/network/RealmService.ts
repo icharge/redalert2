@@ -10,6 +10,7 @@ import type { ClaimNicknameResponse } from "@/network/ClaimNicknameResponse";
 import type { CreateNicknameRequest } from "@/network/CreateNicknameRequest";
 import type { CreateNicknameResponse } from "@/network/CreateNicknameResponse";
 import type { NicknameListResponse } from "@/network/NicknameListResponse";
+import type { CancellationToken } from "@puzzl/core/lib/async/cancellation";
 
 export class RealmService {
     constructor(
@@ -22,11 +23,11 @@ export class RealmService {
     ) {
     }
 
-    async loadRealmList(cancellationToken?: any): Promise<Realm[]> {
+    async loadRealmList(cancellationToken?: CancellationToken): Promise<Realm[]> {
         const url = new URL(this.config.realmListUrl, window.location.href);
         url.searchParams.set("gameSku", this.gameSku.toString());
         url.searchParams.set("clientVersion", this.clientVersion);
-        return (await this.httpRequest.fetchJson(url.toString(), cancellationToken, {
+        return (await this.httpRequest.fetchJson<{ realms: Realm[] }>(url.toString(), cancellationToken, {
             credentials: "include",
         })).realms;
     }
@@ -38,7 +39,7 @@ export class RealmService {
             nickname,
             locale: this.clientLocale,
         };
-        return await this.httpRequest.fetchJson(
+        return await this.httpRequest.fetchJson<CreateRealmSessionResponse>(
             new URL(encodeURIComponent(realmId) + "/sessions", new URL(this.config.realmsUrl, window.location.href)).toString(),
             undefined,
             {
@@ -52,8 +53,8 @@ export class RealmService {
             });
     }
 
-    async loadNicknames(realmId: string, cancellationToken?: any): Promise<NicknameListResponse> {
-        return await this.httpRequest.fetchJson(
+    async loadNicknames(realmId: string, cancellationToken?: CancellationToken): Promise<NicknameListResponse> {
+        return await this.httpRequest.fetchJson<NicknameListResponse>(
             new URL(encodeURIComponent(realmId) + "/nicknames", new URL(this.config.realmsUrl, window.location.href)).toString(),
             cancellationToken,
             {
@@ -61,13 +62,13 @@ export class RealmService {
             });
     }
 
-    async createNickname(realmId: string, nickname: string, cancellationToken?: any): Promise<CreateNicknameResponse> {
+    async createNickname(realmId: string, nickname: string, cancellationToken?: CancellationToken): Promise<CreateNicknameResponse> {
         const csrfToken = await this.authService.getCsrfToken();
         const body: CreateNicknameRequest = {
             nickname,
             locale: this.clientLocale,
         };
-        return await this.httpRequest.fetchJson(
+        return await this.httpRequest.fetchJson<CreateNicknameResponse>(
             new URL(encodeURIComponent(realmId) + "/nicknames", new URL(this.config.realmsUrl, window.location.href)).toString(),
             cancellationToken,
             {
@@ -87,7 +88,7 @@ export class RealmService {
             claimToken,
             locale: this.clientLocale,
         };
-        return await this.httpRequest.fetchJson(
+        return await this.httpRequest.fetchJson<ClaimNicknameResponse>(
             new URL(encodeURIComponent(realmId) + "/nicknames/claim", new URL(this.config.realmsUrl, window.location.href)).toString(),
             undefined,
             {

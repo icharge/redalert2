@@ -1,8 +1,8 @@
 export class ArchiveDownloadError extends Error {
     public url: string;
-    public cause?: any;
+    public cause?: unknown;
     constructor(url: string, message: string, options?: {
-        cause?: any;
+        cause?: unknown;
     }) {
         super(message);
         this.name = "ArchiveDownloadError";

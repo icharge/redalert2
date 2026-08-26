@@ -1,3 +1,5 @@
+import type { IniSection } from '@/data/IniSection';
+
 export class GatewayConfig {
     public baseUrl!: string;
     public realmListUrl!: string;
@@ -6,7 +8,7 @@ export class GatewayConfig {
     public authCsrfUrl!: string;
     public authLogoutUrl!: string;
 
-    load(section: any): void {
+    load(section: IniSection): void {
         const baseUrl = section.getString("baseUrl");
         if (!baseUrl) {
             throw new Error("Missing [Gateway] baseUrl");

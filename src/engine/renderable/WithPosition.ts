@@ -1,8 +1,11 @@
 import * as THREE from "three";
+interface PositionTarget {
+    get3DObject(): THREE.Object3D | undefined;
+}
 export class WithPosition {
     public matrixUpdate: boolean = false;
     private position: THREE.Vector3;
-    private target?: any;
+    private target?: PositionTarget;
     constructor() {
         this.position = new THREE.Vector3();
     }
@@ -27,7 +30,7 @@ export class WithPosition {
             }
         }
     }
-    applyTo(target: any): void {
+    applyTo(target: PositionTarget): void {
         this.target = target;
         this.updatePosition();
     }

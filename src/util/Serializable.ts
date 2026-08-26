@@ -1,7 +1,7 @@
 export class Serializable {
-    serialize(): any {
+    serialize(): unknown {
         return {};
     }
-    deserialize(data: any): void {
+    deserialize(data: unknown): void {
     }
 }

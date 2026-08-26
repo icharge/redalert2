@@ -1,4 +1,5 @@
 import { SideType } from "../../game/SideType";
+import type { IniFile } from "../../data/IniFile";
 const SIDE_PREFIXES = new Map<SideType, string>([
     [SideType.GDI, "Allied"],
     [SideType.Nod, "Russian"],
@@ -22,7 +23,7 @@ export class EvaSpecs {
     constructor(sideType: SideType) {
         this.sideType = sideType;
     }
-    readIni(ini: any): EvaSpecs {
+    readIni(ini: IniFile): EvaSpecs {
         let dialogListSection = ini.getSection("DialogList");
         if (!dialogListSection) {
             throw new Error("Missing eva.ini [DialogList] section");
@@ -34,7 +35,7 @@ export class EvaSpecs {
         }
         for (let dialogName of dialogNames) {
             if (dialogName) {
-                let dialogSection = ini.getSection(dialogName);
+                let dialogSection = ini.getSection(dialogName as string);
                 if (dialogSection) {
                     const spec: EvaSpec = {
                         text: dialogSection.getString("Text"),

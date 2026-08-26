@@ -74,12 +74,12 @@ export class LightningStormEffect extends SuperWeaponEffect {
                     cloud.ticksLeft--;
                     if (cloud.ticksLeft === Math.floor(cloud.durationTicks / 2)) {
                         const warheadName = lightningStorm.warhead;
-                        const warhead = new Warhead(game.rules.getWarhead(warheadName));
+                        const warhead = new Warhead(game.rules.getWarhead(warheadName) as unknown as ConstructorParameters<typeof Warhead>[0]);
                         const tile = cloud.tile;
                         const bridge = game.map.tileOccupation.getBridgeOnTile(tile);
                         const elevation = bridge?.tileElevation ?? 0;
                         const zone = game.map.getTileZone(tile);
-                        warhead.detonate(game as any, lightningStorm.damage, tile, elevation, Coords.tile3dToWorld(tile.rx + 0.5, tile.ry + 0.5, tile.z + elevation), zone, bridge ? CollisionType.OnBridge : CollisionType.None, game.createTarget(bridge, tile), { player: this.owner, weapon: undefined } as any, SpecialWarheadType.LightningStrike, undefined, undefined);
+                        warhead.detonate(game as unknown as Parameters<typeof warhead.detonate>[0], lightningStorm.damage, tile, elevation, Coords.tile3dToWorld(tile.rx + 0.5, tile.ry + 0.5, tile.z + elevation), zone, bridge ? CollisionType.OnBridge : CollisionType.None, game.createTarget(bridge, tile), { player: this.owner, weapon: undefined } as unknown as Parameters<typeof warhead.detonate>[8], SpecialWarheadType.LightningStrike, undefined, undefined);
                     }
                 }
                 else {

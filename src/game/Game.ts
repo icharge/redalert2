@@ -46,14 +46,44 @@ import { WeaponType } from "./WeaponType";
 import { Warhead } from "./Warhead";
 import { NotifyObjectTraitAdd } from "./trait/interface/NotifyObjectTraitAdd";
 import { RadarOnOffEvent } from "./event/RadarOnOffEvent";
+import { Player, LimboData, PlayerOwnedObject } from "./Player";
+import { PlayerList } from "./PlayerList";
+import { World } from "./World";
+import { GameMap, MapTerrain, MapOverlay, MapSmudge, MapTechno } from "./GameMap";
+import { Rules } from "./rules/Rules";
+import { TechnoRules } from "./rules/TechnoRules";
+import { ObjectRules } from "./rules/ObjectRules";
+import { TerrainRules } from "./rules/TerrainRules";
+import { Art } from "./art/Art";
+import { Ai } from "./ai/Ai";
+import { AiPlayerInfo, HumanPlayerInfo } from "./gameopts/GameOpts";
+import { Country } from "./Country";
+import { UnitSelection } from "./gameobject/selection/UnitSelection";
+import { ObjectFactory } from "./gameobject/ObjectFactory";
+import { BotManager } from "./BotManager";
+import { GameObject } from "./gameobject/GameObject";
+import { Techno } from "./gameobject/Techno";
+import { MapShroudTrait } from "./trait/MapShroudTrait";
+import { CrateGeneratorTrait } from "./trait/CrateGeneratorTrait";
+import { SellTrait } from "./trait/SellTrait";
+import { StalemateDetectTrait } from "./trait/StalemateDetectTrait";
+import { Trait } from "./Traits";
+import { Alliance, Alliances } from "./Alliances";
+import { Tile } from "./map/TileCollection";
+import { BridgeSpec } from "./map/Bridges";
 export enum GameStatus {
     NotStarted = 0,
     Started = 1,
     Ended = 2
 }
+interface ObjectKiller {
+    player?: Player;
+    obj?: GameObject;
+    weapon?: Weapon;
+}
 export class Game {
-    public updatableObjects = new Set<any>();
-    public constructionWorkers = new Map<any, ConstructionWorker>();
+    public updatableObjects = new Set<GameObject>();
+    public constructionWorkers = new Map<Player, ConstructionWorker>();
     public currentTick = 0;
     public currentTime = 0;
     public countdownTimer = new CountdownTimer();
@@ -62,36 +92,36 @@ export class Game {
     public events = new GameEventBus();
     public traits = new Traits();
     public debugText = new BoxedVar("");
-    public world: any;
-    public map: any;
-    public rules: any;
-    public art: any;
-    public ai: any;
-    public id: any;
-    public startTimestamp: any;
-    public prng: any;
-    public gameOpts: any;
-    public gameModeType: any;
-    public playerList: any;
-    public unitSelection: any;
-    public alliances: any;
+    public world: World;
+    public map: GameMap;
+    public rules: Rules;
+    public art: Art;
+    public ai: Ai;
+    public id: number | string;
+    public startTimestamp: number;
+    public prng: Prng;
+    public gameOpts: GameOpts;
+    public gameModeType: GameModeType;
+    public playerList: PlayerList;
+    public unitSelection: UnitSelection;
+    public alliances: Alliances;
     public desiredSpeed: BoxedVar<number>;
     public speed: BoxedVar<number>;
-    public nextObjectId: any;
-    public objectFactory: any;
-    public botManager: any;
+    public nextObjectId: BoxedVar<number>;
+    public objectFactory: ObjectFactory;
+    public botManager: BotManager;
     public triggers = new TriggerManager();
-    public localPlayer: any;
-    public mapShroudTrait: any;
-    public crateGeneratorTrait: any;
+    public localPlayer: Player;
+    public mapShroudTrait: MapShroudTrait;
+    public crateGeneratorTrait: CrateGeneratorTrait;
     public status: GameStatus;
     public lastGameEndCheck: number | undefined;
-    public sellTrait: any;
-    public stalemateDetectTrait: any;
+    public sellTrait: SellTrait;
+    public stalemateDetectTrait: StalemateDetectTrait;
     get onEnd() {
         return this._onEnd.asEvent();
     }
-    constructor(world: any, map: any, rules: any, art: any, ai: any, id: any, startTimestamp: any, gameOpts: any, gameModeType: any, playerList: any, unitSelection: any, alliances: any, nextObjectId: any, objectFactory: any, botManager: any) {
+    constructor(world: World, map: GameMap, rules: Rules, art: Art, ai: Ai, id: number | string, startTimestamp: number, gameOpts: GameOpts, gameModeType: GameModeType, playerList: PlayerList, unitSelection: UnitSelection, alliances: Alliances, nextObjectId: BoxedVar<number>, objectFactory: ObjectFactory, botManager: BotManager) {
         this.world = world;
         this.map = map;
         this.rules = rules;
@@ -118,7 +148,7 @@ export class Game {
         // ever set this, which is why bots stayed inert until reconnect.
         this.status = GameStatus.NotStarted;
     }
-    addPlayer(player: any) {
+    addPlayer(player: Player) {
         this.playerList.addPlayer(player);
         this.constructionWorkers.set(player, this.createConstructionWorker(player));
     }
@@ -128,12 +158,12 @@ export class Game {
     getPlayerByName(name: string) {
         return this.playerList.getPlayerByName(name);
     }
-    getAiPlayerName(aiPlayer: any) {
+    getAiPlayerName(aiPlayer: AiPlayerInfo | number) {
         let index: number;
         index = typeof aiPlayer === "number" ? aiPlayer : this.gameOpts.aiPlayers.indexOf(aiPlayer);
         return `@@AI${index + 1}@@`;
     }
-    getPlayerNumber(player: any) {
+    getPlayerNumber(player: Player) {
         return this.playerList.getPlayerNumber(player);
     }
     getCombatants() {
@@ -148,16 +178,22 @@ export class Game {
     getNonNeutralPlayers() {
         return this.playerList.getNonNeutral();
     }
-    areFriendly(obj1: any, obj2: any) {
+    areFriendly(obj1: GameObject, obj2: GameObject) {
         return obj1.owner === obj2.owner || this.alliances.areAllied(obj1.owner, obj2.owner);
     }
     getWorld() {
         return this.world;
     }
-    createConstructionWorker(player: any) {
-        return new ConstructionWorker(player, this.rules, this.art, this.map, this);
+    createConstructionWorker(player: Player) {
+        return new ConstructionWorker(
+            player as unknown as ConstructorParameters<typeof ConstructionWorker>[0],
+            this.rules as unknown as ConstructorParameters<typeof ConstructionWorker>[1],
+            this.art as unknown as ConstructorParameters<typeof ConstructionWorker>[2],
+            this.map as unknown as ConstructorParameters<typeof ConstructionWorker>[3],
+            this as unknown as ConstructorParameters<typeof ConstructionWorker>[4],
+        );
     }
-    getConstructionWorker(player: any) {
+    getConstructionWorker(player: Player) {
         const worker = this.constructionWorkers.get(player);
         if (!worker) {
             throw new Error(`No construction worker found for player "${player.name}"`);
@@ -167,14 +203,14 @@ export class Game {
     getUnitSelection() {
         return this.unitSelection;
     }
-    init(localPlayer: any) {
+    init(localPlayer: Player) {
         this.localPlayer = localPlayer;
         this.createMapObjects();
         this.createPlayerInitialUnits();
         this.map.terrain.computeAllPassabilityGraphs();
         this.mapShroudTrait.init(this);
         this.crateGeneratorTrait.init(this);
-        this.playerList.getAll().forEach((player: any) => (player.credits = this.gameOpts.credits));
+        this.playerList.getAll().forEach((player: Player) => (player.credits = this.gameOpts.credits));
         if (this.rules.mpDialogSettings.alliesAllowed) {
             this.createInitialTeams();
         }
@@ -189,8 +225,8 @@ export class Game {
     createInitialTeams() {
         for (let teamId = 0; teamId < this.gameOpts.maxSlots; teamId++) {
             const teamMembers = [...this.gameOpts.humanPlayers, ...this.gameOpts.aiPlayers]
-                .filter((player: any) => player?.teamId === teamId && player.countryId !== OBS_COUNTRY_ID)
-                .map((player: any) => isHumanPlayerInfo(player) ? player.name : this.getAiPlayerName(player));
+                .filter((player: HumanPlayerInfo | AiPlayerInfo) => player?.teamId === teamId && player.countryId !== OBS_COUNTRY_ID)
+                .map((player: HumanPlayerInfo | AiPlayerInfo) => isHumanPlayerInfo(player) ? player.name : this.getAiPlayerName(player));
             if (teamMembers.length > 1) {
                 for (let i = 0; i < teamMembers.length - 1; i++) {
                     for (let j = i + 1; j < teamMembers.length; j++) {
@@ -204,14 +240,14 @@ export class Game {
         }
     }
     createMapObjects() {
-        const noHarvesters = this.rules.general.harvesterUnit.every((unitName: string) => !isBetween(this.rules.getObject(unitName, ObjectType.Vehicle).techLevel, 0, this.rules.mpDialogSettings.techLevel));
+        const noHarvesters = this.rules.general.harvesterUnit.every((unitName: string) => !isBetween((this.rules.getObject(unitName, ObjectType.Vehicle) as TechnoRules).techLevel, 0, this.rules.mpDialogSettings.techLevel));
         const mapObjects = this.map.getInitialMapObjects();
         this.createInitialMapTerrains(mapObjects.terrains, noHarvesters);
         this.createInitialMapOverlays(mapObjects.overlays, noHarvesters);
         this.createInitialMapSmudges(mapObjects.smudges);
         this.createInitialMapTechnos(mapObjects.technos);
     }
-    createInitialMapTerrains(terrains: any[], noHarvesters: boolean) {
+    createInitialMapTerrains(terrains: MapTerrain[], noHarvesters: boolean) {
         for (const terrain of terrains) {
             const name = terrain.name;
             if (!this.validateMapObjectRulesAndArt(name, ObjectType.Terrain)) {
@@ -222,7 +258,7 @@ export class Game {
                 console.warn(`Invalid map object location (${terrain.rx},${terrain.ry})`, terrain);
                 continue;
             }
-            const terrainRules = this.rules.getObject(name, ObjectType.Terrain);
+            const terrainRules = this.rules.getObject(name, ObjectType.Terrain) as TerrainRules;
             if (noHarvesters && terrainRules.spawnsTiberium) {
                 continue;
             }
@@ -230,9 +266,9 @@ export class Game {
             this.spawnObject(terrainObj, tile);
         }
     }
-    createInitialMapOverlays(overlays: any[], noHarvesters: boolean) {
-        const bridgeSegments = new Map<any, number>();
-        const bridgeObjects = new Map<any, any>();
+    createInitialMapOverlays(overlays: MapOverlay[], noHarvesters: boolean) {
+        const bridgeSegments = new Map<Tile, number>();
+        const bridgeObjects = new Map<Tile, GameObject>();
         const highBridgeHeadTiles = this.map.bridges.findMapHighBridgeHeadTiles();
         const highBridgeSpecs = this.map.bridges.findBridgeSpecsForHeadTiles([...highBridgeHeadTiles]);
         for (const overlay of overlays) {
@@ -247,7 +283,7 @@ export class Game {
             let tileY = overlay.ry;
             if (overlayObj.isBridge() && overlayObj.isHighBridge()) {
                 overlayObj.position.tileElevation = 4;
-                const spec = highBridgeSpecs.find((s: any) =>
+                const spec = highBridgeSpecs.find((s: BridgeSpec) =>
                     rectContainsPoint(
                         { x: s.start.rx, y: s.start.ry, ...this.map.bridges.getBridgeSize(s) },
                         { x: tileX, y: tileY }));
@@ -303,7 +339,7 @@ export class Game {
                         console.warn(`Found unsupported TS tiberium overlay ${overlayObj.overlayId} @${tile.rx},${tile.ry}. Skipping.`);
                         continue;
                     }
-                    if (this.map.getObjectsOnTile(tile).find((obj: any) => obj.isTerrain())) {
+                    if (this.map.getObjectsOnTile(tile).find((obj: GameObject) => obj.isTerrain())) {
                         overlayObj.dispose();
                         continue;
                     }
@@ -329,18 +365,18 @@ export class Game {
                 console.warn(`Invalid bridge segment @${tile.rx},${tile.ry}. Skipping.`);
             }
         }
-        const lowBridgeHeadTiles = [...bridgeObjects.keys()].filter((tile: any) => this.map.bridges.getPieceAtTile(tile)?.headType !== BridgeHeadType.None);
+        const lowBridgeHeadTiles = [...bridgeObjects.keys()].filter((tile: Tile) => this.map.bridges.getPieceAtTile(tile)?.headType !== BridgeHeadType.None);
         const bridgeSpecs = [
             ...this.map.bridges.findBridgeSpecsForHeadTiles([...lowBridgeHeadTiles]),
             ...highBridgeSpecs,
         ];
         for (const spec of bridgeSpecs) {
             for (const piece of this.map.bridges.findBridgePieces(spec)) {
-                piece.obj.bridgeTrait.bridgeSpec = spec;
+                (piece.obj as unknown as { bridgeTrait: { bridgeSpec: BridgeSpec } }).bridgeTrait.bridgeSpec = spec;
             }
         }
         const allBridgeTiles = bridgeSpecs
-            .map((spec: any) => this.map.bridges.findAllBridgeTiles(spec))
+            .map((spec: BridgeSpec) => this.map.bridges.findAllBridgeTiles(spec))
             .flat();
         const placeholderId = BridgeOverlayTypes.bridgePlaceholderIds[0];
         const placeholderName = this.rules.getOverlayName(placeholderId);
@@ -350,7 +386,7 @@ export class Game {
             this.spawnObject(placeholder, tile);
         }
     }
-    createInitialMapSmudges(smudges: any[]) {
+    createInitialMapSmudges(smudges: MapSmudge[]) {
         for (const smudge of smudges) {
             const name = smudge.name;
             const tile = this.map.tiles.getByMapCoords(smudge.rx, smudge.ry);
@@ -362,11 +398,11 @@ export class Game {
             this.spawnObject(smudgeObj, tile);
         }
     }
-    createInitialMapTechnos(technos: any[]) {
+    createInitialMapTechnos(technos: MapTechno[]) {
         const playersByCountry = new Map(this.playerList
             .getAll()
-            .filter((player: any) => !!player.country)
-            .map((player: any) => [player.country.name, player]));
+            .filter((player: Player) => !!player.country)
+            .map((player: Player) => [player.country.name, player]));
         const tags = this.map.getTags();
         for (const techno of technos) {
             const name = techno.name;
@@ -383,12 +419,12 @@ export class Game {
                 console.warn(`Invalid owner "${techno.owner}" for map object`, techno);
                 continue;
             }
-            if (!(owner as any).isNeutral) {
+            if (!owner.isNeutral) {
                 continue;
             }
             const obj = this.createObject(techno.type, name);
             if (techno.tag) {
-                obj.tag = tags.find((tag: any) => tag.id === techno.tag);
+                obj.tag = tags.find((tag) => tag.id === techno.tag);
             }
             obj.healthTrait.health = (techno.health / 256) * 100;
             let shouldDestroy = false;
@@ -444,27 +480,27 @@ export class Game {
         return true;
     }
     createPlayerInitialUnits() {
-        const countries = this.playerList.getCombatants().map((player: any) => player.country);
-        const availableUnits = [...this.rules.infantryRules.values(), ...this.rules.vehicleRules.values()].filter((unit: any) => unit.allowedToStartInMultiplayer &&
+        const countries = this.playerList.getCombatants().map((player: Player) => player.country);
+        const availableUnits = [...this.rules.infantryRules.values(), ...this.rules.vehicleRules.values()].filter((unit: TechnoRules) => unit.allowedToStartInMultiplayer &&
             !unit.naval &&
             unit.techLevel !== -1 &&
             unit.techLevel <= this.rules.mpDialogSettings.techLevel &&
             !this.rules.general.baseUnit.includes(unit.name) &&
-            countries.some((country: any) => unit.isAvailableTo(country) && unit.hasOwner(country)));
+            countries.some((country: Country) => unit.isAvailableTo(country) && unit.hasOwner(country)));
         for (const player of this.playerList.getCombatants()) {
             const startLoc = this.map.startingLocations[player.startLocation];
             const startTile = this.map.tiles.getByMapCoords(startLoc.x, startLoc.y);
             const mcvName = this.rules.general.baseUnit.find((unitName: string) => {
-                const unit = this.rules.getObject(unitName, ObjectType.Vehicle);
+                const unit = this.rules.getObject(unitName, ObjectType.Vehicle) as TechnoRules;
                 return unit.isAvailableTo(player.country) && unit.hasOwner(player.country);
             });
             if (!mcvName) {
                 throw new Error("No suitable MCV found for player country " + player.country?.name);
             }
-            const mcvRules = this.rules.getObject(mcvName, ObjectType.Vehicle);
+            const mcvRules = this.rules.getObject(mcvName, ObjectType.Vehicle) as TechnoRules;
             const mcv = this.createUnitForPlayer(mcvRules, player);
             this.spawnObject(mcv, startTile);
-            const startingUnits = StartingUnitsGenerator.generate(this.gameOpts.unitCount, [...this.rules.vehicleRules.keys()], availableUnits, player.country);
+            const startingUnits = StartingUnitsGenerator.generate(this.gameOpts.unitCount, [...this.rules.vehicleRules.keys()], availableUnits as unknown as Parameters<typeof StartingUnitsGenerator.generate>[2], player.country);
             if (this.gameModeType === GameModeType.Unholy) {
                 startingUnits.push(...this.rules.general.baseUnit
                     .filter((unitName: string) => unitName !== mcvName)
@@ -474,13 +510,13 @@ export class Game {
                     count: 1,
                 })));
             }
-            const spawnTiles: any[] = [];
+            const spawnTiles: Tile[] = [];
             let useSpawnTiles = false;
-            const tileFinder = new CardinalTileFinder(this.map.tiles, this.map.mapBounds, startTile, 4, 4, (tile: any) => !this.map
+            const tileFinder = new CardinalTileFinder(this.map.tiles, this.map.mapBounds, startTile, 4, 4, (tile: Tile) => !this.map
                 .getGroundObjectsOnTile(tile)
-                .find((obj: any) => !(obj.isSmudge() || (obj.isOverlay() && obj.isTiberium()))) &&
+                .find((obj: GameObject) => !(obj.isSmudge() || (obj.isOverlay() && obj.isTiberium()))) &&
                 this.map.terrain.getPassableSpeed(tile, SpeedType.Foot, false, false) > 0);
-            const tileFinderMap = new Map<any, any>();
+            const tileFinderMap = new Map<Tile, CardinalTileFinder>();
             let tileIndex = 0;
             for (const { name, type, count } of startingUnits) {
                 let remaining = count;
@@ -499,9 +535,9 @@ export class Game {
                         const baseTile = spawnTiles[tileIndex];
                         let finder = tileFinderMap.get(baseTile);
                         if (!finder) {
-                            finder = new CardinalTileFinder(this.map.tiles, this.map.mapBounds, baseTile, 1, 0, (tile: any) => !this.map
+                            finder = new CardinalTileFinder(this.map.tiles, this.map.mapBounds, baseTile, 1, 0, (tile: Tile) => !this.map
                                 .getGroundObjectsOnTile(tile)
-                                .find((obj: any) => !(obj.isSmudge() || (obj.isOverlay() && obj.isTiberium()))) &&
+                                .find((obj: GameObject) => !(obj.isSmudge() || (obj.isOverlay() && obj.isTiberium()))) &&
                                 this.map.terrain.getPassableSpeed(tile, SpeedType.Foot, false, false) > 0);
                             tileFinderMap.set(baseTile, finder);
                         }
@@ -509,7 +545,7 @@ export class Game {
                         tile = finder.getNextTile();
                     }
                     if (tile) {
-                        const unitRules = this.rules.getObject(name, type);
+                        const unitRules = this.rules.getObject(name, type) as TechnoRules;
                         if (type === ObjectType.Vehicle) {
                             const unit = this.createUnitForPlayer(unitRules, player);
                             this.applyInitialVeteran(unit, player);
@@ -536,7 +572,7 @@ export class Game {
             }
         }
     }
-    applyInitialVeteran(unit: any, player: any) {
+    applyInitialVeteran(unit: GameObject, player: Player) {
         if (unit.veteranTrait) {
             if (this.rules.general.veteran.initialVeteran) {
                 unit.veteranTrait.setVeteranLevel(VeteranLevel.Elite);
@@ -549,7 +585,7 @@ export class Game {
     createObject(type: ObjectType, name: string) {
         return this.objectFactory.create(type, name, this.rules, this.art);
     }
-    createUnitForPlayer(unitRules: any, player: any) {
+    createUnitForPlayer(unitRules: ObjectRules, player: Player) {
         if (![ObjectType.Aircraft, ObjectType.Vehicle, ObjectType.Infantry].includes(unitRules.type)) {
             throw new Error(`Attempted to create an invalid unit type "${unitRules.type}"`);
         }
@@ -558,7 +594,7 @@ export class Game {
         unit.purchaseValue = this.sellTrait.computePurchaseValue(unit.rules, player);
         return unit;
     }
-    createProjectile(projectileName: string, fromObject: any, weapon: any, target: any, isShrapnel: boolean) {
+    createProjectile(projectileName: string, fromObject: GameObject, weapon: Weapon, target: Target, isShrapnel: boolean) {
         const projectile = this.createObject(ObjectType.Projectile, projectileName);
         projectile.fromWeapon = weapon;
         projectile.fromObject = fromObject;
@@ -567,7 +603,7 @@ export class Game {
         projectile.isShrapnel = isShrapnel;
         return projectile;
     }
-    createLooseProjectile(weaponName: string, fromPlayer: any, target: any) {
+    createLooseProjectile(weaponName: string, fromPlayer: Player, target: Target) {
         const weaponRules = this.rules.getWeapon(weaponName);
         const projectileName = weaponRules.projectile;
         const projectileRules = this.rules.getProjectile(projectileName);
@@ -577,9 +613,9 @@ export class Game {
             projectileRules: projectileRules,
             range: Number.POSITIVE_INFINITY,
             rules: weaponRules,
-            speed: Weapon.computeSpeed(weaponRules, projectileRules),
+            speed: Weapon.computeSpeed(weaponRules as unknown as Parameters<typeof Weapon.computeSpeed>[0], projectileRules as unknown as Parameters<typeof Weapon.computeSpeed>[1]),
             type: WeaponType.Primary,
-            warhead: new Warhead(warheadRules),
+            warhead: new Warhead(warheadRules as unknown as ConstructorParameters<typeof Warhead>[0]),
         };
         const projectile = this.createObject(ObjectType.Projectile, projectileName);
         projectile.fromWeapon = weapon;
@@ -588,14 +624,14 @@ export class Game {
         projectile.target = target;
         return projectile;
     }
-    createSuperWeapon(name: string, owner: any, isReady: boolean = false) {
+    createSuperWeapon(name: string, owner: Player, isReady: boolean = false) {
         const rules = this.rules.getSuperWeapon(name);
         return new SuperWeapon(name, rules, owner, isReady);
     }
-    createTarget(obj: any, tile: any, bridgeMode: TargetBridgeMode = TargetBridgeMode.Auto) {
+    createTarget(obj: GameObject, tile: Tile, bridgeMode: TargetBridgeMode = TargetBridgeMode.Auto) {
         return new Target(obj, tile, this.map.tileOccupation, bridgeMode);
     }
-    isValidTarget(obj: any): boolean {
+    isValidTarget(obj: GameObject): boolean {
         if (obj) {
             if (!obj.isSpawned || obj.isCrashing) {
                 return false;
@@ -609,23 +645,23 @@ export class Game {
         }
         return true;
     }
-    spawnObject(obj: any, tile: any) {
+    spawnObject(obj: GameObject, tile: Tile) {
         if (obj.isTechno() && obj.limboData) {
             throw new Error(`Object ${obj.name}#${obj.id} is in limbo. Use unlimboObject instead or clear limboData first`);
         }
         this.doSpawnObject(obj, tile);
     }
-    unspawnObject(obj: any) {
+    unspawnObject(obj: GameObject) {
         if (obj.isTechno() && obj.owner) {
             obj.owner.removeOwnedObject(obj);
         }
         this.doUnspawnObject(obj);
     }
-    limboObject(obj: any, limboData: any) {
+    limboObject(obj: GameObject, limboData: LimboData) {
         obj.limboData = limboData;
         this.doUnspawnObject(obj);
     }
-    unlimboObject(obj: any, tile: any, skipSelection: boolean = false) {
+    unlimboObject(obj: GameObject, tile: Tile, skipSelection: boolean = false) {
         const limboData = obj.limboData;
         if (!limboData) {
             throw new Error(`Object ${obj.name}#${obj.id} has no limboData attached`);
@@ -640,7 +676,7 @@ export class Game {
             selection.addUnitsToGroup(limboData.controlGroup, [obj], false);
         }
     }
-    private doSpawnObject(obj: any, tile: any) {
+    private doSpawnObject(obj: GameObject, tile: Tile) {
         obj.position.tile = tile;
         if (obj.isBuilding()) {
             const center = obj.art.foundationCenter;
@@ -667,7 +703,7 @@ export class Game {
         });
         this.events.dispatch(new ObjectSpawnEvent(obj));
     }
-    private doUnspawnObject(obj: any) {
+    private doUnspawnObject(obj: GameObject) {
         const tile = obj.tile;
         if (!obj.isProjectile() && !obj.isDebris()) {
             this.map.tileOccupation.unoccupyTileRange(tile, obj);
@@ -687,7 +723,7 @@ export class Game {
         });
         this.events.dispatch(new ObjectUnspawnEvent(obj));
     }
-    destroyObject(obj: any, killer?: any, silent: boolean = false, skipEvents: boolean = false) {
+    destroyObject(obj: GameObject, killer?: ObjectKiller, silent: boolean = false, skipEvents: boolean = false) {
         if (obj.isDestroyed) {
             throw new Error(`Object with ID "${obj.id}" is already destroyed`);
         }
@@ -756,12 +792,12 @@ export class Game {
     getObjectById(id: number) {
         return this.world.getObjectById(id);
     }
-    changeObjectOwner(obj: any, newOwner: any) {
+    changeObjectOwner(obj: GameObject, newOwner: Player) {
         const oldOwner = obj.owner;
         if (oldOwner) {
             oldOwner.removeOwnedObject(obj);
         }
-        newOwner.addOwnedObject(obj);
+        newOwner.addOwnedObject(obj as unknown as PlayerOwnedObject);
         if (oldOwner && oldOwner !== newOwner) {
             this.traits.filter(NotifyOwnerChange).forEach((trait: NotifyOwnerChange) => {
                 trait[NotifyOwnerChange.onChange](obj, oldOwner, this);
@@ -774,13 +810,13 @@ export class Game {
             }
         }
     }
-    addObjectTrait(obj: any, trait: any) {
+    addObjectTrait(obj: GameObject, trait: Trait) {
         obj.addTrait(trait);
         this.traits.filter(NotifyObjectTraitAdd).forEach((t: NotifyObjectTraitAdd) => {
             t[NotifyObjectTraitAdd.onAdd](obj, trait, this);
         });
     }
-    onAllianceChange(alliance: any, initiator: any, formed: boolean) {
+    onAllianceChange(alliance: Alliance, initiator: Player, formed: boolean) {
         this.events.dispatch(new AllianceChangeEvent(alliance, formed ? AllianceEventType.Formed : AllianceEventType.Broken, initiator));
         this.traits.filter(NotifyAllianceChange).forEach((trait: NotifyAllianceChange) => {
             trait[NotifyAllianceChange.onChange](alliance, formed, this);
@@ -799,10 +835,10 @@ export class Game {
         }
         for (const obj of [...this.updatableObjects]) {
             if (obj.isSpawned) {
-                obj.update(this);
+                obj.update(this as unknown as number);
             }
         }
-        this.playerList.getCombatants().forEach((player: any) => {
+        this.playerList.getCombatants().forEach((player: Player) => {
             player.cheerCooldownTicks = Math.max(0, player.cheerCooldownTicks - 1);
         });
         this.traits.filter(NotifyTick).forEach((trait: NotifyTick) => {
@@ -815,7 +851,7 @@ export class Game {
                 if (unit.isTechno() && unit.owner !== this.localPlayer) {
                     const shroud = this.mapShroudTrait.getPlayerShroud(this.localPlayer);
                     const tiles = this.map.tileOccupation.calculateTilesForGameObject(unit.tile, unit);
-                    const isVisible = tiles.find((tile: any) => !shroud.isShrouded(tile, unit.tileElevation));
+                    const isVisible = tiles.find((tile: Tile) => !shroud.isShrouded(tile, unit.tileElevation));
                     if (!isVisible) {
                         this.unitSelection.deselectAll();
                         this.unitSelection.cleanupUnit(unit);
@@ -838,8 +874,8 @@ export class Game {
     checkGameEndConditions() {
         this.updateDefeatedPlayers(this.playerList.getCombatants());
         const shouldEnd = (this.localPlayer?.defeated && !this.localPlayer.isObserver) ||
-            (!this.alliances.getHostilePlayers().some((pair: any) => !pair.first.isAi || !pair.second.isAi) &&
-                this.gameOpts.humanPlayers.length + this.gameOpts.aiPlayers.filter((p: any) => !!p).length > 1);
+            (!this.alliances.getHostilePlayers().some((pair: { first: Player; second: Player }) => !pair.first.isAi || !pair.second.isAi) &&
+                this.gameOpts.humanPlayers.length + this.gameOpts.aiPlayers.filter((p: AiPlayerInfo | undefined) => !!p).length > 1);
         if (shouldEnd) {
             this.end();
         }
@@ -850,10 +886,10 @@ export class Game {
             this._onEnd.dispatch(this, undefined);
         }
     }
-    updateDefeatedPlayers(players: any[]) {
+    updateDefeatedPlayers(players: Player[]) {
         const isStalemate = this.stalemateDetectTrait?.isStale() && this.stalemateDetectTrait.getCountdownTicks() === 0;
         const shortGame = this.gameOpts.shortGame;
-        players.forEach((player: any) => {
+        players.forEach((player: Player) => {
             let isDefeated: boolean;
             if (isStalemate) {
                 isDefeated = true;
@@ -861,17 +897,17 @@ export class Game {
             else {
                 let hasAssets: boolean;
                 if (shortGame) {
-                    const hasSignificantBuilding = [...player.getOwnedObjectsByType(ObjectType.Building, true)].some((obj: any) => !obj.rules.insignificant);
-                    hasAssets = hasSignificantBuilding || player.getOwnedObjects(true).some((obj: any) => this.rules.general.baseUnit.includes(obj.name));
+                    const hasSignificantBuilding = [...player.getOwnedObjectsByType(ObjectType.Building, true) as unknown as GameObject[]].some((obj: GameObject) => !obj.rules.insignificant);
+                    hasAssets = hasSignificantBuilding || (player.getOwnedObjects(true) as unknown as GameObject[]).some((obj: GameObject) => this.rules.general.baseUnit.includes(obj.name));
                 }
                 else {
-                    hasAssets = player.getOwnedObjects(true).some((obj: any) => !obj.rules.insignificant && !obj.limboData?.inTransport);
+                    hasAssets = (player.getOwnedObjects(true) as unknown as GameObject[]).some((obj: GameObject) => !obj.rules.insignificant && !obj.limboData?.inTransport);
                 }
                 isDefeated = !hasAssets;
             }
             if (isDefeated) {
                 player.defeated = true;
-                const hasHumanConflict = this.alliances.getHostilePlayers().some((pair: any) => !pair.first.isAi || !pair.second.isAi);
+                const hasHumanConflict = this.alliances.getHostilePlayers().some((pair: { first: Player; second: Player }) => !pair.first.isAi || !pair.second.isAi);
                 if (hasHumanConflict) {
                     player.isObserver = true;
                 }
@@ -888,8 +924,8 @@ export class Game {
             }
         });
     }
-    removeAllPlayerAssets(player: any) {
-        player.getOwnedObjects().forEach((obj: any) => {
+    removeAllPlayerAssets(player: Player) {
+        (player.getOwnedObjects() as unknown as GameObject[]).forEach((obj: GameObject) => {
             if (!obj.isDestroyed) {
                 if (obj.isBuilding() && obj.rules.returnable && obj.rules.needsEngineer && !obj.garrisonTrait) {
                     this.changeObjectOwner(obj, this.getCivilianPlayer());
@@ -899,7 +935,7 @@ export class Game {
                 }
             }
         });
-        player.getOwnedObjects(true).forEach((obj: any) => {
+        (player.getOwnedObjects(true) as unknown as GameObject[]).forEach((obj: GameObject) => {
             if (!obj.isDestroyed) {
                 if (obj.limboData?.inTransport || (obj.isBuilding() && obj.wallTrait)) {
                     this.changeObjectOwner(obj, this.getCivilianPlayer());
@@ -910,17 +946,17 @@ export class Game {
             }
         });
     }
-    redistributeAllPlayerAssets(player: any): boolean {
+    redistributeAllPlayerAssets(player: Player): boolean {
         if (player.isObserver) {
             return false;
         }
         if (!(this.rules.mpDialogSettings.mustAlly && !this.rules.mpDialogSettings.allyChangeAllowed)) {
             return false;
         }
-        const allies = this.alliances.getAllies(player).filter((p: any) => !p.isAi && !p.defeated);
+        const allies = this.alliances.getAllies(player).filter((p: Player) => !p.isAi && !p.defeated);
         if (allies.length > 0) {
-            const topAlly = [...allies].sort((a: any, b: any) => b.score - a.score)[0];
-            for (const obj of player.getOwnedObjects(true)) {
+            const topAlly = [...allies].sort((a: Player, b: Player) => b.score - a.score)[0];
+            for (const obj of player.getOwnedObjects(true) as unknown as GameObject[]) {
                 this.changeObjectOwner(obj, topAlly);
             }
             const creditsPerAlly = Math.floor(player.credits / allies.length);
@@ -943,10 +979,10 @@ export class Game {
         return fnv32a([
             ...new Uint8Array(new Float64Array([this.prng.getLastRandom()]).buffer),
             this.nextObjectId.value,
-            ...this.world.getAllObjects().map((obj: any) => obj.getHash()),
-            ...this.playerList.getAll().map((player: any) => player.getHash()),
+            ...this.world.getAllObjects().map((obj: GameObject) => obj.getHash()),
+            ...this.playerList.getAll().map((player: Player) => player.getHash()),
             this.alliances.getHash(),
-            ...this.traits.getAll().map((trait: any) => trait.getHash?.() ?? 0),
+            ...this.traits.getAll().map((trait: Trait) => trait.getHash?.() ?? 0),
         ]);
     }
     debugGetState() {
@@ -954,22 +990,22 @@ export class Game {
             currentTick: this.currentTick,
             lastRandom: this.prng.getLastRandom(),
             nextObjectId: this.nextObjectId.value,
-            objects: this.world.getAllObjects().map((obj: any) => obj.debugGetState()),
-            players: this.playerList.getAll().map((player: any) => player.debugGetState()),
+            objects: this.world.getAllObjects().map((obj: GameObject) => obj.debugGetState()),
+            players: this.playerList.getAll().map((player: Player) => player.debugGetState()),
             alliances: this.alliances.debugGetState(),
-            traits: this.traits.getAll().reduce((acc: any, trait: any) => {
+            traits: this.traits.getAll().reduce((acc: Record<string, unknown>, trait: Trait) => {
                 const state = trait.debugGetState?.();
                 if (state !== undefined) {
-                    acc[trait.constructor.name] = state;
+                    acc[(trait.constructor as { name: string }).name] = state;
                 }
                 return acc;
             }, {}),
         };
     }
     dispose() {
-        this.world.getAllObjects().forEach((obj: any) => obj.dispose());
-        this.playerList.getAll().forEach((player: any) => player.dispose());
-        this.constructionWorkers.forEach((worker: any) => worker.dispose());
+        this.world.getAllObjects().forEach((obj: GameObject) => obj.dispose());
+        this.playerList.getAll().forEach((player: Player) => player.dispose());
+        this.constructionWorkers.forEach((worker: ConstructionWorker) => worker.dispose());
         this.botManager.dispose();
         this.triggers.dispose();
         this.map.dispose();

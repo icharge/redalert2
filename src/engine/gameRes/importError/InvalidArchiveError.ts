@@ -1,7 +1,7 @@
 export class InvalidArchiveError extends Error {
-    public cause?: any;
+    public cause?: unknown;
     constructor(message: string, options?: {
-        cause?: any;
+        cause?: unknown;
     }) {
         super(message);
         this.name = "InvalidArchiveError";

@@ -11,7 +11,7 @@ export enum TileDirection {
     Bottom = 6,
     BottomRight = 7
 }
-interface TileData {
+export interface TileData {
     rx: number;
     ry: number;
     dx: number;
@@ -31,7 +31,7 @@ interface TileImage {
     };
 }
 interface TileSets {
-    getTileImage(tileNum: number, subTile: number, randomIndexSelector: (min: number, max: number) => number): TileImage;
+    getTileImage(tileNum: number, subTile: number, randomIndexSelector: (min: number, max: number) => number): unknown;
     isCliffTile(tileNum: number): boolean;
     isHighBridgeBoundaryTile(tileNum: number): boolean;
 }
@@ -47,8 +47,8 @@ interface Rectangle {
     y?: number;
     rx?: number;
     ry?: number;
-    width: number;
-    height: number;
+    width?: number;
+    height?: number;
 }
 export interface Tile extends TileData {
     terrainType: TerrainType;
@@ -97,7 +97,7 @@ export class TileCollection {
         this.maxTileHeight = 0;
         for (let i = 0, len = tileData.length; i < len; ++i) {
             const tileDataItem = tileData[i];
-            const tileImage = tileSets.getTileImage(tileDataItem.tileNum, tileDataItem.subTile, randomIndexSelector);
+            const tileImage = tileSets.getTileImage(tileDataItem.tileNum, tileDataItem.subTile, randomIndexSelector) as TileImage;
             const terrainType = tileImage.terrainType;
             if (!terrainTypes.has(terrainType)) {
                 throw new Error(`Tile (${tileDataItem.rx}, ${tileDataItem.ry}) has unknown terrain type "${terrainType}"`);
@@ -159,8 +159,8 @@ export class TileCollection {
             }
         });
     }
-    getTileRadarColor(tile: Tile): any {
-        const tileImage = this.tileSets.getTileImage(tile.tileNum, tile.subTile, () => 0);
+    getTileRadarColor(tile: Tile): { getHex(): number } {
+        const tileImage = this.tileSets.getTileImage(tile.tileNum, tile.subTile, () => 0) as TileImage;
         return tileImage.radarLeft.clone().multiplyScalar(0.5);
     }
     getAll(): Tile[] {

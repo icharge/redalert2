@@ -1,7 +1,8 @@
 import * as THREE from 'three';
+import { BatchedMesh } from './BatchedMesh';
 const depthMaterial = new THREE.MeshDepthMaterial();
 depthMaterial.depthPacking = THREE.RGBADepthPacking;
-(depthMaterial as any).clipping = true;
+(depthMaterial as unknown as { clipping: boolean }).clipping = true;
 const distanceShader = THREE.ShaderLib.distance;
 const distanceUniforms = THREE.UniformsUtils.clone(distanceShader.uniforms);
 const distanceMaterial = new THREE.ShaderMaterial({
@@ -17,7 +18,7 @@ export class InstancedMesh extends THREE.InstancedMesh {
     public useInstanceColor: boolean;
     constructor(geometry: THREE.BufferGeometry, material: THREE.Material, maxInstances: number, uniformScale: boolean, useInstanceColor: boolean = false) {
         const instancedGeometry = new THREE.InstancedBufferGeometry();
-        (instancedGeometry as any).copy(geometry);
+        (instancedGeometry as unknown as { copy: (source: THREE.BufferGeometry) => void }).copy(geometry);
         super(instancedGeometry, material.clone(), maxInstances);
         this.maxInstances = maxInstances;
         this.uniformScale = uniformScale;
@@ -39,18 +40,17 @@ export class InstancedMesh extends THREE.InstancedMesh {
         geometry.setAttribute("instanceOpacity", opacityAttribute);
     }
     private decorateMaterial(material: THREE.Material): THREE.Material {
-        const mat = material as any;
-        if (!mat.defines) {
-            mat.defines = {};
+        if (!material.defines) {
+            material.defines = {};
         }
-        mat.defines.INSTANCE_TRANSFORM = "";
+        material.defines.INSTANCE_TRANSFORM = "";
         if (this.useInstanceColor) {
-            mat.defines.INSTANCE_COLOR = "";
+            material.defines.INSTANCE_COLOR = "";
         }
         else {
-            delete mat.defines.INSTANCE_COLOR;
+            delete material.defines.INSTANCE_COLOR;
         }
-        mat.defines.INSTANCE_OPACITY = "";
+        material.defines.INSTANCE_OPACITY = "";
         return material;
     }
     public setRenderCount(count: number): void {
@@ -62,10 +62,10 @@ export class InstancedMesh extends THREE.InstancedMesh {
     public setMatrixAt(index: number, matrix: THREE.Matrix4): void {
         super.setMatrixAt(index, matrix);
     }
-    public updateFromMeshes(meshes: any[]): void {
+    public updateFromMeshes(meshes: BatchedMesh[]): void {
         if (meshes.length === 0)
             return;
-        const hasPalette = !!meshes[0].material.palette;
+        const hasPalette = !!((Array.isArray(meshes[0].material) ? meshes[0].material[0] : meshes[0].material) as { palette?: unknown }).palette;
         const attributes = (this.geometry as THREE.InstancedBufferGeometry).attributes;
         const opacityAttr = attributes.instanceOpacity as THREE.InstancedBufferAttribute;
         const paletteOffsetAttr = attributes.instancePaletteOffset as THREE.InstancedBufferAttribute;

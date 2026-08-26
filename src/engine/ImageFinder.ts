@@ -1,10 +1,13 @@
+import type { ShpFile } from '../data/ShpFile';
+import type { Theater } from './Theater';
+import type { LazyResourceCollection } from './LazyResourceCollection';
 export class MissingImageError extends Error {
 }
 export class ImageFinder {
     static MissingImageError = MissingImageError;
-    private images: Map<string, any>;
-    private theater: any;
-    constructor(images: Map<string, any>, theater: any) {
+    private images: LazyResourceCollection<ShpFile>;
+    private theater: Theater;
+    constructor(images: LazyResourceCollection<ShpFile>, theater: Theater) {
         this.images = images;
         this.theater = theater;
     }

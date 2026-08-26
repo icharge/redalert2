@@ -3,9 +3,15 @@ import { MapLighting } from '../data/map/MapLighting';
 import { EventDispatcher } from '../util/event';
 import { CompositeDisposable } from '../util/disposable/CompositeDisposable';
 import * as THREE from 'three';
+interface TileLight {
+    red: number;
+    green: number;
+    blue: number;
+    intensity: number;
+}
 export class Lighting {
     private baseAmbient: MapLighting;
-    private tileLights: Map<string, Set<any>>;
+    private tileLights: Map<string, Set<TileLight>>;
     private disposables: CompositeDisposable;
     private _onChange: EventDispatcher;
     private ambientOverride?: MapLighting;
@@ -33,7 +39,7 @@ export class Lighting {
     getAmbient(): MapLighting {
         return this.mapLighting;
     }
-    forceUpdate(force?: any) {
+    forceUpdate(force?: unknown) {
         this._onChange.dispatch(this, force);
     }
     applyAmbientOverride(override: MapLighting) {
@@ -43,13 +49,13 @@ export class Lighting {
     getBaseAmbient() {
         return new MapLighting().copy(this.baseAmbient);
     }
-    addTileLight(tile: string, light: any) {
+    addTileLight(tile: string, light: TileLight) {
         if (!this.tileLights.has(tile)) {
             this.tileLights.set(tile, new Set());
         }
         this.tileLights.get(tile)!.add(light);
     }
-    removeTileLight(tile: string, light: any) {
+    removeTileLight(tile: string, light: TileLight) {
         const lights = this.tileLights.get(tile);
         if (lights) {
             lights.delete(light);
@@ -58,19 +64,19 @@ export class Lighting {
             }
         }
     }
-    compute(type: LightingType, tile: any, height: number = 0): THREE.Vector3 {
+    compute(type: LightingType, tile: { z: number }, height: number = 0): THREE.Vector3 {
         if (type === LightingType.None) {
             return new THREE.Vector3(1, 1, 1);
         }
         return this.computeTint(type)
-            .add(this.computeTileTint(tile, type, new THREE.Vector3()))
+            .add(this.computeTileTint(tile as unknown as string, type, new THREE.Vector3()))
             .multiplyScalar(this.mapLighting.ambient +
             this.mapLighting.ground +
             this.computeLevel(type, tile.z + height) +
-            this.computeTileLightIntensity(tile));
+            this.computeTileLightIntensity(tile as unknown as string));
     }
-    computeNoAmbient(type: LightingType, tile: any, height: number = 0): number {
-        return this.computeLevel(type, tile.z + height) + this.computeTileLightIntensity(tile);
+    computeNoAmbient(type: LightingType, tile: { z: number }, height: number = 0): number {
+        return this.computeLevel(type, tile.z + height) + this.computeTileLightIntensity(tile as unknown as string);
     }
     computeLevel(type: LightingType, height: number): number {
         return type >= LightingType.Level ? this.mapLighting.level * (height - 1) : 0;

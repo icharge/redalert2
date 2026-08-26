@@ -1,4 +1,5 @@
 import { getRandomInt } from "../../util/math";
+import type { AudioFile } from "./AudioSystem";
 export enum MusicType {
     Normal = 0,
     NormalShuffle = 1,
@@ -19,11 +20,11 @@ interface MusicSpecs {
     getAll(): MusicSpec[];
 }
 interface AudioSystem {
-    playMusicFile(file: any, repeat: boolean, onEnded?: () => void): Promise<boolean>;
+    playMusicFile(file: AudioFile, repeat: boolean, onEnded?: () => void): Promise<boolean>;
     stopMusic(): void;
 }
 interface AudioFiles {
-    get(filename: string): Promise<any>;
+    get(filename: string): Promise<AudioFile | undefined>;
 }
 export class Music {
     private audioSystem: AudioSystem;
@@ -140,7 +141,7 @@ export class Music {
         await this.audioSystem.playMusicFile(file, spec.repeat, onEnded);
         return true;
     }
-    private async getMp3File(name: string): Promise<any> {
+    private async getMp3File(name: string): Promise<AudioFile | undefined> {
         const filename = name.toLowerCase() + ".mp3";
         console.log(`[Music] Looking for audio file: "${filename}"`);
         let file;

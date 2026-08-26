@@ -6,6 +6,8 @@ import { uint8ArrayToBase64String } from "@/util/string";
 import { isBetween } from "@/util/math";
 import { GAME_RES_RETRY_DURATION_MILLIS } from "@/network/gameres/wgameResConfig";
 import type { WolConfig } from "@/network/WolConfig";
+import type { WolService } from "@/network/WolService";
+import type { CancellationToken } from "@puzzl/core/lib/async/cancellation";
 
 export class WGameResService {
     static MIN_RETRY_MILLIS = 2_000;
@@ -14,7 +16,7 @@ export class WGameResService {
     private url?: string;
     private sendTask?: Task<void>;
 
-    constructor(private wolService: any, private wolConfig: WolConfig, private httpRequest: HttpRequest = new HttpRequest()) {
+    constructor(private wolService: WolService, private wolConfig: WolConfig, private httpRequest: HttpRequest = new HttpRequest()) {
     }
 
     setUrl(url: string): void {
@@ -25,7 +27,7 @@ export class WGameResService {
         return this.url;
     }
 
-    async sendGameResPacket(packet: Uint8Array, cancellationToken?: any): Promise<void> {
+    async sendGameResPacket(packet: Uint8Array, cancellationToken?: CancellationToken): Promise<void> {
         if (!this.url) {
             throw new Error("No WGameRes URL is set");
         }

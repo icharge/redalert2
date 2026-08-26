@@ -5,7 +5,7 @@ export interface TheaterSettings {
     libPaletteName: string;
     extension: string;
     type: TheaterType;
-    [key: string]: any;
+    newTheaterChar?: string;
 }
 
 export enum TheaterType {

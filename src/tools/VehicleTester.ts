@@ -143,7 +143,7 @@ export class VehicleTester {
         ] as any, this.theater.tileSets as any, this.rules.general as any, () => 0);
         const tileOccupation = new TileOccupation(tileCollection);
         const mapBounds = new MapBounds();
-        const bridges = new Bridges(this.theater.tileSets, tileCollection, tileOccupation, mapBounds, this.rules);
+        const bridges = new Bridges(this.theater.tileSets, tileCollection, tileOccupation as unknown as ConstructorParameters<typeof Bridges>[2], mapBounds, this.rules);
         const vehicle = (this.currentVehicle = new ObjectFactory(tileCollection, tileOccupation, bridges, new BoxedVar(1)).create(ObjectType.Vehicle, vehicleType, this.rules as any, this.art as any));
         this.currentVehicleType = vehicleType;
         vehicle.owner = player;
@@ -154,8 +154,8 @@ export class VehicleTester {
         this.disposables.add(renderableManager);
         world.spawnObject(vehicle);
         const renderable = (this.currentRenderable = renderableManager.getRenderableByGameObject(vehicle));
-        renderable.selectionModel.setSelectionLevel(SelectionLevel.Selected);
-        renderable.selectionModel.setControlGroupNumber(3);
+        renderable.selectionModel!.setSelectionLevel(SelectionLevel.Selected);
+        renderable.selectionModel!.setControlGroupNumber(3);
         this.buildControls();
         this.startAutoAnimate();
         this.syncState();
@@ -213,7 +213,7 @@ export class VehicleTester {
             btn.innerHTML = SelectionLevel[level];
             btn.dataset.testid = `vehicle-selection-${SelectionLevel[level].toLowerCase()}`;
             btn.addEventListener("click", () => {
-                this.currentRenderable.selectionModel.setSelectionLevel(level);
+                this.currentRenderable.selectionModel!.setSelectionLevel(level);
                 this.syncState();
             });
             selDiv.appendChild(btn);

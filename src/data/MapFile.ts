@@ -1,11 +1,16 @@
 import * as mapObjects from "@/data/MapObjects";
 import { IniFile } from "@/data/IniFile";
+import { IniSection } from "@/data/IniSection";
+import type { IniSectionJson } from "@/data/IniSection";
 import { TheaterType } from "@/engine/TheaterType";
 import * as stringUtil from "@/util/string";
 import { Format5 } from "@/data/encoding/Format5";
 import { RgbBitmap } from "@/data/Bitmap";
 import { TagsReader } from "@/data/map/tag/TagsReader";
+import { Tag } from "@/data/map/tag/Tag";
+import { CellTag } from "@/data/map/tag/CellTag";
 import { TriggerReader } from "@/data/map/trigger/TriggerReader";
+import { Trigger } from "@/data/map/trigger/Trigger";
 import { DataStream } from "@/data/DataStream";
 import { MapLighting } from "@/data/map/MapLighting";
 import { CellTagsReader } from "@/data/map/tag/CellTagsReader";
@@ -54,11 +59,11 @@ export class MapFile extends IniFile {
     declare smudges: mapObjects.Smudge[];
     declare lighting: MapLighting;
     declare ionLighting: MapLighting;
-    declare tags: any;
-    declare triggers: any;
-    declare unknownEventTypes: any;
-    declare unknownActionTypes: any;
-    declare cellTags: any;
+    declare tags: Tag[];
+    declare triggers: Trigger[];
+    declare unknownEventTypes: Set<number>;
+    declare unknownActionTypes: Set<number>;
+    declare cellTags: CellTag[];
     declare variables: Map<number, Variable>;
     declare startingLocations: {
         x: number;
@@ -109,10 +114,10 @@ export class MapFile extends IniFile {
         this.specialFlags = new SpecialFlags().read(this.getOrCreateSection("SpecialFlags"));
         return this;
     }
-    fromJson(i: any) {
+    fromJson(i: Record<string, IniSection | IniSectionJson>) {
         if (i[MapFile.artSectionPrefix]) {
             let { [MapFile.artSectionPrefix]: e, ...t } = i;
-            (this.artOverrides = new IniFile(e)), (i = t);
+            (this.artOverrides = new IniFile(e as unknown as Record<string, IniSection | IniSectionJson>)), (i = t);
         }
         return super.fromJson(i);
     }
@@ -218,7 +223,7 @@ export class MapFile extends IniFile {
                             subTile: 0,
                         }));
     }
-    readWaypoints(e: any) {
+    readWaypoints(e: IniSection) {
         this.waypoints = [];
         for (const [key, rawValue] of e.entries) {
             const number = parseInt(key, 10);
@@ -231,7 +236,7 @@ export class MapFile extends IniFile {
             this.waypoints.push({ number, rx, ry });
         }
     }
-    readStructures(e: any) {
+    readStructures(e: IniSection) {
         this.structures = [];
         for (const [, rawValue] of e.entries) {
             const values = this.normalizeIniEntryValue(rawValue).split(",");
@@ -323,7 +328,7 @@ export class MapFile extends IniFile {
             this.aircrafts.push(aircraft);
         }
     }
-    readTerrains(e: any) {
+    readTerrains(e: IniSection) {
         this.terrains = [];
         for (const [key, rawValue] of e.entries) {
             const tileIndex = Number(key);

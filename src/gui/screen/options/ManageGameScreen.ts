@@ -12,12 +12,7 @@ import { ModManager } from '../mainMenu/modSel/ModManager';
 import { LocalPrefs } from '../../../LocalPrefs';
 import { resetGameFiles, resetAllGameFilesAndSettings } from '../../../engine/gameRes/resetGameFiles';
 import { MainMenuScreenType } from '../ScreenType';
-interface ReplayMeta {
-    id: string;
-    name: string;
-    timestamp: number;
-    keep?: boolean;
-}
+import { ReplayMeta } from '../../replay/ReplayMeta';
 interface ReplayManager {
     loadList(includeTemp?: boolean): Promise<ReplayMeta[]>;
     deleteReplay(replay: ReplayMeta): Promise<void>;

@@ -1,10 +1,11 @@
 import { EventDispatcher } from "@/util/event";
 import { DataStream } from "@/data/DataStream";
-import { IrcConnection } from "@/network/IrcConnection";
+import { IrcConnection, type ConnectOptions } from "@/network/IrcConnection";
 import * as GservCode from "@/network/gservCodes";
 import { GservError } from "@/network/GservError";
 import { API_VERSION, RECIPIENT_ALL, RECIPIENT_TEAM, GSERV_LOGIN_TIMEOUT_SECONDS, DEFAULT_GAME_COUNTDOWN_MILLIS } from "@/network/gservConfig";
 import { ChatRecipientType, ChatMessage } from "@/network/chat/ChatMessage";
+import type { Logger } from "@/network/Logger";
 
 const gservErrorCodeMap: Map<number, GservError.Code> = new Map([
     [GservCode.RPL_BAD_LOGIN, GservError.Code.BadLogin],
@@ -131,7 +132,7 @@ export class GservConnection {
         return this._onVoteSessionClosed.asEvent();
     }
 
-    static factory(logger: any): GservConnection {
+    static factory(logger: Logger): GservConnection {
         return new this(new IrcConnection({
             mode: "text",
             binaryRplPrefix: GservCode.RPL_BIN_PREFIX,
@@ -143,7 +144,7 @@ export class GservConnection {
     }
 
     constructor(private con: IrcConnection) {
-        this.handleMessage = (message: any) => {
+        this.handleMessage = (message: string | Uint8Array) => {
             if (typeof message === "string") {
                 const parts = message.split(" ");
                 if (parts[0]?.toLowerCase() === "ping") {
@@ -244,7 +245,7 @@ export class GservConnection {
         this.con = con;
     }
 
-    private handleMessage: (message: any) => void;
+    private handleMessage: (message: string | Uint8Array) => void;
 
     getCurrentUser(): string | undefined {
         return this.currentUser;
@@ -254,7 +255,7 @@ export class GservConnection {
         return this.serverName;
     }
 
-    async connect(url: string, options?: any): Promise<void> {
+    async connect(url: string, options?: ConnectOptions): Promise<void> {
         this.con.onMessage.subscribe(this.handleMessage);
         await this.con.connect(url, options);
     }

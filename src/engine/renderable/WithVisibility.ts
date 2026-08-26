@@ -1,6 +1,10 @@
+import type { Object3D } from "three";
+interface VisibilityTarget {
+    get3DObject(): Object3D | undefined;
+}
 export class WithVisibility {
     private visible: boolean = true;
-    private target?: any;
+    private target?: VisibilityTarget;
     constructor() {
         this.visible = true;
     }
@@ -19,7 +23,7 @@ export class WithVisibility {
             }
         }
     }
-    applyTo(target: any): void {
+    applyTo(target: VisibilityTarget): void {
         this.target = target;
         this.updateVisibility();
     }

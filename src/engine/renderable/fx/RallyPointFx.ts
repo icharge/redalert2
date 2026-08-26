@@ -66,7 +66,7 @@ export class RallyPointFx {
             this.cameraHash = currentCameraHash;
             [this.lineMesh, this.shadowLineMesh].forEach((mesh) => {
                 const material = mesh?.material as MeshLineMaterial | undefined;
-                if (material && (material as any).isMeshLineMaterial) {
+                if (material && (material as { isMeshLineMaterial?: boolean }).isMeshLineMaterial) {
                     material.uniforms.resolution.value.copy(this.computeResolution(this.camera));
                     material.uniforms.lineWidth.value = getMeshLineWidth(this.camera, 2);
                 }
@@ -81,15 +81,15 @@ export class RallyPointFx {
                 this.shadowLineMesh.geometry = this.createShadowLineGeometry(this.sourcePos, this.targetPos);
             }
             const lineMat = this.lineMesh?.material as MeshLineMaterial | undefined;
-            if (lineMat && (lineMat as any).isMeshLineMaterial) {
+            if (lineMat && (lineMat as { isMeshLineMaterial?: boolean }).isMeshLineMaterial) {
                 lineMat.uniforms.color.value = this.color.clone();
             }
             const distance = this.sourcePos.distanceTo(this.targetPos);
             [this.lineMesh, this.shadowLineMesh].forEach((mesh) => {
                 const material = mesh?.material as MeshLineMaterial | undefined;
-                if (material && (material as any).isMeshLineMaterial) {
+                if (material && (material as { isMeshLineMaterial?: boolean }).isMeshLineMaterial) {
                     material.uniforms.dashArray.value = this.computeDashArray(distance);
-                    (material as any).depthTest = this.renderOrder === undefined;
+                    (material as { depthTest: boolean }).depthTest = this.renderOrder === undefined;
                 }
             });
             if (this.lineMesh) {
@@ -101,7 +101,7 @@ export class RallyPointFx {
         }
         [this.lineMesh, this.shadowLineMesh].forEach((mesh) => {
             const material = mesh?.material as MeshLineMaterial | undefined;
-            if (material && (material as any).isMeshLineMaterial) {
+            if (material && (material as { isMeshLineMaterial?: boolean }).isMeshLineMaterial) {
                 material.uniforms.dashOffset.value -=
                     (material.uniforms.dashArray.value / 50) * deltaTime;
             }

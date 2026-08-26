@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CanvasUtils } from './CanvasUtils';
+import { CanvasUtils, type DrawTextOptions } from './CanvasUtils';
 export class OverlayUtils {
     static createGroundCircle(radius: number, color: THREE.ColorRepresentation): THREE.Line {
         const material = new THREE.LineBasicMaterial({
@@ -20,7 +20,7 @@ export class OverlayUtils {
         line.renderOrder = 1000000;
         return line;
     }
-    static createTextBox(text: string, options: any): HTMLCanvasElement {
+    static createTextBox(text: string, options: DrawTextOptions): HTMLCanvasElement {
         const canvas = document.createElement('canvas');
         canvas.width = canvas.height = 0;
         const context = canvas.getContext('2d', {

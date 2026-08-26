@@ -13,7 +13,9 @@ export class SparkFx {
         value: number;
     };
     private totalDurationSeconds: number;
-    private container?: any;
+    private container?: {
+        remove(item: unknown): void;
+    };
     private particleGroup?: SPE.Group;
     private particleEmitter?: SPE.Emitter;
     private firstUpdateMillis?: number;
@@ -28,7 +30,9 @@ export class SparkFx {
         this.gameSpeed = gameSpeed;
         this.totalDurationSeconds = spawnDurationSeconds + SparkFx.PARTICLE_LIFETIME;
     }
-    setContainer(container: any): void {
+    setContainer(container: {
+        remove(item: unknown): void;
+    }): void {
         this.container = container;
     }
     create3DObject(): void {

@@ -1,7 +1,7 @@
 export class Variable {
     name: string;
-    value: any;
-    constructor(name: string, value: any) {
+    value: boolean;
+    constructor(name: string, value: boolean) {
         this.name = name;
         this.value = value;
     }

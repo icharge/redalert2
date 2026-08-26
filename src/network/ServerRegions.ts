@@ -1,5 +1,6 @@
-export interface Region {
-    id: string;
+import type { IniFile } from "@/data/IniFile";
+
+export interface Region {    id: string;
     label: string;
     available: boolean;
     gameVersion?: string;
@@ -16,7 +17,7 @@ export interface Region {
 export class ServerRegions {
     private regions: Map<string, Region> = new Map();
 
-    load(ini: any): void {
+    load(ini: IniFile): void {
         this.regions.clear();
         for (const section of ini.getOrderedSections()) {
             this.regions.set(section.name, {

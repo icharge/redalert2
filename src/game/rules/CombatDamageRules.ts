@@ -7,7 +7,7 @@ export class CombatDamageRules {
     private dMislEliteWarhead: string = '';
     private dMislWarhead: string = '';
     private flameDamage: string = '';
-    private ironCurtainDuration: number = 0;
+    public ironCurtainDuration: number = 0;
     private ivanDamage: number = 0;
     private ivanIconFlickerRate: number = 0;
     private ivanTimedDelay: number = 0;

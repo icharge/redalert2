@@ -1,7 +1,7 @@
 import { BufferGeometryUtils } from "@/engine/gfx/BufferGeometryUtils";
 import * as THREE from 'three';
 export class VxlGeometryCulledBuilder {
-    build(e: any) {
+    build(e: VxlGeometrySource) {
         let { voxels: a, voxelField: n } = e.getAllVoxels();
         const t = new THREE.BoxBufferGeometry(1, 1, 1);
         const o = t.getAttribute("position").array;
@@ -47,4 +47,38 @@ export class VxlGeometryCulledBuilder {
         i.computeBoundingBox();
         return i;
     }
+}
+interface VxlVoxel {
+    x: number;
+    y: number;
+    z: number;
+    normalIndex: number;
+    colorIndex: number;
+}
+interface VxlVoxelField {
+    get(x: number, y: number, z: number): {
+        colorIndex: number;
+        normalIndex: number;
+    } | undefined;
+}
+interface VxlGeometrySource {
+    getAllVoxels(): {
+        voxels: VxlVoxel[];
+        voxelField: VxlVoxelField;
+    };
+    getNormals(): {
+        x: number;
+        y: number;
+        z: number;
+    }[];
+    minBounds: {
+        x: number;
+        y: number;
+        z: number;
+    };
+    scale: {
+        x: number;
+        y: number;
+        z: number;
+    };
 }

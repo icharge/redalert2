@@ -3,7 +3,7 @@ export class ZipUtils {
         size?: number;
         data: Uint8Array | number | string | bigint;
     }[]): Uint8Array {
-        const totalSize = entries.reduce((sum, entry) => sum + (entry.size || (entry.data as any).length), 0);
+        const totalSize = entries.reduce((sum, entry) => sum + (entry.size || (entry.data as Uint8Array | string).length), 0);
         const result = new Uint8Array(totalSize);
         const view = new DataView(result.buffer);
         let offset = 0;

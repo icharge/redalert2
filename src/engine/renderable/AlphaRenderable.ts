@@ -2,13 +2,17 @@ import { Palette } from "@/data/Palette";
 import { ShpBuilder } from "@/engine/renderable/builder/ShpBuilder";
 import { Color } from "@/util/Color";
 import { Coords } from "@/game/Coords";
+import type { ShpFile } from "@/data/ShpFile";
 import * as THREE from "three";
 export class AlphaRenderable {
     private static alphaPalette?: Palette;
-    private shpFile: any;
+    private shpFile: ShpFile;
     private camera: THREE.Camera;
     private visible: boolean;
-    private drawOffset: any;
+    private drawOffset: {
+        x: number;
+        y: number;
+    };
     private shpSize?: number;
     private builder?: ShpBuilder;
     private object3d?: THREE.Object3D;
@@ -26,7 +30,10 @@ export class AlphaRenderable {
         }
         return palette;
     }
-    constructor(shpFile: any, camera: THREE.Camera, drawOffset: any) {
+    constructor(shpFile: ShpFile, camera: THREE.Camera, drawOffset: {
+        x: number;
+        y: number;
+    }) {
         this.shpFile = shpFile;
         this.camera = camera;
         this.visible = true;

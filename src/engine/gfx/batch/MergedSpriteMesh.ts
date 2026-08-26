@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import * as arrayUtils from '../../../util/array';
 import { PaletteBasicMaterial } from '../material/PaletteBasicMaterial';
+import { BatchedMesh } from './BatchedMesh';
 const tempVector3 = new THREE.Vector3();
 const tempVector4 = new THREE.Vector4();
 export class MergedSpriteMesh extends THREE.Mesh {
@@ -11,7 +12,7 @@ export class MergedSpriteMesh extends THREE.Mesh {
         const mergedGeometry = new THREE.BufferGeometry();
         for (const attributeName of Object.keys(sourceGeometry.attributes)) {
             const sourceAttribute = sourceGeometry.getAttribute(attributeName);
-            const ArrayConstructor = sourceAttribute.array.constructor as any;
+            const ArrayConstructor = sourceAttribute.array.constructor as new (length: number) => THREE.TypedArray;
             const mergedArray = new ArrayConstructor(maxInstances * sourceAttribute.array.length);
             mergedGeometry.setAttribute(attributeName, new THREE.BufferAttribute(mergedArray, sourceAttribute.itemSize, sourceAttribute.normalized));
         }
@@ -19,7 +20,7 @@ export class MergedSpriteMesh extends THREE.Mesh {
         if (material instanceof PaletteBasicMaterial) {
             mergedGeometry.setAttribute('vertexColorMult', new THREE.BufferAttribute(new Float32Array(vertexCount * maxInstances * 4), 4));
         }
-        if ((material as any).palette) {
+        if ((material as { palette?: unknown }).palette) {
             mergedGeometry.setAttribute('vertexPaletteOffset', new THREE.BufferAttribute(new Float32Array(vertexCount * maxInstances), 1));
         }
         for (const attribute of Object.values(mergedGeometry.attributes)) {
@@ -45,19 +46,18 @@ export class MergedSpriteMesh extends THREE.Mesh {
         this.frustumCulled = false;
     }
     private decorateMaterial(material: THREE.Material): THREE.Material {
-        const mat = material as any;
-        if (!mat.defines) {
-            mat.defines = {};
+        if (!material.defines) {
+            material.defines = {};
         }
-        if (mat.palette) {
-            mat.defines.VERTEX_PALETTE_OFFSET = '';
+        if ((material as { palette?: unknown }).palette) {
+            material.defines.VERTEX_PALETTE_OFFSET = '';
         }
         if (material instanceof PaletteBasicMaterial) {
-            (mat as any).useVertexColorMult = true;
+            material.useVertexColorMult = true;
         }
         return material;
     }
-    public updateFromMeshes(meshes: any[]): void {
+    public updateFromMeshes(meshes: BatchedMesh[]): void {
         const attributes = this.geometry.attributes;
         const positionAttr = attributes.position as THREE.BufferAttribute;
         const uvAttr = attributes.uv as THREE.BufferAttribute;
@@ -81,7 +81,7 @@ export class MergedSpriteMesh extends THREE.Mesh {
         }
         this.geometry.setDrawRange(0, meshCount * (this.geometry.index ? this.indicesPerItem! : this.verticesPerItem));
         for (const attribute of Object.values(attributes)) {
-            if ((attribute as any).usage === THREE.DynamicDrawUsage) {
+            if ((attribute as THREE.BufferAttribute).usage === THREE.DynamicDrawUsage) {
                 const bufferAttr = attribute as THREE.BufferAttribute;
                 if (bufferAttr.updateRanges && bufferAttr.updateRanges.length > 0) {
                     bufferAttr.updateRanges[0].count =

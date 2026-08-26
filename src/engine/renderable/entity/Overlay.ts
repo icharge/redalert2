@@ -10,6 +10,7 @@ import { ObjectType } from "@/engine/type/ObjectType";
 import { DeathType } from "@/game/gameobject/common/DeathType";
 import { BoxIntersectObject3D } from "@/engine/renderable/entity/BoxIntersectObject3D";
 import { MathUtils as EngineMathUtils } from "@/engine/gfx/MathUtils";
+import type { Palette } from "@/data/Palette";
 import { MapSurface, MAGIC_OFFSET } from "@/engine/renderable/entity/map/MapSurface";
 import { wallTypes } from "@/game/map/wallTypes";
 import * as THREE from "three";
@@ -59,10 +60,6 @@ interface ObjectArt {
 interface ImageFinder {
     findByObjectArt(art: ObjectArt): any;
 }
-interface Palette {
-}
-interface Camera {
-}
 interface Lighting {
     compute(lightingType: any, tile: any, offset: number): THREE.Vector3;
 }
@@ -86,7 +83,7 @@ export class Overlay {
     private art: Art;
     private imageFinder: ImageFinder;
     private palette: Palette;
-    private camera: Camera;
+    private camera: THREE.Camera;
     private lighting: Lighting;
     private debugFrame: DebugFrame;
     private bridgeImageCache: Map<OverlayBridgeType, ShpFile>;
@@ -102,7 +99,7 @@ export class Overlay {
     private lastOverlayHash?: number;
     private mainRenderable?: ShpRenderable;
     private intersectTarget?: THREE.Object3D;
-    constructor(gameObject: GameObject, rules: Rules, art: Art, imageFinder: ImageFinder, palette: Palette, camera: Camera, lighting: Lighting, debugFrame: DebugFrame, bridgeImageCache: Map<OverlayBridgeType, ShpFile>, mapOverlayLayer: MapOverlayLayer, useSpriteBatching: boolean) {
+    constructor(gameObject: GameObject, rules: Rules, art: Art, imageFinder: ImageFinder, palette: Palette, camera: THREE.Camera, lighting: Lighting, debugFrame: DebugFrame, bridgeImageCache: Map<OverlayBridgeType, ShpFile>, mapOverlayLayer: MapOverlayLayer, useSpriteBatching: boolean) {
         this.gameObject = gameObject;
         this.rules = rules;
         this.art = art;

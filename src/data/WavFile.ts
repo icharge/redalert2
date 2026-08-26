@@ -20,7 +20,7 @@ export class WavFile {
         return this;
     }
     private fromVirtualFileOrDataStream(file: VirtualFile | DataStream): this {
-        if (typeof (file as any).getBytes === 'function') {
+        if (typeof (file as VirtualFile).getBytes === 'function') {
             this.rawData = (file as VirtualFile).getBytes();
         }
         else if (file instanceof Uint8Array) {
@@ -54,17 +54,17 @@ export class WavFile {
     }
     private decodeData(data: Uint8Array): Uint8Array {
         const wav = new WaveFile();
-        wav.fromBuffer(data as any);
+        wav.fromBuffer(data as unknown as ArrayBuffer);
         if (wav.bitDepth === '4') {
             wav.fromIMAADPCM();
         }
-        return new Uint8Array(wav.toBuffer() as any);
+        return new Uint8Array(wav.toBuffer());
     }
     isRawImaAdpcm(): boolean {
         if (!this.rawData)
             return false;
         const wav = new WaveFile();
-        wav.fromBuffer(this.rawData as any);
+        wav.fromBuffer(this.rawData as unknown as ArrayBuffer);
         return wav.bitDepth === '4';
     }
 }

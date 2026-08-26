@@ -1,18 +1,9 @@
 import { TagRepeatType } from './TagRepeatType';
+import { Tag } from './Tag';
 import { IniSection } from '@/data/IniSection';
 export class TagsReader {
-    read(section: IniSection): Array<{
-        id: string;
-        repeatType: number;
-        name: string;
-        triggerId: string;
-    }> {
-        const result: Array<{
-            id: string;
-            repeatType: number;
-            name: string;
-            triggerId: string;
-        }> = [];
+    read(section: IniSection): Tag[] {
+        const result: Tag[] = [];
         for (const [id, rawValue] of section.entries) {
             if (typeof rawValue !== 'string') {
                 continue;

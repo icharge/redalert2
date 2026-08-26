@@ -5,6 +5,15 @@ import { EventDispatcher } from "@/util/event";
 import { LAG_STATE_THRESH_MILLIS } from "@/network/gservConfig";
 import { GameSpeed } from "@/game/GameSpeed";
 import { computeNetworkTurnMillis } from "@/network/gamestate/lockstepUtil";
+import type { Game } from "@/game/Game";
+import type { Action } from "@/game/action/Action";
+import type { ActionFactory } from "@/game/action/ActionFactory";
+import type { ActionType } from "@/game/action/ActionType";
+import type { GservConnection } from "@/network/GservConnection";
+import type { Parser } from "@/network/gameopt/Parser";
+import type { Serializer } from "@/network/gameopt/Serializer";
+import type { ActionSerializer } from "@/network/gamestate/ActionSerializer";
+import type { RecordedActions } from "@/network/gamestate/ReplayRecorder";
 
 export class LockstepManager {
     static PREFERRED_HASH_CHECK_MILLIS = 1_000;
@@ -22,7 +31,7 @@ export class LockstepManager {
     private receivedNetworkTurn = 0;
     private commsLagStartTime?: number;
     private lagState = false;
-    public debugGameStateHistory: any[] = [];
+    public debugGameStateHistory: Array<ReturnType<Game["debugGetState"]>> = [];
     private _onLagStateChange = new EventDispatcher<LockstepManager, boolean>();
     private _onActionsSent = new EventDispatcher<LockstepManager, number>();
     private _onActionsProcessed = new EventDispatcher<LockstepManager, number>();
@@ -42,18 +51,18 @@ export class LockstepManager {
     }
 
     constructor(
-        private game: any,
-        private gservCon: any,
-        private gameoptParser: any,
-        private gameoptSerializer: any,
-        private actionSerializer: any,
-        private actionFactory: any,
-        private inputActions: { dequeueAll(): any[] },
+        private game: Game,
+        private gservCon: GservConnection,
+        private gameoptParser: Parser,
+        private gameoptSerializer: Serializer,
+        private actionSerializer: ActionSerializer,
+        private actionFactory: ActionFactory,
+        private inputActions: { dequeueAll(): Action[] },
         private onDesync: () => void,
         private actionLogger?: { debug(message: string): void },
         private netLogger?: { debug?(message: string): void },
         private debugLogger?: (message: string) => void,
-        private replayRecorder?: { recordActions?(tick: number, actions: any): void },
+        private replayRecorder?: { recordActions?(tick: number, actions: RecordedActions): void },
         private debugGameState = false,
     ) {
         this.gameTurnMillis = 1000 / (this.game.desiredSpeed.value * GameSpeed.BASE_TICKS_PER_SECOND);
@@ -63,7 +72,7 @@ export class LockstepManager {
             const allActions = this.gameoptParser.parseAllPlayerActions(stream);
             this.receivedNetworkTurn = turnNo;
             this.receivedActions.set(turnNo, allActions);
-            this._onActionsReceived.dispatch(undefined as any, turnNo);
+            this._onActionsReceived.dispatch(undefined as unknown as LockstepManager, turnNo);
         };
         this.handleGameDesync = () => {
             this.setErrorState();
@@ -183,7 +192,7 @@ export class LockstepManager {
                         this.processActions(allActions);
                     }
                     this.receivedActions.delete(this.currentNetworkTurn - 2);
-                    this._onActionsProcessed.dispatch(undefined as any, this.currentNetworkTurn - 2);
+                    this._onActionsProcessed.dispatch(undefined as unknown as LockstepManager, this.currentNetworkTurn - 2);
                 }
                 this.game.update();
                 if (!this.passiveMode && !this.suppressNetworkSends && this.currentNetworkTurn % this.hashCheckTurnInterval! === 0) {
@@ -237,7 +246,7 @@ export class LockstepManager {
     private updateLagState(lagging: boolean): void {
         if (lagging !== this.lagState) {
             this.lagState = lagging;
-            this._onLagStateChange.dispatch(undefined as any, lagging);
+            this._onLagStateChange.dispatch(undefined as unknown as LockstepManager, lagging);
         }
     }
 
@@ -246,17 +255,17 @@ export class LockstepManager {
         if (!actions.length) {
             actions.push(new NoAction());
         }
-        const payload = this.gameoptSerializer.serializePlayerActions(actions.map((action: any) => this.actionSerializer.getActionPayload(action)));
+        const payload = this.gameoptSerializer.serializePlayerActions(actions.map((action) => this.actionSerializer.getActionPayload(action)));
         this.debug("Send actions: " + payload);
         this.gservCon.sendPlayerActions(this.currentNetworkTurn, payload);
-        this._onActionsSent.dispatch(undefined as any, this.currentNetworkTurn);
+        this._onActionsSent.dispatch(undefined as unknown as LockstepManager, this.currentNetworkTurn);
     }
 
-    private processActions(allActions: Map<number, Array<{ id: number; params: Uint8Array }>>): any[] {
-        const processedActions: any[] = [];
+    private processActions(allActions: Map<number, Array<{ id: number; params: Uint8Array }>>): Action[] {
+        const processedActions: Action[] = [];
         [...allActions].forEach(([playerId, actions]) => {
             actions.forEach((actionData) => {
-                const action = this.actionFactory.create(actionData.id);
+                const action = this.actionFactory.create(actionData.id as ActionType);
                 action.player = this.game.getPlayer(playerId);
                 action.unserialize(actionData.params);
                 action.process();

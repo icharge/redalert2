@@ -5,6 +5,18 @@ import { GameOpts, AiDifficulty, HumanPlayerInfo, AiPlayerInfo } from '@/game/ga
 import { FileNameEncoder } from './FileNameEncoder';
 import { Base64 } from '@/util/Base64';
 import { binaryStringToUtf16, uint8ArrayToBinaryString } from '@/util/string';
+
+export interface ParsedGameTopic {
+    description: string;
+    modHash: string;
+    modName: string | undefined;
+    aiPlayers: number;
+    maxPlayers: number;
+    observers: number;
+    observable: boolean;
+    mapName: string;
+}
+
 export class Parser {
     parseOptions(optionsString: string): GameOpts {
         const gameOpts: Partial<GameOpts> = {};
@@ -83,7 +95,7 @@ export class Parser {
         }
         return aiPlayers;
     }
-    parseTopic(topicString: string): any {
+    parseTopic(topicString: string): ParsedGameTopic | undefined {
         const parts = topicString.split(',');
         if (parts.length < 6) {
             return undefined;

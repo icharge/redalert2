@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { BufferGeometryUtils } from '@/engine/gfx/BufferGeometryUtils';
 export class VxlGeometryNaiveBuilder {
-    build(vxl: any): THREE.BufferGeometry {
+    build(vxl: VxlGeometrySource): THREE.BufferGeometry {
         const { voxels, voxelField } = vxl.getAllVoxels();
         const boxGeometry = new THREE.BoxBufferGeometry(1, 1, 1);
         const vertexCount = boxGeometry.getAttribute("position").array.length / 3;
@@ -15,7 +15,7 @@ export class VxlGeometryNaiveBuilder {
         geometry.computeBoundingBox();
         return geometry;
     }
-    private createPositionAttr(vxl: any, voxels: any[], boxGeometry: THREE.BoxBufferGeometry): THREE.BufferAttribute {
+    private createPositionAttr(vxl: VxlGeometrySource, voxels: VxlVoxel[], boxGeometry: THREE.BufferGeometry): THREE.BufferAttribute {
         const positionArray = boxGeometry.getAttribute("position").array;
         const arrayLength = positionArray.length;
         const positions = new Float32Array(arrayLength * voxels.length);
@@ -32,7 +32,7 @@ export class VxlGeometryNaiveBuilder {
         }
         return new THREE.BufferAttribute(positions, 3);
     }
-    private createNormalAttr(vxl: any, voxels: any[], vertexCount: number): THREE.BufferAttribute {
+    private createNormalAttr(vxl: VxlGeometrySource, voxels: VxlVoxel[], vertexCount: number): THREE.BufferAttribute {
         const normals = new Float32Array(vertexCount * voxels.length * 3);
         const normalTable = vxl.getNormals();
         for (let i = 0; i < voxels.length; i++) {
@@ -46,7 +46,7 @@ export class VxlGeometryNaiveBuilder {
         }
         return new THREE.BufferAttribute(normals, 3);
     }
-    private createColorAttr(voxels: any[], vertexCount: number, normalArray: Float32Array, voxelField: any): THREE.BufferAttribute {
+    private createColorAttr(voxels: VxlVoxel[], vertexCount: number, normalArray: Float32Array, voxelField: VxlVoxelField): THREE.BufferAttribute {
         const colors = new Float32Array(vertexCount * voxels.length * 3);
         for (let i = 0; i < voxels.length; i++) {
             const offset = i * vertexCount * 3;
@@ -60,7 +60,7 @@ export class VxlGeometryNaiveBuilder {
         }
         return new THREE.BufferAttribute(colors, 3);
     }
-    private createIndexAttr(voxels: any[], boxGeometry: THREE.BoxBufferGeometry, vertexCount: number): THREE.BufferAttribute {
+    private createIndexAttr(voxels: VxlVoxel[], boxGeometry: THREE.BufferGeometry, vertexCount: number): THREE.BufferAttribute {
         const indexArray = boxGeometry.getIndex().array;
         const indices = new Uint32Array(voxels.length * indexArray.length);
         for (let i = 0; i < voxels.length; i++) {
@@ -70,4 +70,38 @@ export class VxlGeometryNaiveBuilder {
         }
         return new THREE.BufferAttribute(indices, 1);
     }
+}
+interface VxlVoxel {
+    x: number;
+    y: number;
+    z: number;
+    normalIndex: number;
+    colorIndex: number;
+}
+interface VxlVoxelField {
+    get(x: number, y: number, z: number): {
+        colorIndex: number;
+        normalIndex: number;
+    } | undefined;
+}
+interface VxlGeometrySource {
+    getAllVoxels(): {
+        voxels: VxlVoxel[];
+        voxelField: VxlVoxelField;
+    };
+    getNormals(): {
+        x: number;
+        y: number;
+        z: number;
+    }[];
+    minBounds: {
+        x: number;
+        y: number;
+        z: number;
+    };
+    scale: {
+        x: number;
+        y: number;
+        z: number;
+    };
 }

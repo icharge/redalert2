@@ -1,19 +1,95 @@
 import { AnimProps } from '@/engine/AnimProps';
 import { ImageUtils } from '@/engine/gfx/ImageUtils';
+import type { ShpFile } from '@/data/ShpFile';
+import type { Palette } from '@/data/Palette';
+import type { IniSection } from '@/data/IniSection';
 import * as THREE from 'three';
 import SPE from './speRuntime';
 import { patchSpeGroup } from './speCompat';
+interface SmokeArt {
+    art: {
+        getBool(key: string): boolean;
+    };
+}
+interface GameObject {
+    position: {
+        worldPosition: THREE.Vector3;
+    };
+    rules: {
+        damageSmokeOffset: THREE.Vector3;
+    };
+}
+interface GameSpeed {
+    value: number;
+}
+interface Container {
+    remove(item: unknown): void;
+}
+declare namespace SPE {
+    interface GroupConfig {
+        texture: {
+            value: THREE.Texture;
+            frames: THREE.Vector2;
+            frameCount: number;
+            loop: number;
+        };
+        maxParticleCount: number;
+        hasPerspective: boolean;
+        transparent: boolean;
+        alphaTest: number;
+        blending: THREE.Blending;
+    }
+    interface EmitterConfig {
+        particleCount: number;
+        maxAge: {
+            value: number;
+        };
+        activeMultiplier: number;
+        position: {
+            value: THREE.Vector3;
+        };
+        acceleration: {
+            value: THREE.Vector3;
+            spread: THREE.Vector3;
+        };
+        velocity: {
+            value: THREE.Vector3;
+            spread: THREE.Vector3;
+        };
+        opacity: {
+            value: number | number[];
+        };
+        size: {
+            value: number;
+        };
+    }
+    class Group {
+        mesh: THREE.Mesh;
+        constructor(config: GroupConfig);
+        addEmitter(emitter: Emitter): void;
+        tick(deltaTime: number): void;
+    }
+    class Emitter {
+        position: {
+            value: THREE.Vector3;
+        };
+        alive: boolean;
+        constructor(config: EmitterConfig);
+        disable(): void;
+        enable(): void;
+    }
+}
 const PARTICLE_COUNT = 1000;
 export class DamageSmokeFx {
-    private static textureCache = new Map<any, THREE.Texture>();
-    private gameObject: any;
-    private smokeArt: any;
-    private shpFile: any;
-    private palette: any;
-    private gameSpeed: any;
+    private static textureCache = new Map<ShpFile, THREE.Texture>();
+    private gameObject: GameObject;
+    private smokeArt: SmokeArt;
+    private shpFile: ShpFile;
+    private palette: Palette;
+    private gameSpeed: GameSpeed;
     private lifetimeSeconds: number;
     private finishRequested: boolean;
-    private container?: any;
+    private container?: Container;
     private particleGroup?: SPE.Group;
     private particleEmitter?: SPE.Emitter;
     private particleMaxAge?: number;
@@ -24,7 +100,7 @@ export class DamageSmokeFx {
         this.textureCache.forEach(texture => texture.dispose());
         this.textureCache.clear();
     }
-    constructor(gameObject: any, smokeArt: any, shpFile: any, palette: any, gameSpeed: any) {
+    constructor(gameObject: GameObject, smokeArt: SmokeArt, shpFile: ShpFile, palette: Palette, gameSpeed: GameSpeed) {
         this.gameObject = gameObject;
         this.smokeArt = smokeArt;
         this.shpFile = shpFile;
@@ -33,7 +109,7 @@ export class DamageSmokeFx {
         this.lifetimeSeconds = Number.POSITIVE_INFINITY;
         this.finishRequested = false;
     }
-    setContainer(container: any) {
+    setContainer(container: Container) {
         this.container = container;
     }
     create3DObject() {
@@ -64,7 +140,7 @@ export class DamageSmokeFx {
             patchSpeGroup(this.particleGroup);
             this.particleGroup.mesh.name = "fx_damage_smoke";
             this.particleGroup.mesh.frustumCulled = false;
-            const animProps = new AnimProps(this.smokeArt.art, this.shpFile);
+            const animProps = new AnimProps(this.smokeArt.art as unknown as IniSection, this.shpFile);
             const rate = (this.smokeArt.art.getBool("Normalized") ? 2 : 1) * animProps.rate;
             const activeMultiplier = rate / 10;
             this.particleMaxAge = (2 * this.shpFile.numImages) / animProps.rate;
@@ -131,6 +207,6 @@ export class DamageSmokeFx {
     }
     dispose() {
         this.particleGroup?.mesh.geometry.dispose();
-        this.particleGroup?.mesh.material.dispose();
+        (this.particleGroup?.mesh.material as THREE.Material).dispose();
     }
 }

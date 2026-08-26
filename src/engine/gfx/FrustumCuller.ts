@@ -1,22 +1,32 @@
 import * as THREE from 'three';
 import { Octree } from '@brakebein/threeoctree';
+interface CullNode {
+    radius: number;
+    overlap?: number;
+    position: THREE.Vector3;
+    visible?: boolean;
+    nodesIndices?: number[];
+    nodesByIndex?: {
+        [key: number]: CullNode;
+    };
+}
 export class FrustumCuller {
-    cull<T extends THREE.Mesh = THREE.Mesh>(octree: Octree<T>, frustum: THREE.Frustum): any[] {
-        const visibleNodes: any[] = [];
-        const traverse = (node: any): void => {
-            const BOX_KEY: unique symbol = Symbol.for('__ra2web_box');
-            let box = (node as any)[BOX_KEY] as THREE.Box3 | undefined;
+    cull<T extends THREE.Mesh = THREE.Mesh>(octree: Octree<T>, frustum: THREE.Frustum): CullNode[] {
+        const visibleNodes: CullNode[] = [];
+        const BOX_KEY: unique symbol = Symbol.for('__ra2web_box');
+        const traverse = (node: CullNode): void => {
+            let box = (node as unknown as { [key: symbol]: THREE.Box3 | undefined })[BOX_KEY];
             if (!box) {
                 const r = node.radius + (node.overlap ?? 0);
                 const pos = node.position;
                 box = new THREE.Box3(new THREE.Vector3(pos.x - r, pos.y - r, pos.z - r), new THREE.Vector3(pos.x + r, pos.y + r, pos.z + r));
-                (node as any)[BOX_KEY] = box;
+                (node as unknown as { [key: symbol]: THREE.Box3 | undefined })[BOX_KEY] = box;
             }
             if (frustum.intersectsBox(box)) {
-                (node as any).visible = true;
+                node.visible = true;
                 if (Array.isArray(node.nodesIndices) && node.nodesIndices.length > 0) {
                     for (const index of node.nodesIndices) {
-                        const child = node.nodesByIndex[index];
+                        const child = node.nodesByIndex?.[index];
                         if (child) {
                             traverse(child);
                         }
@@ -25,10 +35,10 @@ export class FrustumCuller {
                 visibleNodes.push(node);
             }
             else {
-                (node as any).visible = false;
+                node.visible = false;
             }
         };
-        traverse(octree.root);
+        traverse(octree.root as unknown as CullNode);
         return visibleNodes;
     }
 }

@@ -356,7 +356,7 @@ export class ReplayScreen extends RootScreen {
         worldScene.create3DObject();
         const actionFactory = new ActionFactory();
         new ActionFactoryReg().register(actionFactory, game, undefined);
-        const gameTurnMgr = this.gameTurnMgr = new ReplayTurnManager(game, params.replay, actionFactory, this.actionLogger as any);
+        const gameTurnMgr = this.gameTurnMgr = new ReplayTurnManager(game as unknown as ConstructorParameters<typeof ReplayTurnManager>[0], params.replay as unknown as ConstructorParameters<typeof ReplayTurnManager>[1], actionFactory, this.actionLogger as any);
         this.gameTurnMgr.init();
         if (this.pendingSeekTick !== undefined && this.pendingSeekTick > 0) {
             game.start();

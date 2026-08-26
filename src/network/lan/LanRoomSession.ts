@@ -1,6 +1,6 @@
 import { VirtualFile } from '@/data/vfs/VirtualFile';
 import { MapDigest } from '@/engine/MapDigest';
-import { GameOpts } from '@/game/gameopts/GameOpts';
+import { GameOpts, type HumanPlayerInfo, type AiPlayerInfo } from '@/game/gameopts/GameOpts';
 import { NO_TEAM_ID, OBS_COUNTRY_ID, RANDOM_COLOR_ID, RANDOM_COUNTRY_ID, RANDOM_START_POS } from '@/game/gameopts/constants';
 import { SlotInfo, SlotType as NetSlotType } from '@/network/gameopt/SlotInfo';
 import { LanPeerIdentity } from '@/network/lan/LanQrPayload';
@@ -10,7 +10,9 @@ import { base64StringToUint8Array, uint8ArrayToBase64String } from '@/util/strin
 
 interface GameMode {
     id: number;
-    mpDialogSettings: any;
+    mpDialogSettings: {
+        mustAlly: boolean;
+    };
 }
 
 interface GameModes {
@@ -27,7 +29,7 @@ interface MapList {
 }
 
 interface MapFileLoader {
-    load(mapName: string): Promise<any>;
+    load(mapName: string): Promise<VirtualFile>;
 }
 
 export interface LanHumanAssignment {
@@ -68,7 +70,7 @@ export interface LanLaunchDescriptor {
     mapTransferStateByPeerId: Record<string, LanMapTransferPeerState>;
     returnRoute: {
         screenType: number;
-        params?: any;
+        params?: Record<string, unknown>;
     };
 }
 
@@ -158,7 +160,7 @@ interface IncomingMapTransfer {
 
 const MAP_CHUNK_SIZE = 12 * 1024;
 
-function cloneHumanPlayer(player: any) {
+function cloneHumanPlayer(player: HumanPlayerInfo) {
     return {
         name: player.name,
         countryId: player.countryId,
@@ -168,7 +170,7 @@ function cloneHumanPlayer(player: any) {
     };
 }
 
-function cloneAiPlayer(ai: any) {
+function cloneAiPlayer(ai: AiPlayerInfo | undefined) {
     return ai
         ? {
             difficulty: ai.difficulty,
@@ -328,7 +330,7 @@ export class LanRoomSession {
         return this.currentCustomMapFile;
     }
 
-    startHosting(snapshot: { gameOpts: GameOpts; slotsInfo: SlotInfo[]; currentMapFile?: any }): void {
+    startHosting(snapshot: { gameOpts: GameOpts; slotsInfo: SlotInfo[]; currentMapFile?: VirtualFile }): void {
         const meshSnapshot = this.meshSession.ensureLocalRoom();
         this.lastMeshSnapshot = meshSnapshot;
         const self = meshSnapshot.self;
@@ -355,7 +357,7 @@ export class LanRoomSession {
         this.dispatchSnapshot();
     }
 
-    applyHostPregameSnapshot(snapshot: { gameOpts: GameOpts; slotsInfo: SlotInfo[]; currentMapFile?: any }): void {
+    applyHostPregameSnapshot(snapshot: { gameOpts: GameOpts; slotsInfo: SlotInfo[]; currentMapFile?: VirtualFile }): void {
         if (!this.roomState || !this.isHost()) {
             return;
         }
@@ -418,7 +420,7 @@ export class LanRoomSession {
         this.dispatchSnapshot();
     }
 
-    startGame(returnRoute: { screenType: number; params?: any }): LanLaunchDescriptor {
+    startGame(returnRoute: { screenType: number; params?: Record<string, unknown> }): LanLaunchDescriptor {
         if (!this.roomState || !this.isHost()) {
             throw new Error('Only the host can start the game.');
         }
@@ -731,7 +733,7 @@ export class LanRoomSession {
         const departedHumanSlots = new Set(previousAssignments
             .filter((assignment) => !activePeerIds.has(assignment.peerId))
             .map((assignment) => assignment.slotIndex));
-        const previousHumanByPeerId = new Map<string, any>();
+        const previousHumanByPeerId = new Map<string, HumanPlayerInfo>();
         previousAssignments.forEach((assignment) => {
             const existingHuman = state.gameOpts.humanPlayers.find((player) => player.name === assignment.name);
             if (existingHuman) {
@@ -768,7 +770,7 @@ export class LanRoomSession {
             .slice()
             .sort((left, right) => left.slotIndex - right.slotIndex)
             .map((assignment) => previousHumanByPeerId.get(assignment.peerId) ?? createDefaultHumanPlayer(assignment.name, this.gameModes.getById(state.gameOpts.gameMode).mpDialogSettings.mustAlly))
-            .map((player: any, index) => ({
+            .map((player: HumanPlayerInfo, index) => ({
                 ...player,
                 name: nextAssignments.slice().sort((left, right) => left.slotIndex - right.slotIndex)[index].name,
             }));

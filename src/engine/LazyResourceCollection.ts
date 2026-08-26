@@ -31,7 +31,7 @@ export class LazyResourceCollection<T> {
             catch { }
             if (this.vfs?.fileExists(key)) {
                 try {
-                    const owners = (this.vfs as any).debugListFileOwners?.(key);
+                    const owners = this.vfs.debugListFileOwners?.(key);
                     try {
                     }
                     catch { }

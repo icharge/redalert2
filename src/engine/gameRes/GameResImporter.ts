@@ -1,4 +1,5 @@
 import { MixFile } from '../../data/MixFile';
+import type { MixEntry } from '../../data/MixEntry';
 import { Engine, EngineType } from '../Engine';
 import { sleep } from '../../util/time';
 import { ChecksumError } from './importError/ChecksumError';
@@ -22,8 +23,31 @@ import type { Config } from '../../Config';
 import type { Strings } from '../../data/Strings';
 import type { DataStream } from '../../data/DataStream';
 import type { FFmpeg } from '@ffmpeg/ffmpeg';
+import type { ExitStatus, SevenZipModuleFactory } from '7z-wasm';
+interface EmFsNode {
+    name?: string;
+    contents?: Uint8Array | Record<string, EmFsNode>;
+    usedBytes?: number;
+    [key: string]: unknown;
+}
+interface EmFsStream {
+    node: EmFsNode;
+    stream_ops: {
+        write: (stream: EmFsStream, buffer: Uint8Array, offset: number, length: number, position?: number, canOwn?: boolean) => number;
+    };
+}
+interface EmFs {
+    chdir(path: string): void;
+    cwd(): string;
+    open(path: string, flags: string, mode?: number): EmFsStream;
+    write(stream: EmFsStream, buffer: Uint8Array, offset: number, length: number, position?: number, canOwn?: boolean): number;
+    close(stream: EmFsStream): void;
+    unlink(path: string): void;
+    chmod(path: string, mode: number): void;
+    lookupPath(path: string): { node: EmFsNode };
+}
 interface SevenZipWasmModule {
-    FS: any;
+    FS: EmFs;
     callMain: (args: string[]) => void;
 }
 interface SevenZipWasmOptions {
@@ -35,17 +59,17 @@ const REQUIRED_MIX_SIZES = new Map<string, number>()
     .set("language.mix", 53116040)
     .set("multi.mix", 25856283)
     .set("theme.mix", 76862662);
-function wrapFsOpen(originalFsOpen: any, prefilledContents: Map<string, Uint8Array>) {
-    return function (this: any, path: string, flags: string, mode?: any, unknown1?: any, unknown2?: any) {
+function wrapFsOpen(originalFsOpen: (this: EmFsStream, path: string, flags: string, mode?: number, unknown1?: unknown, unknown2?: unknown) => EmFsStream, prefilledContents: Map<string, Uint8Array>) {
+    return function (this: EmFsStream, path: string, flags: string, mode?: number, unknown1?: unknown, unknown2?: unknown) {
         let stream = originalFsOpen.call(this, path, flags, mode, unknown1, unknown2);
         const prefilledData = prefilledContents.get(stream.node.name);
         if (prefilledData) {
             stream.node.contents = new Uint8Array(prefilledData);
             const originalWrite = stream.stream_ops.write;
             stream.stream_ops = { ...stream.stream_ops };
-            stream.stream_ops.write = function (this: any, str: any, buffer: any, offset: number, length: number, position?: number, canOwn?: boolean) {
+            stream.stream_ops.write = function (this: EmFsStream, str: EmFsStream, buffer: Uint8Array, offset: number, length: number, position?: number, canOwn?: boolean) {
                 if (!position) {
-                    str.node.usedBytes = str.node.contents.byteLength;
+                    str.node.usedBytes = (str.node.contents as Uint8Array).byteLength;
                 }
                 const bytesWritten = originalWrite.call(this, str, buffer, offset, length, position, canOwn);
                 if (!position) {
@@ -59,11 +83,21 @@ function wrapFsOpen(originalFsOpen: any, prefilledContents: Map<string, Uint8Arr
 }
 export type ImportProgressCallback = (text?: string, backgroundImage?: Blob | string, percent?: number) => void;
 export type ImportSource = URL | File | FileSystemDirectoryHandle | FileSystemFileHandle;
+interface SentryLike {
+    captureException: (error: Error, context?: unknown) => void;
+}
+interface WithOriginalError {
+    originalError?: unknown;
+}
+interface FfmpegEventEmitter {
+    on?: (event: string, callback: unknown) => void;
+    off?: (event: string, callback: unknown) => void;
+}
 export class GameResImporter {
     private appConfig: Config;
     private strings: Strings;
-    private sentry?: any;
-    constructor(appConfig: Config, strings: Strings, sentry?: any) {
+    private sentry?: SentryLike;
+    constructor(appConfig: Config, strings: Strings, sentry?: SentryLike) {
         this.appConfig = appConfig;
         this.strings = strings;
         this.sentry = sentry;
@@ -81,7 +115,7 @@ export class GameResImporter {
         if (!source) {
             throw new Error("Import source is undefined.");
         }
-        if (source instanceof URL || source instanceof File || (source as any).kind === "file") {
+        if (source instanceof URL || source instanceof File || (source as FileSystemHandle).kind === "file") {
             console.log('[GameResImporter] Processing archive file');
             if (typeof WebAssembly !== 'object' || typeof WebAssembly.instantiate !== 'function') {
                 throw new NoWebAssemblyError("WebAssembly is not available or not an object.");
@@ -93,7 +127,7 @@ export class GameResImporter {
             try {
                 console.log('[GameResImporter] Attempting to load 7z-wasm module');
                 const sevenZipWasmModule = await import("7z-wasm");
-                const sevenZipFactory = sevenZipWasmModule.default as any;
+                const sevenZipFactory = sevenZipWasmModule.default as SevenZipModuleFactory;
                 console.log('[GameResImporter] 7z-wasm module loaded, creating instance');
                 sevenZipModule = await sevenZipFactory({
                     locateFile: (path: string, scriptDirectory: string) => {
@@ -102,24 +136,24 @@ export class GameResImporter {
                         }
                         return path;
                     },
-                    quit: (code: number, exitStatus: any) => {
+                    quit: (code: number, exitStatus: ExitStatus) => {
                         sevenZipExitCode = code;
                         sevenZipErrorMessage = exitStatus?.message || String(exitStatus);
                         console.log('[GameResImporter] 7z quit callback:', code, exitStatus);
                     },
-                });
+                }) as unknown as SevenZipWasmModule;
                 console.log('[GameResImporter] 7z-wasm instance created successfully');
             }
-            catch (e: any) {
+            catch (e: unknown) {
                 console.error('[GameResImporter] Failed to load/create 7z-wasm:', e);
-                if (e.message?.match(/Load failed|Failed to fetch/i)) {
+                if ((e as { message?: string }).message?.match(/Load failed|Failed to fetch/i)) {
                     const error = new DownloadError("Failed to load 7z-wasm module");
-                    (error as any).originalError = e;
+                    (error as WithOriginalError).originalError = e;
                     throw error;
                 }
                 if (e instanceof WebAssembly.RuntimeError) {
                     const error = new IOError("Couldn't load 7z-wasm due to runtime error");
-                    (error as any).originalError = e;
+                    (error as WithOriginalError).originalError = e;
                     throw error;
                 }
                 throw e;
@@ -148,10 +182,10 @@ export class GameResImporter {
                     archiveData = new Uint8Array(buffer);
                     archiveName = source.pathname.split('/').pop() || "archive.7z";
                 }
-                catch (e: any) {
+                catch (e: unknown) {
                     if (downloadedBytes === 0 && e instanceof DownloadError) {
                         const error = new ArchiveDownloadError(urlStr, "Archive download failed at start");
-                        (error as any).originalError = e;
+                        (error as WithOriginalError).originalError = e;
                         throw error;
                     }
                     throw e;
@@ -174,10 +208,10 @@ export class GameResImporter {
                 sevenZipModule.FS.write(fileStream, archiveData, 0, archiveData.byteLength, 0, true);
                 sevenZipModule.FS.close(fileStream);
             }
-            catch (e: any) {
+            catch (e: unknown) {
                 if (e instanceof DOMException) {
                     const error = new IOError(`Could not write archive to Emscripten FS "${archiveName}" (${e.name})`);
-                    (error as any).originalError = e;
+                    (error as WithOriginalError).originalError = e;
                     throw error;
                 }
                 throw e;
@@ -200,11 +234,11 @@ export class GameResImporter {
                         const baseErrorMsg = `7-Zip exited with code ${sevenZipExitCode} for ${entryName}`;
                         if (sevenZipErrorMessage?.match(/out of memory|allocation/i)) {
                             const error = new RangeError(`${baseErrorMsg} - Out of memory`);
-                            (error as any).originalError = new Error(sevenZipErrorMessage);
+                            (error as WithOriginalError).originalError = new Error(sevenZipErrorMessage);
                             throw error;
                         }
                         const error = new ArchiveExtractionError(`${baseErrorMsg}`);
-                        (error as any).originalError = new Error(sevenZipErrorMessage);
+                        (error as WithOriginalError).originalError = new Error(sevenZipErrorMessage);
                         throw error;
                     }
                 }
@@ -218,12 +252,12 @@ export class GameResImporter {
                         fileData = this.readFileFromEmFs(sevenZipModule.FS, mixFileNameInFs);
                         sevenZipModule.FS.unlink(mixFileNameInFs);
                     }
-                    catch (e: any) {
-                        if (e.errno === 44 && optionalMixes.has(entryName)) {
+                    catch (e: unknown) {
+                        if ((e as { errno?: number }).errno === 44 && optionalMixes.has(entryName)) {
                             console.warn(`Optional Mix file "${entryName}" not found in Emscripten FS after extraction. Skipping.`);
                             continue;
                         }
-                        if (e.errno === 44 && !REQUIRED_MIX_SIZES.has(entryName.toLowerCase())) {
+                        if ((e as { errno?: number }).errno === 44 && !REQUIRED_MIX_SIZES.has(entryName.toLowerCase())) {
                             console.warn(`File "${entryName}" not found in Emscripten FS and not strictly required. Skipping.`);
                             continue;
                         }
@@ -245,8 +279,8 @@ export class GameResImporter {
                                 await targetTauntsDir.writeFile(fileData);
                             }
                         }
-                        catch (e: any) {
-                            if (!(e instanceof DOMException || e instanceof IOError || e.errno === 44))
+                        catch (e: unknown) {
+                            if (!(e instanceof DOMException || e instanceof IOError || (e as { errno?: number }).errno === 44))
                                 throw e;
                             console.warn("Failed to copy taunts folder. Skipping.", e);
                         }
@@ -279,7 +313,7 @@ export class GameResImporter {
                 try {
                     virtualFile = await sourceDirWrapper.openFile(actualFileName);
                 }
-                catch (e: any) {
+                catch (e: unknown) {
                     if (e instanceof VfsFileNotFoundError) {
                         if (optionalMixes.has(mixName)) {
                             console.warn(`Optional Mix file "${mixName}" not found in source directory. Skipping.`);
@@ -296,10 +330,10 @@ export class GameResImporter {
             try {
                 sourceTauntsDir = await sourceDirWrapper.getDirectory(tauntsDirInSource);
             }
-            catch (e: any) {
+            catch (e: unknown) {
                 if (!(e instanceof VfsFileNotFoundError || e instanceof IOError))
                     throw e;
-                console.warn(`Taunts directory "${tauntsDirInSource}" not found in source (${e.name}). Skipping.`);
+                console.warn(`Taunts directory "${tauntsDirInSource}" not found in source (${(e as Error).name}). Skipping.`);
             }
             if (sourceTauntsDir) {
                 try {
@@ -310,7 +344,7 @@ export class GameResImporter {
                         await targetTauntsRfsDir.writeFile(virtualFile);
                     }
                 }
-                catch (e: any) {
+                catch (e: unknown) {
                     if (!(e instanceof IOError))
                         throw e;
                     console.warn("Failed to copy taunts folder from source. Skipping.", e);
@@ -319,13 +353,13 @@ export class GameResImporter {
         }
         onProgress("Game assets successfully imported.");
     }
-    private readFileFromEmFs(emFs: any, filePath: string): VirtualFile {
+    private readFileFromEmFs(emFs: EmFs, filePath: string): VirtualFile {
         emFs.chmod(filePath, 0o700);
         const fileNode = emFs.lookupPath(filePath)["node"];
         if (!fileNode || !fileNode.contents) {
             throw new VfsFileNotFoundError(`File node or contents missing in Emscripten FS for ${filePath}`);
         }
-        const fileData = fileNode.contents.subarray(0, fileNode.usedBytes);
+        const fileData = (fileNode.contents as Uint8Array).subarray(0, fileNode.usedBytes);
         const fileName = filePath.slice(filePath.lastIndexOf('/') + 1);
         return VirtualFile.fromBytes(fileData, fileName);
     }
@@ -400,7 +434,7 @@ export class GameResImporter {
                         continue;
                     }
                     if (mp3Data) {
-                        const mp3Blob = new Blob([mp3Data as any], { type: "audio/mpeg" });
+                        const mp3Blob = new Blob([mp3Data as unknown as BlobPart], { type: "audio/mpeg" });
                         try {
                             const virtualMp3 = VirtualFile.fromBytes(mp3Data, mp3FileName);
                             await targetMusicDir.writeFile(virtualMp3);
@@ -425,10 +459,10 @@ export class GameResImporter {
         try {
             ffmpeg = await this.createFFmpeg();
         }
-        catch (e: any) {
-            if (e.message?.match(/Load failed|Failed to fetch/i)) {
+        catch (e: unknown) {
+            if ((e as { message?: string }).message?.match(/Load failed|Failed to fetch/i)) {
                 const error = new DownloadError("Failed to load FFmpeg for video conversion");
-                (error as any).originalError = e;
+                (error as WithOriginalError).originalError = e;
                 throw error;
             }
             this.sentry?.captureException(new Error("FFmpeg creation failed for video import"));
@@ -438,9 +472,9 @@ export class GameResImporter {
         const langMix = new MixFile(languageMixVirtualFile.stream as DataStream);
         console.log('[GameResImporter] language.mix loaded, checking detailed contents...');
         console.log('[GameResImporter] File size:', languageMixVirtualFile.getSize(), 'bytes');
-        console.log('[GameResImporter] MixFile index size:', (langMix as any).index?.size || 'unknown');
-        if ((langMix as any).index) {
-            const index = (langMix as any).index as Map<number, any>;
+        console.log('[GameResImporter] MixFile index size:', (langMix as unknown as { index: Map<number, MixEntry> }).index?.size || 'unknown');
+        if ((langMix as unknown as { index: Map<number, MixEntry> }).index) {
+            const index = (langMix as unknown as { index: Map<number, MixEntry> }).index;
             console.log('[GameResImporter] language.mix index entries (first 20):');
             let entryCount = 0;
             for (const [hash, entry] of index.entries()) {
@@ -480,7 +514,7 @@ export class GameResImporter {
             console.log(`[GameResImporter] Video conversion progress: ${percent.toFixed(1)}% (${(time / 1e6).toFixed(1)}s transcoded)`);
             onProgress?.(S.get("ts:import_importing_pg", languageMixFileName, percent.toFixed(0)), undefined, percent);
         };
-        (ffmpeg as any).on?.("progress", progressHandler);
+        (ffmpeg as unknown as FfmpegEventEmitter).on?.("progress", progressHandler);
         let webmBuffer: Uint8Array;
         try {
             webmBuffer = await new VideoConverter().convertBinkVideo(ffmpeg, binkFileEntry);
@@ -491,9 +525,9 @@ export class GameResImporter {
             return;
         }
         finally {
-            (ffmpeg as any).off?.("progress", progressHandler);
+            (ffmpeg as unknown as FfmpegEventEmitter).off?.("progress", progressHandler);
         }
-        const webmBlob = new Blob([webmBuffer as any], { type: "video/webm" });
+        const webmBlob = new Blob([webmBuffer as unknown as BlobPart], { type: "video/webm" });
         const virtualWebmFile = VirtualFile.fromBytes(webmBuffer, webmFileName);
         await targetRfsRootDir.writeFile(virtualWebmFile);
     }
@@ -505,14 +539,14 @@ export class GameResImporter {
             throw new Error('FFmpeg class is not available from @ffmpeg/ffmpeg module');
         }
         const ffmpeg = new FFmpegClass();
-        (ffmpeg as any).on?.("log", ({ message }: { message: string }) => console.log("[ffmpeg]", message));
-        const originalDefine = (window as any).define;
-        (window as any).define = undefined;
+        (ffmpeg as unknown as FfmpegEventEmitter).on?.("log", ({ message }: { message: string }) => console.log("[ffmpeg]", message));
+        const originalDefine = (window as unknown as { define?: unknown }).define;
+        (window as unknown as { define?: unknown }).define = undefined;
         try {
             await ffmpeg.load();
         }
         finally {
-            (window as any).define = originalDefine;
+            (window as unknown as { define?: unknown }).define = originalDefine;
         }
         return ffmpeg;
     }

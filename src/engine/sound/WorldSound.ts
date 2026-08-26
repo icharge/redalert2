@@ -311,11 +311,11 @@ export class WorldSound {
         if (spec.type.includes(SoundType.Screen)) {
             const distanceToViewport = this.worldViewportHelper.distanceToViewport(worldPos);
             const falloffDistance = (this.worldScene.viewport.height + this.worldScene.viewport.width) / 2 / 3;
-            volume *= (window as any).THREE.MathUtils.lerp(1, 0, Math.min(1, distanceToViewport / falloffDistance));
+            volume *= (window as unknown as { THREE: { MathUtils: { lerp: (a: number, b: number, t: number) => number } } }).THREE.MathUtils.lerp(1, 0, Math.min(1, distanceToViewport / falloffDistance));
         }
         else if (spec.type.includes(SoundType.Local)) {
             if (this.tileAtViewportCenter) {
-                const tileDistance = new (window as any).THREE.Vector2(worldPos.x / Coords.LEPTONS_PER_TILE - this.tileAtViewportCenter.rx, worldPos.z / Coords.LEPTONS_PER_TILE - this.tileAtViewportCenter.ry).length();
+                const tileDistance = new (window as unknown as { THREE: { Vector2: new (x: number, y: number) => { length: () => number } } }).THREE.Vector2(worldPos.x / Coords.LEPTONS_PER_TILE - this.tileAtViewportCenter.rx, worldPos.z / Coords.LEPTONS_PER_TILE - this.tileAtViewportCenter.ry).length();
                 const maxRange = spec.range * Math.SQRT2;
                 if (maxRange < tileDistance) {
                     volume = 0;

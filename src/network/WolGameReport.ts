@@ -9,14 +9,14 @@ export enum WolGameReportResult {
 export interface WolGameReportPlayer {
     name: string;
     resultType: WolGameReportResult;
-    [key: string]: any;
+    [key: string]: unknown;
 }
 
 export interface WolGameReportData {
     gameId: string;
     players: WolGameReportPlayer[];
     duration: number;
-    [key: string]: any;
+    [key: string]: unknown;
 }
 
 export class WolGameReport {

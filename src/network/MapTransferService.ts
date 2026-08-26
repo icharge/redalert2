@@ -1,11 +1,13 @@
 import { HttpRequest, DownloadError } from "@/network/HttpRequest";
 import { sleep } from "@puzzl/core/lib/async/sleep";
 import { isBetween } from "@/util/math";
+import type { WolService } from "@/network/WolService";
+import type { CancellationToken } from "@puzzl/core/lib/async/cancellation";
 
 export class MapTransferService {
     private url?: string;
 
-    constructor(private wolService: any, private httpRequest: HttpRequest = new HttpRequest()) {
+    constructor(private wolService: WolService, private httpRequest: HttpRequest = new HttpRequest()) {
     }
 
     setUrl(url: string): void {
@@ -16,12 +18,12 @@ export class MapTransferService {
         return this.url;
     }
 
-    async putMap(data: ArrayBuffer, mapName: string, cancellationToken?: any): Promise<void> {
+    async putMap(data: ArrayBuffer, mapName: string, cancellationToken?: CancellationToken): Promise<void> {
         if (!this.url) {
             throw new Error("No MapTransfer URL is set");
         }
         const authorization = this.makeAuthorizationHeader();
-        let lastError: any;
+        let lastError: DownloadError | undefined;
         let retries = 3;
         while (retries--) {
             try {
@@ -49,12 +51,12 @@ export class MapTransferService {
         throw lastError;
     }
 
-    async getMap(mapName: string, cancellationToken?: any): Promise<ArrayBuffer> {
+    async getMap(mapName: string, cancellationToken?: CancellationToken): Promise<ArrayBuffer> {
         if (!this.url) {
             throw new Error("No MapTransfer URL is set");
         }
         const authorization = this.makeAuthorizationHeader();
-        let lastError: any;
+        let lastError: DownloadError | undefined;
         let retries = 6;
         while (retries--) {
             try {

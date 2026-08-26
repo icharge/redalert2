@@ -1,4 +1,5 @@
-import { SoundSpec } from "./SoundSpec";
+import { SoundSpec, type SoundDefaults } from "./SoundSpec";
+import type { IniFile } from "../../data/IniFile";
 export enum SoundType {
     Global = 0,
     Normal = 1,
@@ -26,10 +27,10 @@ export enum SoundControl {
     Ambient = 7
 }
 export class SoundSpecs {
-    private ini: any;
+    private ini: IniFile;
     private specs: Map<string, SoundSpec>;
-    private defaults: any;
-    constructor(ini: any) {
+    private defaults: SoundDefaults;
+    constructor(ini: IniFile) {
         this.ini = ini;
         this.specs = new Map();
         this.parse();
@@ -49,7 +50,7 @@ export class SoundSpecs {
             if (soundListSection) {
                 for (let soundName of new Set(soundListSection.entries.values())) {
                     if (soundName) {
-                        let soundSection = this.ini.getSection(soundName);
+                        let soundSection = this.ini.getSection(soundName as string);
                         if (soundSection) {
                             this.specs.set(soundName as string, new SoundSpec().read(soundSection, this.defaults));
                         }

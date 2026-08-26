@@ -128,7 +128,7 @@ export class InfantryTester {
         ] as any, this.theater.tileSets as any, this.rules.general as any, (_min: number, _max: number) => 0);
         const tileOccupation = new TileOccupation(tileCollection);
         const mapBounds = new MapBounds();
-        const bridges = new Bridges(this.theater.tileSets, tileCollection, tileOccupation, mapBounds, this.rules);
+        const bridges = new Bridges(this.theater.tileSets, tileCollection, tileOccupation as unknown as ConstructorParameters<typeof Bridges>[2], mapBounds, this.rules);
         const infantry = (this.currentInfantry = new ObjectFactory(tileCollection, tileOccupation, bridges, new BoxedVar(1)).create(ObjectType.Infantry, infantryType, this.rules as any, this.art as any));
         this.currentInfantryType = infantryType;
         const selectedColor = this.currentInfantryColor?.clone()
@@ -144,8 +144,8 @@ export class InfantryTester {
         this.disposables.add(renderableManager);
         world.spawnObject(infantry);
         const renderable = (this.currentRenderable = renderableManager.getRenderableByGameObject(infantry));
-        renderable.selectionModel.setSelectionLevel(SelectionLevel.Selected);
-        renderable.selectionModel.setControlGroupNumber(3);
+        renderable.selectionModel!.setSelectionLevel(SelectionLevel.Selected);
+        renderable.selectionModel!.setControlGroupNumber(3);
         this.buildControls();
         this.syncState();
     }
@@ -190,7 +190,7 @@ export class InfantryTester {
             btn.innerHTML = SelectionLevel[level];
             btn.dataset.testid = `infantry-selection-${SelectionLevel[level].toLowerCase()}`;
             btn.addEventListener("click", () => {
-                this.currentRenderable.selectionModel.setSelectionLevel(level);
+                this.currentRenderable.selectionModel!.setSelectionLevel(level);
                 this.syncState();
             });
             selDiv.appendChild(btn);

@@ -28,7 +28,7 @@ export class VxlNonBatchedBuilder extends VxlBuilder {
     private clippingPlanes: THREE.Plane[];
     private castShadow: boolean;
     private material?: PalettePhongMaterial;
-    private extraLight?: any;
+    private extraLight?: THREE.Vector3;
     constructor(vxlFile: VxlFile, palette: Palette, hvaFile: HvaFile | null, vxlGeometryPool: VxlGeometryPool, parent: THREE.Camera) {
         super(parent);
         this.vxlFile = vxlFile;
@@ -72,7 +72,7 @@ export class VxlNonBatchedBuilder extends VxlBuilder {
             this.material.palette = paletteTexture;
         }
     }
-    setExtraLight(extraLight: any): void {
+    setExtraLight(extraLight: THREE.Vector3): void {
         this.extraLight = extraLight;
         if (this.object && this.material) {
             this.material.extraLight = extraLight;

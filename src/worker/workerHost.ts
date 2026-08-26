@@ -1,17 +1,8 @@
+import type { CompressFileEntry, WorkerMethodMap, WorkerRequest, WorkerResponse } from "./workerApi";
+import type { PlainVxlFile } from "@/data/VxlFile";
+import type { ModelQuality } from "@/engine/renderable/entity/unit/ModelQuality";
+
 const WORKER_COUNT = Math.max(1, (navigator.hardwareConcurrency || 4) - 1);
-
-interface WorkerRequest {
-    id: number;
-    method: string;
-    args: any[];
-}
-
-interface WorkerResponse {
-    id: number;
-    ok: boolean;
-    result?: any;
-    error?: string;
-}
 
 interface WorkerTask {
     run: (worker: WorkerHandle) => Promise<void>;
@@ -22,7 +13,7 @@ interface WorkerTask {
 export class WorkerHandle {
     private worker: Worker;
     private nextId: number = 1;
-    private pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void }>();
+    private pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>();
 
     constructor(worker: Worker) {
         this.worker = worker;
@@ -37,22 +28,28 @@ export class WorkerHandle {
         return this.call("decodeWav", [data]);
     }
 
-    async generateVxlGeometry(vxl: any, modelQuality: any): Promise<ArrayBuffer[]> {
-        return this.call("generateVxlGeometry", [vxl, modelQuality]);
+    async generateVxlGeometry(plainVxl: PlainVxlFile, modelQuality: ModelQuality): Promise<ArrayBuffer[]> {
+        return this.call("generateVxlGeometry", [plainVxl, modelQuality]);
     }
 
     async compressFile(data: Uint8Array, filename: string): Promise<Uint8Array> {
         return this.call("compressFile", [data, filename]);
     }
 
-    async compressFiles(files: { name: string; data: Uint8Array | string }[]): Promise<Uint8Array> {
+    async compressFiles(files: CompressFileEntry[]): Promise<Uint8Array> {
         return this.call("compressFiles", [files]);
     }
 
-    private call(method: string, args: any[]): Promise<any> {
+    private call<K extends keyof WorkerMethodMap>(
+        method: K,
+        args: WorkerMethodMap[K]["args"],
+    ): Promise<WorkerMethodMap[K]["result"]> {
         const id = this.nextId++;
         return new Promise((resolve, reject) => {
-            this.pending.set(id, { resolve, reject });
+            this.pending.set(id, {
+                resolve: (value) => resolve(value as WorkerMethodMap[K]["result"]),
+                reject,
+            });
             this.worker.postMessage({ id, method, args } satisfies WorkerRequest);
         });
     }

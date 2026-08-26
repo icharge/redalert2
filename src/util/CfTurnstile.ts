@@ -15,8 +15,24 @@ export interface CfTurnstileCallbacks {
     onError: () => void;
 }
 
+interface TurnstileRenderOptions {
+    sitekey: string;
+    action: string;
+    theme: string;
+    size: string;
+    callback: (token: string) => void;
+    "expired-callback": () => void;
+    "error-callback": () => void;
+}
+
+interface TurnstileApi {
+    render(element: HTMLElement, options: TurnstileRenderOptions): string;
+    reset(widgetId: string): void;
+    remove(widgetId: string): void;
+}
+
 export class CfTurnstile {
-    private turnstile: any;
+    private turnstile?: TurnstileApi;
     private loadPromise?: Promise<void>;
 
     constructor(private config?: CfTurnstileConfig, private document: Document = globalThis.document) {
@@ -46,7 +62,7 @@ export class CfTurnstile {
 
     private async loadScript(config: CfTurnstileConfig): Promise<void> {
         await new ScriptLoader(this.document).load(config.scriptUrl);
-        const turnstile = typeof window !== "undefined" && (window as any).turnstile !== undefined ? (window as any).turnstile : undefined;
+        const turnstile = typeof window !== "undefined" && (window as Window & { turnstile?: TurnstileApi }).turnstile !== undefined ? (window as Window & { turnstile?: TurnstileApi }).turnstile : undefined;
         if (!turnstile) {
             throw new Error("Cloudflare Turnstile API was not found on window scope");
         }

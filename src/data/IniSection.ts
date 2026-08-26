@@ -1,3 +1,6 @@
+export interface IniSectionJson {
+    [key: string]: string | string[] | IniSectionJson;
+}
 export class IniSection {
     public entries: Map<string, string | string[]>;
     public sections: Map<string, IniSection>;
@@ -7,7 +10,7 @@ export class IniSection {
         this.sections = new Map();
         this.name = name;
     }
-    public fromJson(json: Record<string, any>): this {
+    public fromJson(json: IniSectionJson): this {
         for (const key in json) {
             if (json.hasOwnProperty(key)) {
                 const value = json[key];
@@ -151,7 +154,7 @@ export class IniSection {
         if (!valueStr)
             return defaultValue;
         if (enumObject.hasOwnProperty(valueStr)) {
-            const enumVal = (enumObject as any)[valueStr];
+            const enumVal = enumObject[valueStr as keyof T];
             if (typeof enumVal === 'number') {
                 return enumVal;
             }

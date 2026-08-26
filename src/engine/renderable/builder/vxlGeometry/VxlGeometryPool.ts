@@ -1,10 +1,20 @@
 import { ModelQuality } from "@/engine/renderable/entity/unit/ModelQuality";
 import { isNotNullOrUndefined } from "@/util/typeGuard";
 import { VxlGeometryMonotoneBuilder } from "@/engine/renderable/builder/vxlGeometry/VxlGeometryMonotoneBuilder";
+import * as THREE from 'three';
+interface GeometryCache {
+    get(key: unknown): THREE.BufferGeometry | undefined;
+    set(key: unknown, value: THREE.BufferGeometry): void;
+    loadFromStorage(section: unknown, param: unknown): Promise<unknown>;
+    persistToStorage(section: unknown, param: unknown, result: unknown): Promise<void>;
+    clear(): void;
+    clearStorage(): Promise<void>;
+    clearOtherModStorage(): Promise<void>;
+}
 export class VxlGeometryPool {
-    cache: any;
+    cache: GeometryCache;
     modelQuality: ModelQuality;
-    constructor(cache, modelQuality = ModelQuality.High) {
+    constructor(cache: GeometryCache, modelQuality = ModelQuality.High) {
         this.cache = cache;
         this.modelQuality = modelQuality;
     }
@@ -14,11 +24,11 @@ export class VxlGeometryPool {
     getModelQuality() {
         return this.modelQuality;
     }
-    async loadFromStorage(data, param) {
+    async loadFromStorage(data: { sections: unknown[] }, param: unknown) {
         let results = await Promise.all(data.sections.map((section) => this.cache.loadFromStorage(section, param)));
         return results.every(isNotNullOrUndefined);
     }
-    async persistToStorage(data, param, results) {
+    async persistToStorage(data: { sections: unknown[] }, param: unknown, results: unknown[]) {
         for (let i = 0; i < data.sections.length; i++) {
             const section = data.sections[i];
             await this.cache.persistToStorage(section, param, results[i]);
@@ -33,7 +43,7 @@ export class VxlGeometryPool {
     async clearOtherModStorage() {
         await this.cache.clearOtherModStorage();
     }
-    get(key) {
+    get(key: unknown) {
         let geometry = this.cache.get(key);
         if (!geometry) {
             geometry = new VxlGeometryMonotoneBuilder().build(key);

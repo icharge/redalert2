@@ -39,7 +39,7 @@ const apiDefs: FullscreenApiDef[] = [
     },
 ];
 type DocumentLike = Document & {
-    [key: string]: any;
+    [key: string]: unknown;
 };
 /**
  * Normalizes a vendor-prefixed Fullscreen API onto the W3C names
@@ -70,7 +70,7 @@ export function polyfillFullscreen(doc: DocumentLike): void {
     const normalizeError = (event: Event): void => {
         doc.dispatchEvent(new Event(w3.events.error, { bubbles: true }));
     };
-    const wrapWithPromise = (call: () => any, isExit: boolean): Promise<void> => {
+    const wrapWithPromise = (call: () => void, isExit: boolean): Promise<void> => {
         return new Promise((resolve, reject) => {
             const onChange = (): void => {
                 resolve();
@@ -93,12 +93,12 @@ export function polyfillFullscreen(doc: DocumentLike): void {
     doc[w3.enabled] = doc[foundApi.enabled];
     doc[w3.element] = doc[foundApi.element];
     doc[w3.exit] = function (): void | Promise<void> {
-        const result = doc[foundApi!.exit]();
+        const result = (doc[foundApi!.exit] as () => Promise<void> | undefined)();
         return !result && typeof Promise !== "undefined"
             ? wrapWithPromise(() => result, true)
             : result;
     };
-    (Element.prototype as any)[w3.request] = function (): void | Promise<void> {
+    (Element.prototype as Element & Record<string, unknown>)[w3.request] = function (): void | Promise<void> {
         const result = this[foundApi!.request].apply(this, arguments);
         return !result && typeof Promise !== "undefined"
             ? wrapWithPromise(() => result, false)

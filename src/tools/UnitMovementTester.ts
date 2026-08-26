@@ -40,6 +40,7 @@ import { ObjectFactory } from "@/game/gameobject/ObjectFactory";
 import { ObjectType } from "@/engine/type/ObjectType";
 import { SelectionLevel } from "@/game/gameobject/selection/SelectionLevel";
 import { Game } from "@/game/Game";
+import { GameModeType } from "@/game/ini/GameModeType";
 import { OrderType } from "@/game/order/OrderType";
 import { MoveOrder } from "@/game/order/MoveOrder";
 import { MapPanningHelper } from "@/engine/util/MapPanningHelper";
@@ -160,7 +161,7 @@ export class UnitMovementTester {
             humanPlayers: [],
             aiPlayers: []
         };
-        const game = (this.game = new Game(world, gameMap, rules, art, {}, 1, Date.now(), gameOpts, "Standard", playerList, unitSelection, alliances, nextObjectId, objectFactory, botManager));
+        const game = (this.game = new Game(world, gameMap, rules, art, {} as unknown as ConstructorParameters<typeof Game>[4], 1, Date.now(), gameOpts, GameModeType.Battle, playerList, unitSelection, alliances, nextObjectId, objectFactory, botManager));
         (game as any).mapShroudTrait = { getPlayerShroud() { return undefined; } };
         (game as any).crateGeneratorTrait = { peekInsideCrate() { return undefined; }, pickupCrate() { } };
         game.sellTrait = new SellTrait(game, game.rules.general);
@@ -220,36 +221,36 @@ export class UnitMovementTester {
         renderableManager.init();
         this.disposables.add(renderableManager, () => (this.renderableManager = undefined));
         const renderable = renderableManager.getRenderableByGameObject(unit);
-        renderable.selectionModel.setSelectionLevel(SelectionLevel.Selected);
-        renderable.selectionModel.setControlGroupNumber(1);
+        renderable.selectionModel!.setSelectionLevel(SelectionLevel.Selected);
+        renderable.selectionModel!.setControlGroupNumber(1);
         const vRenderable = vehicle ? renderableManager.getRenderableByGameObject(vehicle) : undefined;
         const aRenderable = aircraft ? renderableManager.getRenderableByGameObject(aircraft) : undefined;
-        vRenderable?.selectionModel.setSelectionLevel(SelectionLevel.None);
-        vRenderable?.selectionModel.setControlGroupNumber(2);
-        aRenderable?.selectionModel.setSelectionLevel(SelectionLevel.None);
-        aRenderable?.selectionModel.setControlGroupNumber(3);
+        vRenderable?.selectionModel!.setSelectionLevel(SelectionLevel.None);
+        vRenderable?.selectionModel!.setControlGroupNumber(2);
+        aRenderable?.selectionModel!.setSelectionLevel(SelectionLevel.None);
+        aRenderable?.selectionModel!.setControlGroupNumber(3);
         this.buildUnitSwitchUI({
             onSelectInfantry: () => {
                 this.currentUnit = unit;
-                renderable.selectionModel.setSelectionLevel(SelectionLevel.Selected);
-                vRenderable?.selectionModel.setSelectionLevel(SelectionLevel.None);
-                aRenderable?.selectionModel.setSelectionLevel(SelectionLevel.None);
+                renderable.selectionModel!.setSelectionLevel(SelectionLevel.Selected);
+                vRenderable?.selectionModel!.setSelectionLevel(SelectionLevel.None);
+                aRenderable?.selectionModel!.setSelectionLevel(SelectionLevel.None);
             },
             onSelectVehicle: () => {
                 if (!vehicle)
                     return;
                 this.currentUnit = vehicle;
-                renderable.selectionModel.setSelectionLevel(SelectionLevel.None);
-                vRenderable?.selectionModel.setSelectionLevel(SelectionLevel.Selected);
-                aRenderable?.selectionModel.setSelectionLevel(SelectionLevel.None);
+                renderable.selectionModel!.setSelectionLevel(SelectionLevel.None);
+                vRenderable?.selectionModel!.setSelectionLevel(SelectionLevel.Selected);
+                aRenderable?.selectionModel!.setSelectionLevel(SelectionLevel.None);
             },
             onSelectAircraft: () => {
                 if (!aircraft)
                     return;
                 this.currentUnit = aircraft;
-                renderable.selectionModel.setSelectionLevel(SelectionLevel.None);
-                vRenderable?.selectionModel.setSelectionLevel(SelectionLevel.None);
-                aRenderable?.selectionModel.setSelectionLevel(SelectionLevel.Selected);
+                renderable.selectionModel!.setSelectionLevel(SelectionLevel.None);
+                vRenderable?.selectionModel!.setSelectionLevel(SelectionLevel.None);
+                aRenderable?.selectionModel!.setSelectionLevel(SelectionLevel.Selected);
             }
         });
         const canvasMetrics = (this.canvasMetrics = new CanvasMetrics(renderer.getCanvas(), window));
@@ -445,7 +446,7 @@ export class UnitMovementTester {
                         }
                         catch { }
                         if (tile) {
-                            const target = game.createTarget(undefined, tile);
+                            const target = game.createTarget(undefined, tile as unknown as Parameters<typeof game.createTarget>[1]);
                             const selected = unitSelection.getSelectedUnits();
                             try {
                                 console.info('[UnitMovementTester] Move order selected count:', selected?.length ?? 0);

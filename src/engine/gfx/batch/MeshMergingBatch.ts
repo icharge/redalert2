@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { MergedSpriteMesh } from './MergedSpriteMesh';
+import { BatchedMesh } from './BatchedMesh';
 export class MeshMergingBatch {
     public maxInstances: number;
     private target?: THREE.Object3D;
@@ -35,7 +36,7 @@ export class MeshMergingBatch {
     set clippingPlanes(value: THREE.Plane[]) {
         this._clippingPlanes = value;
         if (this.mergedGeoMesh) {
-            (this.mergedGeoMesh.material as any).clippingPlanes = value;
+            (this.mergedGeoMesh.material as unknown as { clippingPlanes: THREE.Plane[] }).clippingPlanes = value;
         }
     }
     get renderOrder(): number {
@@ -60,17 +61,17 @@ export class MeshMergingBatch {
             }
         }
     }
-    setMeshes(meshes: any[]): void {
+    setMeshes(meshes: BatchedMesh[]): void {
         if (meshes.length > this.maxInstances) {
             throw new RangeError('Meshes array exceeds max number of instances');
         }
         if (meshes.length > 0) {
             if (!this.mergedGeoMesh) {
-                this.mergedGeoMesh = new MergedSpriteMesh(meshes[0].geometry, meshes[0].material, this.maxInstances);
+                this.mergedGeoMesh = new MergedSpriteMesh(meshes[0].geometry, meshes[0].material as THREE.Material, this.maxInstances);
                 this.mergedGeoMesh.castShadow = this._castShadow;
                 this.mergedGeoMesh.receiveShadow = this._receiveShadow;
                 this.mergedGeoMesh.renderOrder = this._renderOrder;
-                (this.mergedGeoMesh.material as any).clippingPlanes = this._clippingPlanes;
+                (this.mergedGeoMesh.material as unknown as { clippingPlanes: THREE.Plane[] }).clippingPlanes = this._clippingPlanes;
                 if (this.target) {
                     this.target.add(this.mergedGeoMesh);
                 }

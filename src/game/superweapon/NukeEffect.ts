@@ -20,11 +20,11 @@ export class NukeEffect extends SuperWeaponEffect {
             .getOwnedObjectsByType(ObjectType.Building)
             .find(building => (building as any).rules.nukeSilo);
         if (silo) {
-            const weaponInstance = Weapon.factory(weapon.name, WeaponType.Primary, silo as any, game.rules);
-            weaponInstance.fire(target, game);
+            const weaponInstance = Weapon.factory(weapon.name, WeaponType.Primary, silo as unknown as Parameters<typeof Weapon.factory>[2], game.rules as unknown as Parameters<typeof Weapon.factory>[3]);
+            weaponInstance.fire(target as unknown as Parameters<typeof Weapon.prototype.fire>[0], game as unknown as Parameters<typeof Weapon.prototype.fire>[1]);
         }
         else {
-            this.fireLooseNuke(weapon, target, game);
+            this.fireLooseNuke(weapon as unknown as Weapon, target, game);
         }
     }
     private fireLooseNuke(weapon: Weapon, target: Target, game: Game): void {

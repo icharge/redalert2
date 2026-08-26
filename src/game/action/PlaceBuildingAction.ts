@@ -25,7 +25,7 @@ export class PlaceBuildingAction extends Action {
     }
     unserialize(data: Uint8Array): void {
         const stream = new DataStream(data);
-        this.buildingRules = this.game.rules.getTechnoByInternalId(stream.readUint32(), ObjectType.Building);
+        this.buildingRules = this.game.rules.getTechnoByInternalId(stream.readUint32(), ObjectType.Building) as TechnoRules;
         this.tile = {
             x: stream.readUint16(),
             y: stream.readUint16()

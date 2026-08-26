@@ -1,15 +1,16 @@
-import { HttpRequest, DownloadError } from "@/network/HttpRequest";
+import { HttpRequest, DownloadError, type FetchOptions } from "@/network/HttpRequest";
+import type { CancellationToken } from "@puzzl/core/lib/async/cancellation";
 
 export class CfChallengeHttpRequest extends HttpRequest {
     constructor(private cfChallengeHandler?: () => Promise<void>) {
         super();
     }
 
-    async fetchRaw(url: string, cancellationToken?: any, options?: any): Promise<ArrayBuffer> {
+    async fetchRaw(url: string, cancellationToken?: CancellationToken, options?: FetchOptions): Promise<ArrayBuffer> {
         return await this.fetchAndRetry(() => super.fetchRaw(url, cancellationToken, this.prepareOptions(options)));
     }
 
-    private prepareOptions(options: any): any {
+    private prepareOptions(options?: FetchOptions): FetchOptions {
         return {
             ...options,
             credentials: options?.credentials ?? "include",
@@ -36,7 +37,7 @@ export class CfChallengeHttpRequest extends HttpRequest {
         }
     }
 
-    private isCloudflareChallenge(error: any): boolean {
+    private isCloudflareChallenge(error: unknown): boolean {
         return error instanceof DownloadError && error.headers["cf-mitigated"] === "challenge";
     }
 }

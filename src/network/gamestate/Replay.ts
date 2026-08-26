@@ -4,6 +4,8 @@ import { Base64 } from '@/util/Base64';
 import { ReplayEventFactory } from '@/network/gamestate/replay/ReplayEventFactory';
 import { makeTextFileLineIterator } from '@/util/stream';
 import { utf16ToBinaryString, binaryStringToUtf16 } from '@/util/string';
+import type { GameOpts } from '@/game/gameopts/GameOpts';
+import type { ReplayEvent } from '@/network/gamestate/replay/ReplayEvent';
 
 const supportedReplayVersions = [5, 6];
 const replayFormatVersion = 6;
@@ -31,12 +33,12 @@ export class Replay {
     public timestamp: number = 0;
     public gameId: string = '';
     public gameTimestamp: number = 0;
-    public gameOpts: any;
+    public gameOpts: GameOpts;
     public engineVersion: string = '';
     public modHash: string = '';
     public endTick?: number;
     public debugInfo?: string;
-    public events: any[] = [];
+    public events: ReplayEvent[] = [];
 
     get finishedTick(): number {
         return this.endTick ?? 0;
@@ -49,7 +51,7 @@ export class Replay {
             .slice(0, this.maxNameLength);
     }
 
-    init(gameId: string, gameTimestamp: number, gameOpts: any, engineVersion: string, modHash: string): void {        this.gameId = gameId;
+    init(gameId: string, gameTimestamp: number, gameOpts: GameOpts, engineVersion: string, modHash: string): void {        this.gameId = gameId;
         this.gameTimestamp = gameTimestamp;
         this.gameOpts = gameOpts;
         this.engineVersion = engineVersion;
@@ -59,7 +61,7 @@ export class Replay {
         this.timestamp = Date.now();
     }
 
-    writeEvent(...events: any[]): void {
+    writeEvent(...events: ReplayEvent[]): void {
         this.events.push(...events);
     }
 
@@ -67,7 +69,7 @@ export class Replay {
         this.endTick = endTick;
     }
 
-    getEvents(): any[] {
+    getEvents(): ReplayEvent[] {
         return this.events;
     }
 

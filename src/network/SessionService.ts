@@ -1,10 +1,11 @@
 import type { Realm } from "@/network/Realm";
 import type { RealmSession } from "@/network/CreateRealmSessionResponse";
 import type { NicknameClaim } from "@/network/ClaimNicknameResponse";
+import type { WolService } from "@/network/WolService";
 
 export interface Account {
     id: string;
-    [key: string]: any;
+    [key: string]: unknown;
 }
 
 export class SessionService {
@@ -13,7 +14,7 @@ export class SessionService {
     private nicknameClaim?: NicknameClaim;
     private realmSession?: RealmSession;
 
-    constructor(private wolService: any) {
+    constructor(private wolService: WolService) {
     }
 
     getAccount(): Account | undefined {

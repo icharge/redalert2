@@ -2,6 +2,11 @@ import { NoAction } from '@/game/action/NoAction';
 import { GameStatus } from '@/game/Game';
 import { GameSpeed } from '@/game/GameSpeed';
 import { EventDispatcher } from '@/util/event';
+import type { Game } from '@/game/Game';
+import type { Player } from '@/game/Player';
+import type { Action } from '@/game/action/Action';
+import type { RecordedActions } from '@/network/gamestate/ReplayRecorder';
+import type { ProcessableAction } from '@/network/gamestate/PlayerActionPayload';
 
 export class SoloPlayTurnManager {
     private gameTurnMillis = 1000 / GameSpeed.BASE_TICKS_PER_SECOND;
@@ -14,11 +19,11 @@ export class SoloPlayTurnManager {
     };
 
     constructor(
-        private readonly game: any,
-        private readonly currentPlayer: any,
-        private readonly inputActions: { dequeueAll(): any[] },
+        private readonly game: Game,
+        private readonly currentPlayer: Player,
+        private readonly inputActions: { dequeueAll(): Action[] },
         private readonly actionLogger?: { debug(message: string): void },
-        private readonly replayRecorder?: { recordActions?(tick: number, actions: any[]): void }
+        private readonly replayRecorder?: { recordActions?(tick: number, actions: RecordedActions): void }
     ) { }
 
     init(): void {
@@ -69,10 +74,11 @@ export class SoloPlayTurnManager {
         return true;
     }
 
-    private processActions(actions: any[]): void {
+    private processActions(actions: Action[]): void {
         actions.forEach((action) => {
-            action.player = this.currentPlayer;
-            action.process();
+            const processable = action as unknown as ProcessableAction;
+            processable.player = this.currentPlayer;
+            processable.process();
             const printable = action.print?.();
             if (printable) {
                 this.actionLogger?.debug(`(${action.player.name})@${this.game.currentTick}: ${printable}`);

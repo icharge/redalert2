@@ -2,16 +2,22 @@ import { TurnActionsReplayEvent } from '@/network/gamestate/replay/TurnActionsRe
 import { GameStatus } from '@/game/Game';
 import { GameSpeed } from '@/game/GameSpeed';
 import { EventDispatcher } from '@/util/event';
+import type { Game } from '@/game/Game';
+import type { Replay } from '@/network/gamestate/Replay';
+import type { ReplayEvent } from '@/network/gamestate/replay/ReplayEvent';
+import type { ActionFactory } from '@/game/action/ActionFactory';
+import type { ActionType } from '@/game/action/ActionType';
+import type { PlayerActionPayload } from '@/network/gamestate/PlayerActionPayload';
 
 export class ReplayTurnManager {
     private gameTurnMillis = 1000 / GameSpeed.BASE_TICKS_PER_SECOND;
     private errorState = false;
     private gameSpeedChanged = false;
     private finished = false;
-    private replayIterator: IterableIterator<any>;
-    private nextReplayEvent: any;
+    private replayIterator: IterableIterator<ReplayEvent>;
+    private nextReplayEvent: ReplayEvent | undefined;
 
-    private readonly _onReplayEvent = new EventDispatcher<this, any>();
+    private readonly _onReplayEvent = new EventDispatcher<this, ReplayEvent>();
     private readonly _onActionsSent = new EventDispatcher<this, void>();
     private readonly _onFinished = new EventDispatcher<this, void>();
 
@@ -26,9 +32,9 @@ export class ReplayTurnManager {
     };
 
     constructor(
-        private readonly game: any,
-        private readonly replay: any,
-        private readonly actionFactory: any,
+        private readonly game: Game,
+        private readonly replay: Replay,
+        private readonly actionFactory: ActionFactory,
         private readonly actionLogger?: { debug(message: string): void },
     ) {}
 
@@ -68,7 +74,7 @@ export class ReplayTurnManager {
             if (this.nextReplayEvent && this.nextReplayEvent.tickNo < this.game.currentTick) {
                 throw new Error('Replay event desync');
             }
-            if (this.replay.endTick + 1 <= this.game.currentTick) {
+            if (this.replay.endTick! + 1 <= this.game.currentTick) {
                 this.finished = true;
                 this.game.status = GameStatus.Ended;
                 this._onFinished.dispatch(this, undefined);
@@ -94,7 +100,7 @@ export class ReplayTurnManager {
             return;
         }
         this.finished = false;
-        const target = Math.min(targetTick, this.replay.endTick);
+        const target = Math.min(targetTick, this.replay.endTick!);
         let lastReportedTick = 0;
         while (this.game.currentTick < target && this.game.status !== GameStatus.Ended) {
             this.processEventsForCurrentTick(false);
@@ -127,10 +133,10 @@ export class ReplayTurnManager {
         }
     }
 
-    processActions(actions: Array<[number, any[]]>): void {
+    processActions(actions: Array<[number, Array<PlayerActionPayload>]>): void {
         actions.forEach(([playerId, playerActions]) => {
             playerActions.forEach((action) => {
-                const createdAction = this.actionFactory.create(action.id);
+                const createdAction = this.actionFactory.create(action.id as ActionType);
                 createdAction.player = this.game.getPlayer(playerId);
                 createdAction.unserialize(action.params);
                 createdAction.process();

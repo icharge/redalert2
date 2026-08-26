@@ -1,4 +1,21 @@
 import { ScriptLoader } from "./ScriptLoader";
+interface SentryScope {
+    setTags(tags: Record<string, string | number | boolean | undefined>): SentryScope;
+    setTag(key: string, value: string | number | boolean | undefined): SentryScope;
+    setExtra(key: string, value: unknown): SentryScope;
+}
+interface SentryEvent {
+    addAttachment(attachment: { filename: string; data: string }): SentryEvent;
+}
+type SentryContext = Record<string, unknown> | ((event: SentryEvent) => SentryEvent);
+interface SentryInitConfig {
+    environment: string;
+    release: string;
+    denyUrls: RegExp[];
+    ignoreErrors: RegExp[];
+    initialScope: (scope: SentryScope) => SentryScope;
+    defaultIntegrations?: boolean;
+}
 interface SentryConfig {
     dsn: string;
     env: string;
@@ -6,12 +23,12 @@ interface SentryConfig {
     lazyLoad?: boolean;
 }
 interface SentrySDK {
-    init: (config: any) => void;
+    init: (config: SentryInitConfig) => void;
     onLoad: (callback: () => void) => void;
     forceLoad: () => void;
-    captureException: (error: Error, context?: any) => void;
-    configureScope: (callback: (scope: any) => void) => void;
-    addBreadcrumb: (breadcrumb: any) => void;
+    captureException: (error: Error, context?: SentryContext) => void;
+    configureScope: (callback: (scope: SentryScope) => void) => void;
+    addBreadcrumb: (breadcrumb: unknown) => void;
 }
 declare global {
     interface Window {
@@ -37,7 +54,7 @@ export class Sentry {
                 /The play\(\) request/,
                 /^db$/,
             ],
-            initialScope: (scope: any) => scope
+            initialScope: (scope: SentryScope) => scope
                 .setTags({ locale: navigator.language })
                 .setExtra("initTime", initTime),
             ...(config.defaultIntegrations ? {} : { defaultIntegrations: false }),
@@ -49,13 +66,13 @@ export class Sentry {
             sdk.forceLoad();
         }
     }
-    captureException(error: Error, context?: any): void {
+    captureException(error: Error, context?: SentryContext): void {
         this.sdk?.captureException(error, context);
     }
-    configureScope(callback: (scope: any) => void): void {
+    configureScope(callback: (scope: SentryScope) => void): void {
         this.sdk?.configureScope(callback);
     }
-    addBreadcrumb(breadcrumb: any): void {
+    addBreadcrumb(breadcrumb: unknown): void {
         this.sdk?.addBreadcrumb(breadcrumb);
     }
 }
