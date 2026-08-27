@@ -456,10 +456,12 @@ different failure modes. The final fix instead deletes that mesh/GPU path
 entirely and routes light-posts through `Lighting.ts`'s existing
 `tileLights` accumulator (§1) — the same one radiation already uses:
 `createLamp()` now walks every tile within `LightVisibility/256` cells of
-the object's own tile (via `TileCollection.getInRectangle` + a Euclidean
-rx/ry distance filter, mirroring `LightSource.ApplyLamp` exactly), and
-calls `addTileLight`/`removeTileLight` per tile instead of building any
-mesh. `Lighting.compute()` gained the missing `Math.max(x, 0)` floor
+the object's own tile — scanning rx/ry directly via `TileCollection
+.getByMapCoords`, rejecting tiles outside the radius by squared distance
+before paying for a sqrt or a tile lookup, mirroring `LightSource
+.ApplyLamp`'s Euclidean rx/ry falloff exactly — and calls `addTileLight`/
+`removeTileLight` per tile instead of building any mesh. `Lighting.compute()`
+gained the missing `Math.max(x, 0)` floor
 clamps (on both the ambient scalar and the combined tint) to match
 `Palette.Recalculate()` exactly. This is a net simplification — no new
 render target, shader, or Three.js layer needed — because it uses the
