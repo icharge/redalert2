@@ -1080,13 +1080,29 @@ export class Application {
             await PerformanceTester.main(this.rootEl!, this.strings, this.runtimeVars, this.generalOptions, this.createTestToolContext());
             this.currentRouteHandler = PerformanceTester;
         });
-        this.routing.addRoute("/scenesandbox", async () => {
+        this.routing.addRoute("/scenesandbox", async (params) => {
             if (!Engine.vfs) {
                 throw new Error("Original game files must be provided.");
             }
             console.log('[Application] Initializing SceneSandboxTester');
             const { TestToolSupport } = await this.importOptionalDevModule('./tools/TestToolSupport');
-            const mapCandidates = ["mp18s3.map", "mp03t4.map"];
+            // Optional #/scenesandbox/<map title or filename> — matched against
+            // Engine.getMapList() by filename or a case-insensitive title
+            // substring, so a map can be inspected without knowing its filename.
+            let mapCandidates = ["mp18s3.map", "mp03t4.map"];
+            const requestedMapQuery = params[0] ? decodeURIComponent(params[0]) : undefined;
+            if (requestedMapQuery) {
+                const query = requestedMapQuery.toLowerCase();
+                const match = Engine.getMapList().getAll().find((map: any) => map.fileName.toLowerCase() === query ||
+                    (map.getFullMapTitle(this.strings) as string).toLowerCase().includes(query));
+                if (match) {
+                    console.log(`[Application] Resolved scene sandbox map query "${requestedMapQuery}" -> ${match.fileName}`);
+                    mapCandidates = [match.fileName, ...mapCandidates];
+                }
+                else {
+                    console.warn(`[Application] No map found matching "${requestedMapQuery}"; falling back to defaults`);
+                }
+            }
             let loadedMap: any;
             let loadedMapName = "";
             for (const mapName of mapCandidates) {

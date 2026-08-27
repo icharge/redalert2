@@ -2,8 +2,13 @@ import { jsx } from "@/gui/jsx/jsx";
 import { HtmlView } from "@/gui/jsx/HtmlView";
 import { MapSelPrototype } from "@/gui/screen/mainMenu/mapSel/component/MapSelPrototype";
 import { MapPreviewRenderer } from "@/gui/screen/mainMenu/lobby/MapPreviewRenderer";
+import { MapSnapshotRenderer } from "@/gui/screen/mainMenu/mapSel/MapSnapshotRenderer";
 import { LobbyType } from "@/gui/screen/mainMenu/lobby/component/viewmodel/lobby";
+import { HtmlContainer } from "@/gui/HtmlContainer";
+import { UiObject } from "@/gui/UiObject";
+import { THREE } from "@/setupThreeGlobal";
 import { DownloadError } from "@/network/HttpRequest";
+import { MapCatalogService, MapCatalogEntry } from "@/network/MapCatalogService";
 import { Task } from "@puzzl/core/lib/async/Task";
 import { CancellationTokenSource, OperationCanceledError, CancellationToken } from "@puzzl/core/lib/async/cancellation";
 import { MainMenuScreen } from "@/gui/screen/mainMenu/MainMenuScreen";
@@ -88,6 +93,8 @@ export class MapSelPrototypeScreen extends MainMenuScreen {
     private mapDir: MapDirectory;
     private fsAccessLib: FsAccessLib;
     private sentry: Sentry;
+    private mapCatalog: MapCatalogService;
+    private cdnResourceLoader: any;
     private disposables: CompositeDisposable;
     /** No real lobby exists in this prototype; used only for the preview thumbnail's tooltip text. */
     private readonly lobbyType = LobbyType.Singleplayer;
@@ -99,7 +106,14 @@ export class MapSelPrototypeScreen extends MainMenuScreen {
     private mapFileUpdateTask?: Task<void>;
     /** Set when the last map load failed; cleared on every new map selection. */
     private mapLoadError = false;
-    constructor(strings: any, jsxRenderer: any, mapFileLoader: MapFileLoader, errorHandler: ErrorHandler, messageBoxApi: MessageBoxApi, mapList: MapList, gameModes: GameModes, mapDir: MapDirectory, fsAccessLib: FsAccessLib, sentry: Sentry) {
+    private realPreviewLoading = false;
+    /** Bumped on every onLeave so a real-preview render that finishes after the screen was left (or re-entered) is discarded instead of clobbering an unrelated visit's sidebar. */
+    private realPreviewGeneration = 0;
+    private communityMaps?: MapCatalogEntry[];
+    private communityMapsLoading = false;
+    private communityMapsError?: string;
+    private communityCancelSource?: CancellationTokenSource;
+    constructor(strings: any, jsxRenderer: any, mapFileLoader: MapFileLoader, errorHandler: ErrorHandler, messageBoxApi: MessageBoxApi, mapList: MapList, gameModes: GameModes, mapDir: MapDirectory, fsAccessLib: FsAccessLib, sentry: Sentry, mapCatalog: MapCatalogService, cdnResourceLoader?: any) {
         super();
         this.strings = strings;
         this.jsxRenderer = jsxRenderer;
@@ -111,6 +125,8 @@ export class MapSelPrototypeScreen extends MainMenuScreen {
         this.mapDir = mapDir;
         this.fsAccessLib = fsAccessLib;
         this.sentry = sentry;
+        this.mapCatalog = mapCatalog;
+        this.cdnResourceLoader = cdnResourceLoader;
         this.title = this.strings.get("GUI:ChooseMap");
         this.disposables = new CompositeDisposable();
         this.handleSelectMap = (mapName: string) => {
@@ -174,6 +190,10 @@ export class MapSelPrototypeScreen extends MainMenuScreen {
                 selectedGameMode: this.selectedGameMode,
                 onSelectMap: this.handleSelectMap,
                 onSelectGameMode: this.handleSelectGameMode,
+                communityMaps: this.communityMaps,
+                communityMapsLoading: this.communityMapsLoading,
+                communityMapsError: this.communityMapsError,
+                onActivateCommunityTab: () => this.handleActivateCommunityTab(),
             },
         }))[0]);
     }
@@ -184,6 +204,12 @@ export class MapSelPrototypeScreen extends MainMenuScreen {
                 tooltip: this.strings.get("STT:ScenarioButtonUseMap"),
                 disabled: this.mapLoadError,
                 onClick: () => this.handleSubmit(),
+            },
+            {
+                label: this.realPreviewLoading ? "Rendering…" : "Real Preview",
+                tooltip: "Experimental: render an actual in-game engine snapshot of this map instead of the flat radar preview. Slow — loads real theater assets.",
+                disabled: this.realPreviewLoading,
+                onClick: () => this.handleRealPreview(),
             },
             ...(this.mapDir
                 ? [
@@ -317,6 +343,50 @@ export class MapSelPrototypeScreen extends MainMenuScreen {
         // the sidebar's "commit selection" affordance staying in place.
         console.log("[MapSelPrototypeScreen] Use Map clicked for", this.selectedMapName);
     }
+    /** Experimental: swaps the sidebar's flat radar preview for a real engine-rendered snapshot (see MapSnapshotRenderer). */
+    private handleRealPreview(): void {
+        if (this.realPreviewLoading) {
+            return;
+        }
+        const generation = this.realPreviewGeneration;
+        const mapName = this.selectedMapName;
+        this.realPreviewLoading = true;
+        this.initSidebar();
+        (async () => {
+            try {
+                const virtualFile = await this.mapFileLoader.load(mapName);
+                if (generation !== this.realPreviewGeneration || mapName !== this.selectedMapName) {
+                    return;
+                }
+                const mapFile = new MapFile(virtualFile);
+                const canvas = await new MapSnapshotRenderer().render(mapFile, this.strings, this.cdnResourceLoader);
+                if (generation !== this.realPreviewGeneration || mapName !== this.selectedMapName) {
+                    return;
+                }
+                const container = new HtmlContainer();
+                const uiObject = new UiObject(new THREE.Object3D(), container);
+                container.setSize("100%", "100%");
+                container.render();
+                canvas.style.objectFit = "contain";
+                canvas.style.width = "100%";
+                canvas.style.height = "100%";
+                container.getElement().appendChild(canvas);
+                this.controller?.setSidebarPreview(uiObject);
+            }
+            catch (error) {
+                console.error("[MapSelPrototypeScreen] Real preview render failed", error);
+                if (generation === this.realPreviewGeneration) {
+                    this.errorHandler.handle(error, this.strings.get("TXT_DOWNLOAD_FAILED"), () => { });
+                }
+            }
+            finally {
+                if (generation === this.realPreviewGeneration) {
+                    this.realPreviewLoading = false;
+                    this.initSidebar();
+                }
+            }
+        })();
+    }
     private computeAvailableMaps(): MapData[] {
         return this.allMaps!.filter((map) => map.gameModes.some((mode) => mode.id === this.selectedGameMode.id));
     }
@@ -326,12 +396,57 @@ export class MapSelPrototypeScreen extends MainMenuScreen {
             text: this.strings.get(this.selectedGameMode.label) + "\n\n" + selectedMap?.mapTitle,
         });
     }
+    /** Called when the Community Browser tab is opened, and again as its Retry action on error. */
+    private handleActivateCommunityTab(): void {
+        if (this.communityMapsLoading || (this.communityMaps && !this.communityMapsError)) {
+            return;
+        }
+        this.loadCommunityMaps();
+    }
+    private loadCommunityMaps(): void {
+        this.communityCancelSource?.cancel();
+        const cancellationSource = new CancellationTokenSource();
+        this.communityCancelSource = cancellationSource;
+        this.communityMapsLoading = true;
+        this.communityMapsError = undefined;
+        this.pushCommunityMapsToForm();
+        this.mapCatalog.list({ sort: "rating", limit: 50 }, cancellationSource.token)
+            .then((result) => {
+                if (cancellationSource.token.isCancelled())
+                    return;
+                this.communityMaps = result.items;
+                this.communityMapsLoading = false;
+                this.pushCommunityMapsToForm();
+            })
+            .catch((error) => {
+                if (error instanceof OperationCanceledError)
+                    return;
+                console.error("[MapSelPrototypeScreen] Failed to load community maps", error);
+                this.communityMapsLoading = false;
+                this.communityMapsError = this.strings.get("TXT_DOWNLOAD_FAILED");
+                this.pushCommunityMapsToForm();
+            });
+    }
+    private pushCommunityMapsToForm(): void {
+        this.form?.applyOptions((options: any) => {
+            options.communityMaps = this.communityMaps;
+            options.communityMapsLoading = this.communityMapsLoading;
+            options.communityMapsError = this.communityMapsError;
+        });
+    }
     async onLeave(): Promise<void> {
         this.availableGameModes = undefined;
         this.allMaps = undefined;
         this.form = undefined;
         this.mapFileUpdateTask?.cancel();
         this.mapFileUpdateTask = undefined;
+        this.communityCancelSource?.cancel();
+        this.communityCancelSource = undefined;
+        this.communityMaps = undefined;
+        this.communityMapsLoading = false;
+        this.communityMapsError = undefined;
+        this.realPreviewGeneration++;
+        this.realPreviewLoading = false;
         this.controller.setMainComponent();
         this.controller.toggleSidebarPreview(false);
         this.disposables.dispose();

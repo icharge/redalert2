@@ -541,7 +541,7 @@ export class Gui {
             const { ReplayStorageMemStorage } = await import('./gui/replay/ReplayStorageMemStorage.js');
             replayManager = new ReplayManager(new ReplayStorageMemStorage());
         }
-        const mainMenuRootScreen = new MainMenuRootScreen(subScreens, this.uiScene, this.strings, Engine.images, this.jsxRenderer, this.messageBoxApi, this.appVersion, this.config, videoSrc, this.sound, this.music, this.generalOptions, this.localPrefs, this.fullScreen, this.mixer, this.keyBinds, this.rootController, this.appLocale, this.cfTurnstile);
+        const mainMenuRootScreen = new MainMenuRootScreen(subScreens, this.uiScene, this.strings, Engine.images, this.jsxRenderer, this.messageBoxApi, this.appVersion, this.config, videoSrc, this.sound, this.music, this.generalOptions, this.localPrefs, this.fullScreen, this.mixer, this.keyBinds, this.rootController, this.appLocale, this.cfTurnstile, this.cdnResourceLoader);
         (mainMenuRootScreen as any).replayManager = replayManager;
         this.rootController.addScreen(ScreenType.MainMenuRoot, mainMenuRootScreen);
         const onlineServices = await mainMenuRootScreen.getOnlineServices();

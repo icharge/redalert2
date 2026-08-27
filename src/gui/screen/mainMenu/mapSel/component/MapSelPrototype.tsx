@@ -19,6 +19,22 @@ interface GameMode {
     label: string;
     description?: string;
 }
+/** Subset of MapCatalogEntry (see @/network/MapCatalogService) that the Community Browser table renders. */
+interface CommunityMapEntry {
+    sha256: string;
+    filename: string;
+    title: string;
+    description: string;
+    maxPlayers: number;
+    gameModes: string[];
+    theater: string;
+    downloads: number;
+    stats: {
+        plays: number;
+        ratingAvg: number;
+        ratingCount: number;
+    };
+}
 interface MapSelPrototypeProps {
     strings: any;
     gameModes: GameMode[];
@@ -27,6 +43,10 @@ interface MapSelPrototypeProps {
     selectedMapName: string;
     onSelectGameMode: (gameMode: GameMode) => void;
     onSelectMap: (mapName: string) => void;
+    communityMaps?: CommunityMapEntry[];
+    communityMapsLoading?: boolean;
+    communityMapsError?: string;
+    onActivateCommunityTab: () => void;
 }
 type TabId = "official" | "community" | "featured";
 const TABS: { id: TabId; label: string }[] = [
@@ -102,12 +122,17 @@ export const MapSelPrototype: React.FC<MapSelPrototypeProps> = ({
     selectedMapName,
     onSelectGameMode,
     onSelectMap,
+    communityMaps,
+    communityMapsLoading,
+    communityMapsError,
+    onActivateCommunityTab,
 }) => {
     const selectedRef = useRef<HTMLDivElement>(null);
     const [activeTab, setActiveTab] = useState<TabId>("official");
     const [searchFilter, setSearchFilter] = useState<string>("");
     const [sortType, setSortType] = useState<SortType>(SortType.None);
     const [filteredMaps, setFilteredMaps] = useState<MapData[]>(maps);
+    const [selectedCommunitySha, setSelectedCommunitySha] = useState<string | undefined>(undefined);
     useEffect(() => {
         const filtered = maps.filter((map) => map.mapTitle.toLowerCase().includes(searchFilter.toLowerCase()));
         setFilteredMaps(sortMaps(filtered, sortType));
@@ -116,7 +141,14 @@ export const MapSelPrototype: React.FC<MapSelPrototypeProps> = ({
         const timeout = setTimeout(() => selectedRef.current?.scrollIntoView({ block: "nearest" }), 50);
         return () => clearTimeout(timeout);
     }, [maps]);
+    useEffect(() => {
+        if (activeTab === "community") {
+            onActivateCommunityTab();
+        }
+    }, [activeTab]);
     const selectedMap = maps.find((map) => map.mapName === selectedMapName);
+    const filteredCommunityMaps = (communityMaps ?? []).filter((entry) => (entry.title || entry.filename).toLowerCase().includes(searchFilter.toLowerCase()));
+    const selectedCommunityMap = filteredCommunityMaps.find((entry) => entry.sha256 === selectedCommunitySha);
     return (
         <div className="map-sel-proto-form">
             <div className="map-sel-proto-title">{strings.get("GUI:SelectEngagement")}</div>
@@ -131,12 +163,68 @@ export const MapSelPrototype: React.FC<MapSelPrototypeProps> = ({
                     </div>
                 ))}
             </div>
-            {activeTab !== "official" ? (
+            {activeTab === "featured" ? (
                 <div className="map-sel-proto-empty-state">
-                    {activeTab === "community"
-                        ? "Community Browser isn't wired up in this prototype yet."
-                        : "Featured maps aren't wired up in this prototype yet."}
+                    Featured maps aren't wired up in this prototype yet.
                 </div>
+            ) : activeTab === "community" ? (
+                communityMapsLoading ? (
+                    <div className="map-sel-proto-empty-state">Loading community maps…</div>
+                ) : communityMapsError ? (
+                    <div className="map-sel-proto-empty-state">
+                        {communityMapsError}{" "}
+                        <span className="map-sel-proto-retry" onClick={onActivateCommunityTab}>Retry</span>
+                    </div>
+                ) : !communityMaps || communityMaps.length === 0 ? (
+                    <div className="map-sel-proto-empty-state">No community maps have been uploaded yet.</div>
+                ) : (
+                    <>
+                        <ListHeader className="map-sel-proto-row map-sel-proto-header">
+                            <span className="map-col-name">Map Name</span>
+                            <span className="map-col-rating">Rating</span>
+                            <span className="map-col-stats">Stats</span>
+                            <span className="map-col-tags">Tags</span>
+                        </ListHeader>
+                        <List className="map-sel-proto-list" tooltip={strings.get("STT:ScenarioListMaps")}>
+                            {filteredCommunityMaps.map((entry) => {
+                                const isSelected = entry.sha256 === selectedCommunitySha;
+                                const title = entry.title || entry.filename;
+                                return (
+                                    <ListItem
+                                        key={entry.sha256}
+                                        className="map-sel-proto-row"
+                                        selected={isSelected}
+                                        onClick={() => setSelectedCommunitySha(entry.sha256)}
+                                    >
+                                        <span className="map-col-name" title={title}>{title}</span>
+                                        <span className="map-col-rating" title={`${entry.stats.ratingAvg.toFixed(1)} / 5 (${entry.stats.ratingCount})`}>{renderStars(entry.stats.ratingAvg)}</span>
+                                        <span className="map-col-stats">{entry.stats.plays} plays · {entry.downloads} DLs</span>
+                                        <span className="map-col-tags">{entry.theater || "Unknown Theater"} · {entry.maxPlayers}p</span>
+                                    </ListItem>
+                                );
+                            })}
+                        </List>
+                        <div className="map-sel-proto-search-row">
+                            <label className="map-sel-proto-search">
+                                <span>{strings.get("GUI:Search")}</span>
+                                <input
+                                    type="text"
+                                    className="new-message"
+                                    value={searchFilter}
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchFilter(e.target.value)}
+                                />
+                            </label>
+                        </div>
+                        <div className="map-sel-proto-description">
+                            {selectedCommunityMap && (
+                                <>
+                                    <span className="map-sel-proto-desc-title">{selectedCommunityMap.title || selectedCommunityMap.filename}: </span>
+                                    <span className="map-sel-proto-desc-body">{selectedCommunityMap.description || "No description provided."}</span>
+                                </>
+                            )}
+                        </div>
+                    </>
+                )
             ) : (
                 <>
                     <div className="map-sel-proto-toolbar">

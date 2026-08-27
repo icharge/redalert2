@@ -68,25 +68,32 @@ export class MapTileLayer {
         const validTiles: any[] = [];
         for (const tile of this.allTiles) {
             const tileNum = tile.tileNum;
-            const tileData = tileSets.getTile(tileNum);
+            let tileData = tileSets.getTile(tileNum);
+            let subTile = tile.subTile;
             if (!tileData) {
-                try {
-                    console.warn('[MapTileLayer] missing tileData for tile', tile);
-                }
-                catch { }
-                ;
+                console.warn('[MapTileLayer] missing tileData for tile, falling back to tileNum 0 (Clear)', tile);
+                // Upstream has no fallback here either (it throws) — the original
+                // client assumes every referenced tile always ships with art. That
+                // assumption doesn't hold for incomplete/stripped game-file copies,
+                // so render best-effort with the always-present base tile instead
+                // of leaving a black void where the map's real art is missing.
+                tileData = tileSets.getTile(0);
+                subTile = 0;
+            }
+            if (!tileData) {
                 continue;
             }
-            const tmpFile = tileData.getTmpFile(tile.subTile, getRandomInt);
-            if (!tmpFile || tile.subTile >= tmpFile.images.length) {
-                try {
-                    console.warn('[MapTileLayer] bad tmpFile or subTile', { tile, tmpFileExists: !!tmpFile });
+            let tmpFile = tileData.getTmpFile(subTile, getRandomInt);
+            if (!tmpFile || subTile >= tmpFile.images.length) {
+                console.warn('[MapTileLayer] bad tmpFile or subTile, falling back to tileNum 0 (Clear)', { tile, tmpFileExists: !!tmpFile });
+                const fallbackTileData = tileSets.getTile(0);
+                tmpFile = fallbackTileData?.getTmpFile(0, getRandomInt);
+                subTile = 0;
+                if (!tmpFile || subTile >= tmpFile.images.length) {
+                    continue;
                 }
-                catch { }
-                ;
-                continue;
             }
-            const tmpImage = tmpFile.images[tile.subTile];
+            const tmpImage = tmpFile.images[subTile];
             tileImageMap.set(tile, tmpImage);
             validTiles.push(tile);
             if (!tmpImageMap.get(tmpImage)) {

@@ -47,8 +47,9 @@ export class MainMenuRootScreen extends RootScreen {
     private mainMenu?: MainMenu;
     private mainMenuCtrl?: MainMenuController;
     private onlineServices?: any;
-    constructor(subScreens: Map<MainMenuScreenType, any>, uiScene: UiScene, strings: Strings, images: LazyResourceCollection<ShpFile>, jsxRenderer: JsxRenderer, messageBoxApi: MessageBoxApi, appVersion: string, config: Config, videoSrc?: string | File, sound?: any, music?: any, generalOptions?: any, localPrefs?: any, fullScreen?: any, mixer?: any, keyBinds?: any, rootController?: any, appLocale?: string, cfTurnstile?: any) {
+    constructor(subScreens: Map<MainMenuScreenType, any>, uiScene: UiScene, strings: Strings, images: LazyResourceCollection<ShpFile>, jsxRenderer: JsxRenderer, messageBoxApi: MessageBoxApi, appVersion: string, config: Config, videoSrc?: string | File, sound?: any, music?: any, generalOptions?: any, localPrefs?: any, fullScreen?: any, mixer?: any, keyBinds?: any, rootController?: any, appLocale?: string, cfTurnstile?: any, cdnResourceLoader?: any) {
         super();
+        this.cdnResourceLoader = cdnResourceLoader;
         this.subScreens = subScreens;
         this.uiScene = uiScene;
         this.strings = strings;
@@ -71,6 +72,7 @@ export class MainMenuRootScreen extends RootScreen {
     }
     private appLocale: string;
     private cfTurnstile?: any;
+    private cdnResourceLoader?: any;
     createView(): void {
         console.log('[MainMenuRootScreen] Creating view');
         console.log('[MainMenuRootScreen] Using menuViewport:', this.uiScene.menuViewport);
@@ -276,7 +278,10 @@ export class MainMenuRootScreen extends RootScreen {
         else if (screenType === MainMenuScreenType.MapSelectionPrototype) {
             console.log('[MainMenuRootScreen] Creating MapSelPrototypeScreen with real map/game-mode data');
             const { errorHandler, mapFileLoader, mapList, gameModes, mapDir, fsAccessLib, sentry } = await this.createMapSelectionDeps();
-            screen = new screenClass(this.strings, this.jsxRenderer, mapFileLoader, errorHandler, this.messageBoxApi, mapList, gameModes, mapDir, fsAccessLib, sentry);
+            const { MapCatalogService } = await import('../../../network/MapCatalogService.js');
+            const mapCatalogBaseUrl = (this.config.mapsBaseUrl ?? '/maps/').replace(/\/$/, '');
+            const mapCatalog = new MapCatalogService(mapCatalogBaseUrl);
+            screen = new screenClass(this.strings, this.jsxRenderer, mapFileLoader, errorHandler, this.messageBoxApi, mapList, gameModes, mapDir, fsAccessLib, sentry, mapCatalog, this.cdnResourceLoader);
         }
         else if (screenType === MainMenuScreenType.Score) {
             const services = await this.getOnlineServices();

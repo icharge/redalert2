@@ -25,7 +25,7 @@ interface GameSpeed {
 interface Container {
     remove(item: unknown): void;
 }
-declare namespace SPE {
+declare namespace SPETypes {
     interface GroupConfig {
         texture: {
             value: THREE.Texture;
@@ -90,8 +90,8 @@ export class DamageSmokeFx {
     private lifetimeSeconds: number;
     private finishRequested: boolean;
     private container?: Container;
-    private particleGroup?: SPE.Group;
-    private particleEmitter?: SPE.Emitter;
+    private particleGroup?: SPETypes.Group;
+    private particleEmitter?: SPETypes.Emitter;
     private particleMaxAge?: number;
     private lastUpdateMillis?: number;
     private firstUpdateMillis?: number;

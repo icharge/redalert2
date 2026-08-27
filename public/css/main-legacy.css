@@ -1395,6 +1395,11 @@ input[type="range"]:focus {
     color: gray;
 }
 
+#ra2web-root .map-sel-proto-form .map-sel-proto-retry {
+    text-decoration: underline;
+    cursor: pointer;
+}
+
 #ra2web-root .lan-setup-form {
     padding: 20px 34px 26px;
     box-sizing: border-box;
