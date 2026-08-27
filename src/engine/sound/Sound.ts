@@ -63,7 +63,7 @@ export class Sound {
         if (target.matches("button, .menu-button:not(.disabled)")) {
             this.play(SoundKey.GUIMainButtonSound, ChannelType.Ui);
         }
-        else if (target.matches(".list-item")) {
+        else if (target.matches(".list-item") || target.parentElement.matches('.list-item')) {
             this.play(SoundKey.GenericClick, ChannelType.Ui);
         }
         else if (target instanceof HTMLInputElement &&
