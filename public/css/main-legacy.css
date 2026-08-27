@@ -1250,6 +1250,142 @@ input[type="range"]:focus {
     flex: 1 0;
 }
 
+/* "Select Engagement" prototype content frame (test section only, see
+   MapSelPrototypeScreen). Shares the classic 632x570 content area with
+   .map-sel-form above but uses tighter padding — like .gamebrowser-wrapper —
+   to fit the extra rating/stats/tags columns. */
+#ra2web-root .map-sel-proto-form {
+    width: 632px;
+    padding: 20px 24px;
+    box-sizing: border-box;
+}
+
+#ra2web-root .map-sel-proto-form .map-sel-proto-title {
+    text-align: center;
+    margin-bottom: 12px;
+}
+
+#ra2web-root .map-sel-proto-form .map-sel-proto-tabs {
+    display: flex;
+    border-bottom: 1px solid #7a3b3b;
+    margin-bottom: 10px;
+}
+
+#ra2web-root .map-sel-proto-form .map-sel-proto-tab {
+    padding: 4px 14px;
+    cursor: pointer;
+    color: #c9a35a;
+    user-select: none;
+}
+
+#ra2web-root .map-sel-proto-form .map-sel-proto-tab.active {
+    color: #ffd84a;
+    background: #6b0000;
+    border: 1px solid #ff6400;
+    border-bottom: none;
+}
+
+#ra2web-root .map-sel-proto-form .map-sel-proto-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    margin-bottom: 6px;
+}
+
+#ra2web-root .map-sel-proto-form .map-sel-proto-sort-icon {
+    margin-right: auto;
+    cursor: pointer;
+    font-size: 16px;
+}
+
+#ra2web-root .map-sel-proto-form .map-sel-proto-filter-label {
+    margin-right: 6px;
+}
+
+#ra2web-root .map-sel-proto-form .map-sel-proto-filter-select {
+    min-width: 140px;
+}
+
+#ra2web-root .map-sel-proto-form .map-sel-proto-row {
+    display: flex;
+    align-items: center;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+#ra2web-root .map-sel-proto-form .map-sel-proto-row .map-col-name {
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-right: 8px;
+}
+
+#ra2web-root .map-sel-proto-form .map-sel-proto-row .map-col-rating {
+    flex: 0 0 84px;
+    color: #ffd84a;
+}
+
+#ra2web-root .map-sel-proto-form .map-sel-proto-row .map-col-stats {
+    flex: 0 0 130px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#ra2web-root .map-sel-proto-form .map-sel-proto-row .map-col-tags {
+    flex: 0 0 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#ra2web-root .map-sel-proto-form .map-sel-proto-header {
+    font-weight: bold;
+}
+
+#ra2web-root .map-sel-proto-form .map-sel-proto-list {
+    height: 230px;
+}
+
+#ra2web-root .map-sel-proto-form .map-sel-proto-search-row {
+    display: flex;
+    margin-top: 10px;
+}
+
+#ra2web-root .map-sel-proto-form .map-sel-proto-search-row > * + * {
+    margin-left: 16px;
+}
+
+#ra2web-root .map-sel-proto-form .map-sel-proto-search,
+#ra2web-root .map-sel-proto-form .map-sel-proto-tag-search {
+    flex: 1 1 0;
+    display: flex;
+    align-items: center;
+}
+
+#ra2web-root .map-sel-proto-form .map-sel-proto-search span,
+#ra2web-root .map-sel-proto-form .map-sel-proto-tag-search span {
+    margin-right: 5px;
+    white-space: nowrap;
+}
+
+#ra2web-root .map-sel-proto-form .map-sel-proto-search input,
+#ra2web-root .map-sel-proto-form .map-sel-proto-tag-search input {
+    flex: 1 0;
+}
+
+#ra2web-root .map-sel-proto-form .map-sel-proto-description {
+    margin-top: 12px;
+    min-height: 40px;
+    border: 1px red solid;
+    padding: 6px 8px;
+    box-sizing: border-box;
+}
+
+#ra2web-root .map-sel-proto-form .map-sel-proto-empty-state {
+    padding: 40px 0;
+    text-align: center;
+    color: gray;
+}
+
 #ra2web-root .lan-setup-form {
     padding: 20px 34px 26px;
     box-sizing: border-box;

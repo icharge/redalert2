@@ -63,6 +63,16 @@ export class TestEntryScreen implements Screen {
             }
         };
     }
+    private createPushScreenButton(label: string, tooltip: string, screenType: MainMenuScreenType): SidebarButton {
+        return {
+            label,
+            tooltip,
+            onClick: () => {
+                console.log(`[TestEntryScreen] ${label} clicked`);
+                this.controller?.pushScreen(screenType);
+            }
+        };
+    }
     private createBackToCategoriesButton(): SidebarButton {
         return {
             label: 'Back to Test Categories',
@@ -114,6 +124,7 @@ export class TestEntryScreen implements Screen {
             this.createBackToMenuButton()
         ];
         const sceneButtons: SidebarButton[] = [
+            this.createPushScreenButton('Map Selection Prototype', 'Preview the redesigned "Select Engagement" content frame (tabs, ratings, tags) with the original sidebar untouched', MainMenuScreenType.MapSelectionPrototype),
             this.createRouteButton('Lobby Test', 'Open the lobby test tool', '/lobbytest'),
             this.createRouteButton('Connection Info Test', 'Simulate disconnects, rejoin progress and kick/wait votes on the Connection Info screen', '/coninfotest'),
             this.createRouteButton('World Test', 'Open the world scene test tool', '/worldscenetest'),

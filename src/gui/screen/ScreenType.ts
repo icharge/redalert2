@@ -28,5 +28,6 @@ export enum MainMenuScreenType {
     LanSetup = 21,
     RealmSelection = 22,
     NicknameSelection = 23,
-    OptionsManageGame = 24
+    OptionsManageGame = 24,
+    MapSelectionPrototype = 25
 }

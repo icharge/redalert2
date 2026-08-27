@@ -1114,7 +1114,7 @@ export class Application {
             }
             console.log('[Application] Initializing LiveInteractionTester');
             const { TestToolSupport } = await this.importOptionalDevModule('./tools/TestToolSupport');
-            const gameMap = await TestToolSupport.loadMap(this.createTestToolContext().mapResourceLoader!, "2_reconcile.map");
+            const gameMap = await TestToolSupport.loadMap(this.createTestToolContext().mapResourceLoader!, "tn04mw.map");
             const { LiveInteractionTester } = await this.importOptionalDevModule('./tools/LiveInteractionTester');
             await LiveInteractionTester.main(Engine.vfs, gameMap, this.rootEl!, this.strings, this.createTestToolContext(), {
                 generalOptions: this.generalOptions,

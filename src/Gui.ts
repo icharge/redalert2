@@ -493,6 +493,8 @@ export class Gui {
         subScreens.set(MainMenuScreenType.MapSelection, MapSelScreen);
         const { TestEntryScreen } = await import('./gui/screen/mainMenu/main/TestEntryScreen.js');
         subScreens.set(MainMenuScreenType.TestEntry, TestEntryScreen);
+        const { MapSelPrototypeScreen } = await import('./gui/screen/mainMenu/mapSel/MapSelPrototypeScreen.js');
+        subScreens.set(MainMenuScreenType.MapSelectionPrototype, MapSelPrototypeScreen);
         subScreens.set(MainMenuScreenType.LanSetup, LanSetupScreen);
         const { LoginScreen } = await import('./gui/screen/mainMenu/login/LoginScreen.js');
         subScreens.set(MainMenuScreenType.Login, LoginScreen);

@@ -259,6 +259,13 @@ export class MainMenuRootScreen extends RootScreen {
             const sentry = undefined as any;
             screen = new screenClass(this.strings, this.jsxRenderer, mapFileLoader, errorHandler, this.messageBoxApi, this.localPrefs, mapList, gameModes, mapDir, fsAccessLib, sentry);
         }
+        else if (screenType === MainMenuScreenType.MapSelectionPrototype) {
+            console.log('[MainMenuRootScreen] Creating MapSelPrototypeScreen with real map/game-mode data');
+            const { Engine } = await import('../../../engine/Engine.js');
+            const mapList = Engine.getMapList();
+            const gameModes = Engine.getMpModes();
+            screen = new screenClass(this.strings, this.jsxRenderer, mapList, gameModes);
+        }
         else if (screenType === MainMenuScreenType.Score) {
             const services = await this.getOnlineServices();
             screen = new screenClass(this.strings, this.jsxRenderer, services.wolService);
