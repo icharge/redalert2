@@ -369,30 +369,40 @@ export class Building {
         if (!tileCollection || !centerTile || !(radiusInCells > 0)) {
             return;
         }
+        // Scan the bounding box directly (getByMapCoords) rather than
+        // collecting it via getInRectangle first - avoids allocating and then
+        // re-walking an intermediate array of up to ~(2*radius+1)^2 tiles.
+        // Compare squared distance before taking a sqrt so the ~1-radiusInCells
+        // fraction of the box that's outside the circle (corners) never pays
+        // for one.
         const radius = Math.ceil(radiusInCells);
-        const candidates = tileCollection.getInRectangle({
-            rx: centerTile.rx - radius,
-            ry: centerTile.ry - radius,
-        }, { width: 2 * radius + 1, height: 2 * radius + 1 });
+        const radiusSquared = radiusInCells * radiusInCells;
         const tileLights = new Map<any, { red: number; green: number; blue: number; intensity: number }>();
         const affectedTiles: any[] = [];
-        for (const tile of candidates) {
-            const dx = tile.rx - centerTile.rx;
-            const dy = tile.ry - centerTile.ry;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            if (distance >= radiusInCells) {
-                continue;
+        for (let ry = centerTile.ry - radius; ry <= centerTile.ry + radius; ry++) {
+            const dy = ry - centerTile.ry;
+            const dySquared = dy * dy;
+            for (let rx = centerTile.rx - radius; rx <= centerTile.rx + radius; rx++) {
+                const dx = rx - centerTile.rx;
+                const distanceSquared = dx * dx + dySquared;
+                if (distanceSquared >= radiusSquared) {
+                    continue;
+                }
+                const tile = tileCollection.getByMapCoords(rx, ry);
+                if (!tile) {
+                    continue;
+                }
+                const lsEffect = (radiusInCells - Math.sqrt(distanceSquared)) / radiusInCells;
+                const light = {
+                    red: lsEffect * rules.lightRedTint,
+                    green: lsEffect * rules.lightGreenTint,
+                    blue: lsEffect * rules.lightBlueTint,
+                    intensity: lsEffect * rules.lightIntensity,
+                };
+                this.lighting.addTileLight(tile, light);
+                tileLights.set(tile, light);
+                affectedTiles.push(tile);
             }
-            const lsEffect = (radiusInCells - distance) / radiusInCells;
-            const light = {
-                red: lsEffect * rules.lightRedTint,
-                green: lsEffect * rules.lightGreenTint,
-                blue: lsEffect * rules.lightBlueTint,
-                intensity: lsEffect * rules.lightIntensity,
-            };
-            this.lighting.addTileLight(tile, light);
-            tileLights.set(tile, light);
-            affectedTiles.push(tile);
         }
         this.lampTileLights = tileLights;
         if (affectedTiles.length) {
