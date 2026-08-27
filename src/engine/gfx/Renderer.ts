@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import Stats from 'stats.js';
 import { EventDispatcher } from '../../util/event';
 import { RendererError } from './RendererError';
-import { DarkeningComposite } from './DarkeningComposite';
 THREE.ColorManagement.enabled = false;
 interface SceneLike {
     get3DObject(): THREE.Object3D | undefined;
@@ -22,7 +21,6 @@ export class Renderer {
     private height: number;
     private renderer!: THREE.WebGLRenderer;
     private scenes: Set<SceneLike> = new Set();
-    private darkeningComposites: Map<SceneLike, DarkeningComposite> = new Map();
     private isContextLost: boolean = false;
     private stats?: Stats;
     private _onFrame = new EventDispatcher<string, number>();
@@ -113,8 +111,6 @@ export class Renderer {
     }
     removeScene(scene: SceneLike): void {
         this.scenes.delete(scene);
-        this.darkeningComposites.get(scene)?.dispose();
-        this.darkeningComposites.delete(scene);
     }
     getScenes(): SceneLike[] {
         return [...this.scenes];
@@ -132,32 +128,14 @@ export class Renderer {
         this.scenes.forEach((scene) => {
             this.renderer.clearDepth();
             const viewportY = this.height - scene.viewport.y - scene.viewport.height;
-            const camera = scene.getCamera();
-            const darkeningLampCount = (camera.userData as { darkeningLampCount?: number }).darkeningLampCount ?? 0;
-            if (darkeningLampCount > 0) {
-                let composite = this.darkeningComposites.get(scene);
-                if (!composite) {
-                    composite = new DarkeningComposite();
-                    this.darkeningComposites.set(scene, composite);
-                }
-                composite.render(this.renderer, scene.getScene(), camera, scene.viewport, viewportY);
-                return;
-            }
-            const existingComposite = this.darkeningComposites.get(scene);
-            if (existingComposite) {
-                existingComposite.dispose();
-                this.darkeningComposites.delete(scene);
-            }
             this.renderer.setViewport(scene.viewport.x, viewportY, scene.viewport.width, scene.viewport.height);
-            this.renderer.render(scene.getScene(), camera);
+            this.renderer.render(scene.getScene(), scene.getCamera());
         });
     }
     flush(): void {
         this.renderer.renderLists.dispose();
     }
     dispose(): void {
-        this.darkeningComposites.forEach((composite) => composite.dispose());
-        this.darkeningComposites.clear();
         this.renderer.domElement.remove();
         this.renderer.domElement.removeEventListener('webglcontextlost', this.handleContextLost);
         this.renderer.domElement.removeEventListener('webglcontextrestored', this.handleContextRestored);

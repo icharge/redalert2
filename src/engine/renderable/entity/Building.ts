@@ -30,7 +30,6 @@ import * as AlphaRenderable from "@/engine/renderable/AlphaRenderable";
 import * as DebugRenderable from "@/engine/renderable/DebugRenderable";
 import * as MathUtils from "@/engine/gfx/MathUtils";
 import * as THREE from "three";
-import { DARKENING_LAMP_LAYER } from "@/engine/gfx/RenderLayers";
 const d = ShpBuilder;
 const p = DamageType;
 const A = AnimationType;
@@ -117,7 +116,6 @@ const l = new Map()
     1,
 ]);
 export class Building {
-    static lampTextures = new Map();
     gameObject: any;
     selectionModel: any;
     rules: any;
@@ -129,7 +127,8 @@ export class Building {
     animPalette: any;
     isoPalette: any;
     camera: any;
-    darkeningLampCamera: any;
+    mapRenderable: any;
+    lampTileLights?: Map<any, { red: number; green: number; blue: number; intensity: number }>;
     lighting: any;
     debugFrame: any;
     gameSpeed: any;
@@ -198,7 +197,8 @@ export class Building {
     ambientSound: any;
     turretRotateSound: any;
     poweredSound: any;
-    constructor(e: any, t: any, i: any, r: any, s: any, a: any, n: any, o: any, l: any, c: any, h: any, u: any, d: any, g: any, p: any, m: any, f: any, y: any, T: any, v: any, b: any, S = A.AnimationType.IDLE) {
+    constructor(e: any, t: any, i: any, r: any, s: any, a: any, n: any, o: any, l: any, c: any, h: any, u: any, d: any, g: any, p: any, m: any, f: any, y: any, T: any, v: any, b: any, S = A.AnimationType.IDLE, Q: any = null) {
+        this.mapRenderable = Q;
         this.gameObject = e;
         this.selectionModel = t;
         this.rules = i;
@@ -346,88 +346,58 @@ export class Building {
                     }));
         }
     }
-    createLamp(e) {
-        var t = this.objectRules;
-        let i = t.lightRedTint, r = t.lightGreenTint, s = t.lightBlueTint;
-        var a = Math.abs(Math.min(i, r, s, 0));
-        0 < a && ((i += a), (r += a), (s += a));
-        let c = (1 + i) * (1 + Math.abs(t.lightIntensity)) -
-            1, g = (1 + r) * (1 + Math.abs(t.lightIntensity)) -
-            1, b = (1 + s) * (1 + Math.abs(t.lightIntensity)) -
-            1;
-        a = Math.max(c, g, b);
-        1 < a && ((c /= a), (g /= a), (b /= a));
-        let n = new THREE.Color(c, g, b).multiplyScalar(0.9);
-        a = n.getHexString() as any;
-        let o = Building.lampTextures.get(a);
-        if (!o) {
-            o = this.createLampTexture(a);
-            Building.lampTextures.set(a, o);
+    // Real RA2 light posts (GALITE-imaged objects like NEGRED/NEGLAMP/
+    // INYELWLAMP, often InvisibleInGame) have no visible mesh of their own
+    // at all - "the light" is purely every overlapping light source's
+    // contribution summed additively into one shared per-tile ambient/tint
+    // multiplier, clamped once, applied once to whatever renders on that
+    // tile (terrain, buildings, units alike). See
+    // CNCMaps.Engine.Rendering.Palette.ApplyLamp/Recalculate and
+    // GameObjects.cs's LightSource.ApplyLamp (linear falloff in rx/ry-space:
+    // lsEffect = (radiusInCells - distance) / radiusInCells). This engine
+    // already has that exact additive accumulator - src/engine/Lighting.ts's
+    // tileLights, used today for Tiberium radiation tinting - so register
+    // into it instead of drawing a decal mesh, which both looks wrong (real
+    // light posts render nothing) and, as a multiplicative GPU blend drawn
+    // once per lamp, used to compound toward literal black wherever a few
+    // overlapped.
+    createLamp(_e: unknown) {
+        const rules = this.objectRules;
+        const tileCollection = this.mapRenderable?.getGameObject()?.tiles;
+        const centerTile = this.gameObject.tile;
+        const radiusInCells = rules.lightVisibility / 256;
+        if (!tileCollection || !centerTile || !(radiusInCells > 0)) {
+            return;
         }
-        const isDarkening = t.lightIntensity <= 0;
-        const material = isDarkening
-            // Real RA2 accumulates every overlapping negative-light source's
-            // contribution additively into one shared ambient multiplier and
-            // clamps the combined total once (CNCMaps.Engine.Rendering.Palette
-            // .ApplyLamp/Recalculate), rather than re-multiplying the already-
-            // rendered scene per lamp. Sequential multiplicative blending here
-            // (upstream's approach) compounds instead of summing, and 8-bit
-            // blending rounds the compounded result to literal black once a
-            // few lamps overlap - and even a single lamp's subtractive blend,
-            // drawn straight onto the scene, paints over buildings/units too.
-            // So darkening lamps render additively onto a separate layer that
-            // DarkeningComposite (see engine/gfx) accumulates in an offscreen
-            // pass and composites back with a guaranteed brightness floor.
-            ? new THREE.MeshBasicMaterial({
-                map: o,
-                depthTest: false,
-                depthWrite: false,
-                transparent: true,
-                blending: THREE.CustomBlending,
-                blendEquation: THREE.AddEquation,
-                blendSrc: THREE.OneFactor,
-                blendDst: THREE.OneFactor,
-            })
-            : new THREE.MeshBasicMaterial({
-                map: o,
-                depthTest: false,
-                depthWrite: false,
-                transparent: true,
-                blending: THREE.CustomBlending,
-                blendEquation: THREE.AddEquation,
-                blendSrc: THREE.DstColorFactor,
-                blendDst: THREE.OneFactor,
-            });
-        const lightVisibility = t.lightVisibility;
-        const geometry = new THREE.PlaneGeometry(2 * lightVisibility, 2 * lightVisibility);
-        let l = new THREE.Mesh(geometry, material);
-        l.rotation.x = -Math.PI / 2;
-        l.matrixAutoUpdate = false;
-        l.updateMatrix();
-        if (isDarkening) {
-            l.layers.set(DARKENING_LAMP_LAYER);
-            this.darkeningLampCamera = this.camera;
-            const userData = this.camera.userData as { darkeningLampCount?: number };
-            userData.darkeningLampCount = (userData.darkeningLampCount ?? 0) + 1;
+        const radius = Math.ceil(radiusInCells);
+        const candidates = tileCollection.getInRectangle({
+            rx: centerTile.rx - radius,
+            ry: centerTile.ry - radius,
+        }, { width: 2 * radius + 1, height: 2 * radius + 1 });
+        const tileLights = new Map<any, { red: number; green: number; blue: number; intensity: number }>();
+        const affectedTiles: any[] = [];
+        for (const tile of candidates) {
+            const dx = tile.rx - centerTile.rx;
+            const dy = tile.ry - centerTile.ry;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            if (distance >= radiusInCells) {
+                continue;
+            }
+            const lsEffect = (radiusInCells - distance) / radiusInCells;
+            const light = {
+                red: lsEffect * rules.lightRedTint,
+                green: lsEffect * rules.lightGreenTint,
+                blue: lsEffect * rules.lightBlueTint,
+                intensity: lsEffect * rules.lightIntensity,
+            };
+            this.lighting.addTileLight(tile, light);
+            tileLights.set(tile, light);
+            affectedTiles.push(tile);
         }
-        else {
-            l.renderOrder = 999995;
+        this.lampTileLights = tileLights;
+        if (affectedTiles.length) {
+            this.lighting.forceUpdate(affectedTiles);
         }
-        e.add(l);
-    }
-    createLampTexture(e) {
-        let t = document.createElement("canvas");
-        t.width = t.height = 32;
-        let i = t.getContext("2d");
-        (i.fillStyle = "black"), i.fillRect(0, 0, 32, 32);
-        let r = i.createRadialGradient(16, 16, 0, 16, 16, 16);
-        r.addColorStop(0, "#" + e),
-            r.addColorStop(1, "black"),
-            i.arc(16, 16, 16, 0, 2 * Math.PI),
-            (i.fillStyle = r),
-            i.fill();
-        let s = new THREE.Texture(t);
-        return (s.needsUpdate = true), s;
     }
     setPosition(e) {
         var t = this.gameObject.getFoundationCenterOffset();
@@ -1364,10 +1334,13 @@ export class Building {
                     this.createExplosionAnims(t));
     }
     dispose() {
-        if (this.darkeningLampCamera) {
-            const userData = this.darkeningLampCamera.userData as { darkeningLampCount?: number };
-            userData.darkeningLampCount = Math.max(0, (userData.darkeningLampCount ?? 1) - 1);
-            this.darkeningLampCamera = undefined;
+        if (this.lampTileLights?.size) {
+            const affectedTiles = [...this.lampTileLights.keys()];
+            for (const [tile, light] of this.lampTileLights) {
+                this.lighting.removeTileLight(tile, light);
+            }
+            this.lampTileLights = undefined;
+            this.lighting.forceUpdate(affectedTiles);
         }
         this.plugins.forEach((e) => e.dispose()),
             this.pipOverlay?.dispose(),

@@ -222,7 +222,7 @@ export class RenderableFactory {
             if (entity.isBuilding()) {
                 const animPalette = this.theater.animPalette;
                 const isoPalette = this.theater.isoPalette;
-                renderable = new Building(entity, selectionModel, this.rules, this.art, this.imageFinder, this.theater, this.voxels, this.voxelAnims, palette, animPalette, isoPalette, this.camera, this.lighting, this.debugWireframes, this.gameSpeed, this.vxlBuilderFactory, this.useSpriteBatching, new ShpAggregator(), this.buildingImageDataCache, pipOverlay, this.worldSound, AnimationType.BUILDUP);
+                renderable = new Building(entity, selectionModel, this.rules, this.art, this.imageFinder, this.theater, this.voxels, this.voxelAnims, palette, animPalette, isoPalette, this.camera, this.lighting, this.debugWireframes, this.gameSpeed, this.vxlBuilderFactory, this.useSpriteBatching, new ShpAggregator(), this.buildingImageDataCache, pipOverlay, this.worldSound, AnimationType.BUILDUP, this.mapRenderable);
                 if (entity.psychicDetectorTrait) {
                     plugins.push(new PsychicDetectPlugin(entity, entity.psychicDetectorTrait, this.localPlayer as any, this.camera as any));
                 }

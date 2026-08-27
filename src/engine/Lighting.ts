@@ -68,12 +68,19 @@ export class Lighting {
         if (type === LightingType.None) {
             return new THREE.Vector3(1, 1, 1);
         }
-        return this.computeTint(type)
-            .add(this.computeTileTint(tile as unknown as string, type, new THREE.Vector3()))
-            .multiplyScalar(this.mapLighting.ambient +
+        // Real RA2 clamps the combined ambient multiplier (and each tint
+        // channel) to a floor of zero after summing every overlapping light
+        // source's contribution, so no amount of overlapping negative-tint
+        // lights can invert or go past pure black - see
+        // CNCMaps.Engine.Rendering.Palette.Recalculate's Math.Max(mult, 0).
+        const tint = this.computeTint(type)
+            .add(this.computeTileTint(tile as unknown as string, type, new THREE.Vector3()));
+        tint.set(Math.max(0, tint.x), Math.max(0, tint.y), Math.max(0, tint.z));
+        const ambientScalar = Math.max(0, this.mapLighting.ambient +
             this.mapLighting.ground +
             this.computeLevel(type, tile.z + height) +
             this.computeTileLightIntensity(tile as unknown as string));
+        return tint.multiplyScalar(ambientScalar);
     }
     computeNoAmbient(type: LightingType, tile: { z: number }, height: number = 0): number {
         return this.computeLevel(type, tile.z + height) + this.computeTileLightIntensity(tile as unknown as string);
