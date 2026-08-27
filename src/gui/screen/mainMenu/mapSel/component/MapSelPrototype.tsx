@@ -34,6 +34,13 @@ const TABS: { id: TabId; label: string }[] = [
     { id: "community", label: "Community Browser" },
     { id: "featured", label: "Featured" },
 ];
+enum SortType {
+    None = "",
+    NameAsc = "nameAsc",
+    NameDesc = "nameDesc",
+    RatingDesc = "ratingDesc",
+    RatingAsc = "ratingAsc",
+}
 const TAG_POOL = ["Desert Theater", "Naval Combat", "Chokepoint", "Resource Rush", "Community Favorite", "Fan Remake"];
 const FLAVOR_POOL = [
     "Control the central resources in this tactical engagement.",
@@ -71,6 +78,22 @@ function describeMap(map: MapData): string {
     const hash = hashString(map.mapName);
     return `${FLAVOR_POOL[hash % FLAVOR_POOL.length]} (${map.maxSlots} players)`;
 }
+function sortMaps(maps: MapData[], sortType: SortType): MapData[] {
+    switch (sortType) {
+        case SortType.None:
+            return maps;
+        case SortType.NameAsc:
+            return maps.sort((a, b) => a.mapTitle.localeCompare(b.mapTitle));
+        case SortType.NameDesc:
+            return maps.sort((a, b) => b.mapTitle.localeCompare(a.mapTitle));
+        case SortType.RatingDesc:
+            return maps.sort((a, b) => getMockMapStats(b.mapName).rating - getMockMapStats(a.mapName).rating);
+        case SortType.RatingAsc:
+            return maps.sort((a, b) => getMockMapStats(a.mapName).rating - getMockMapStats(b.mapName).rating);
+        default:
+            throw new Error(`Unsupported sort type "${sortType}"`);
+    }
+}
 export const MapSelPrototype: React.FC<MapSelPrototypeProps> = ({
     strings,
     gameModes,
@@ -83,10 +106,12 @@ export const MapSelPrototype: React.FC<MapSelPrototypeProps> = ({
     const selectedRef = useRef<HTMLDivElement>(null);
     const [activeTab, setActiveTab] = useState<TabId>("official");
     const [searchFilter, setSearchFilter] = useState<string>("");
+    const [sortType, setSortType] = useState<SortType>(SortType.None);
     const [filteredMaps, setFilteredMaps] = useState<MapData[]>(maps);
     useEffect(() => {
-        setFilteredMaps(maps.filter((map) => map.mapTitle.toLowerCase().includes(searchFilter.toLowerCase())));
-    }, [maps, searchFilter]);
+        const filtered = maps.filter((map) => map.mapTitle.toLowerCase().includes(searchFilter.toLowerCase()));
+        setFilteredMaps(sortMaps(filtered, sortType));
+    }, [maps, searchFilter, sortType]);
     useEffect(() => {
         const timeout = setTimeout(() => selectedRef.current?.scrollIntoView({ block: "nearest" }), 50);
         return () => clearTimeout(timeout);
@@ -115,22 +140,37 @@ export const MapSelPrototype: React.FC<MapSelPrototypeProps> = ({
             ) : (
                 <>
                     <div className="map-sel-proto-toolbar">
-                        <span className="map-sel-proto-sort-icon" data-r-tooltip={strings.get("STT:SortBy")}>⇵</span>
-                        <span className="map-sel-proto-filter-label">Filter:</span>
-                        <Select
-                            initialValue={selectedGameMode.id}
-                            onSelect={(id: number) => {
-                                const gameMode = gameModes.find((mode) => mode.id === id);
-                                if (gameMode) {
-                                    onSelectGameMode(gameMode);
-                                }
-                            }}
-                            className="map-sel-proto-filter-select"
-                        >
-                            {gameModes.map((gameMode) => (
-                                <Option key={gameMode.id} value={gameMode.id} label={strings.get(gameMode.label)} />
-                            ))}
-                        </Select>
+                        <div className="map-sel-proto-filter-group">
+                            <span className="map-sel-proto-filter-label">{strings.get("GUI:GameType")}:</span>
+                            <Select
+                                initialValue={selectedGameMode.id}
+                                onSelect={(id: number) => {
+                                    const gameMode = gameModes.find((mode) => mode.id === id);
+                                    if (gameMode) {
+                                        onSelectGameMode(gameMode);
+                                    }
+                                }}
+                                className="map-sel-proto-filter-select"
+                            >
+                                {gameModes.map((gameMode) => (
+                                    <Option key={gameMode.id} value={gameMode.id} label={strings.get(gameMode.label)} />
+                                ))}
+                            </Select>
+                        </div>
+                        <div className="map-sel-proto-sort-group">
+                            <span className="map-sel-proto-sort-icon" data-r-tooltip={strings.get("STT:SortBy")}>⇵</span>
+                            <Select
+                                initialValue={sortType}
+                                onSelect={(value: SortType) => setSortType(value)}
+                                className="map-sel-proto-sort-select"
+                            >
+                                <Option value={SortType.None} label={strings.get("TS:SortNone")} />
+                                <Option value={SortType.NameAsc} label={strings.get("TS:SortName") + " ↓"} />
+                                <Option value={SortType.NameDesc} label={strings.get("TS:SortName") + " ↑"} />
+                                <Option value={SortType.RatingDesc} label="Rating ↓" />
+                                <Option value={SortType.RatingAsc} label="Rating ↑" />
+                            </Select>
+                        </div>
                     </div>
                     <ListHeader className="map-sel-proto-row map-sel-proto-header">
                         <span className="map-col-name">Map Name</span>

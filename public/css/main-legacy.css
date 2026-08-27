@@ -1288,14 +1288,23 @@ input[type="range"]:focus {
 #ra2web-root .map-sel-proto-form .map-sel-proto-toolbar {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
+    justify-content: space-between;
     margin-bottom: 6px;
 }
 
+#ra2web-root .map-sel-proto-form .map-sel-proto-sort-group,
+#ra2web-root .map-sel-proto-form .map-sel-proto-filter-group {
+    display: flex;
+    align-items: center;
+}
+
 #ra2web-root .map-sel-proto-form .map-sel-proto-sort-icon {
-    margin-right: auto;
-    cursor: pointer;
+    margin-right: 6px;
     font-size: 16px;
+}
+
+#ra2web-root .map-sel-proto-form .map-sel-proto-sort-select {
+    min-width: 130px;
 }
 
 #ra2web-root .map-sel-proto-form .map-sel-proto-filter-label {
@@ -1342,7 +1351,7 @@ input[type="range"]:focus {
 }
 
 #ra2web-root .map-sel-proto-form .map-sel-proto-list {
-    height: 230px;
+    height: 306px;
 }
 
 #ra2web-root .map-sel-proto-form .map-sel-proto-search-row {

@@ -201,6 +201,41 @@ export class MainMenuRootScreen extends RootScreen {
         return this.onlineServices;
     }
 
+    /** Shared dependency bundle for the map-selection family of screens (real + prototype). */
+    private async createMapSelectionDeps(): Promise<{
+        errorHandler: any;
+        mapFileLoader: any;
+        mapList: any;
+        gameModes: any;
+        mapDir: any;
+        fsAccessLib: any;
+        sentry: any;
+    }> {
+        const { ErrorHandler } = await import('../../../ErrorHandler.js');
+        const { MapFileLoader } = await import('../game/MapFileLoader.js');
+        const { Engine } = await import('../../../engine/Engine.js');
+        const { ResourceLoader } = await import('../../../engine/ResourceLoader.js');
+        const errorHandler = new ErrorHandler(this.messageBoxApi, this.strings);
+        const mapResourceLoader = new ResourceLoader(this.config.mapsBaseUrl ?? '');
+        const mapFileLoader = new MapFileLoader(mapResourceLoader, Engine.vfs);
+        const mapList = Engine.getMapList();
+        const gameModes = Engine.getMpModes();
+        let mapDir: any = undefined;
+        try {
+            const mapDirHandle = await Engine.getMapDir();
+            if (mapDirHandle) {
+                const { RealFileSystemDir } = await import('../../../data/vfs/RealFileSystemDir.js');
+                mapDir = new RealFileSystemDir(mapDirHandle);
+            }
+        }
+        catch (e) {
+            console.error("[MainMenuRootScreen] Couldn't get map dir", e);
+        }
+        const fsAccessLib = browserFileSystemAccess;
+        const sentry = undefined as any;
+        return { errorHandler, mapFileLoader, mapList, gameModes, mapDir, fsAccessLib, sentry };
+    }
+
     private async createScreen(screenType: MainMenuScreenType, screenClass: any, _controller: any): Promise<any> {
         let screen: any;
         if (screenType === MainMenuScreenType.InfoAndCredits) {
@@ -235,36 +270,13 @@ export class MainMenuRootScreen extends RootScreen {
         }
         else if (screenType === MainMenuScreenType.MapSelection) {
             console.log('[MainMenuRootScreen] Creating MapSelScreen with real dependencies');
-            const { ErrorHandler } = await import('../../../ErrorHandler.js');
-            const { MapFileLoader } = await import('../game/MapFileLoader.js');
-            const { Engine } = await import('../../../engine/Engine.js');
-            const errorHandler = new ErrorHandler(this.messageBoxApi, this.strings);
-            const { ResourceLoader } = await import('../../../engine/ResourceLoader.js');
-            const mapResourceLoader = new ResourceLoader(this.config.mapsBaseUrl ?? '');
-            const mapFileLoader = new MapFileLoader(mapResourceLoader, Engine.vfs);
-            const mapList = Engine.getMapList();
-            const gameModes = Engine.getMpModes();
-            let mapDir: any = undefined;
-            try {
-                const mapDirHandle = await Engine.getMapDir();
-                if (mapDirHandle) {
-                    const { RealFileSystemDir } = await import('../../../data/vfs/RealFileSystemDir.js');
-                    mapDir = new RealFileSystemDir(mapDirHandle);
-                }
-            }
-            catch (e) {
-                console.error("[MainMenuRootScreen] Couldn't get map dir", e);
-            }
-            const fsAccessLib = browserFileSystemAccess;
-            const sentry = undefined as any;
+            const { errorHandler, mapFileLoader, mapList, gameModes, mapDir, fsAccessLib, sentry } = await this.createMapSelectionDeps();
             screen = new screenClass(this.strings, this.jsxRenderer, mapFileLoader, errorHandler, this.messageBoxApi, this.localPrefs, mapList, gameModes, mapDir, fsAccessLib, sentry);
         }
         else if (screenType === MainMenuScreenType.MapSelectionPrototype) {
             console.log('[MainMenuRootScreen] Creating MapSelPrototypeScreen with real map/game-mode data');
-            const { Engine } = await import('../../../engine/Engine.js');
-            const mapList = Engine.getMapList();
-            const gameModes = Engine.getMpModes();
-            screen = new screenClass(this.strings, this.jsxRenderer, mapList, gameModes);
+            const { errorHandler, mapFileLoader, mapList, gameModes, mapDir, fsAccessLib, sentry } = await this.createMapSelectionDeps();
+            screen = new screenClass(this.strings, this.jsxRenderer, mapFileLoader, errorHandler, this.messageBoxApi, mapList, gameModes, mapDir, fsAccessLib, sentry);
         }
         else if (screenType === MainMenuScreenType.Score) {
             const services = await this.getOnlineServices();
