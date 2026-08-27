@@ -30,6 +30,7 @@ import * as AlphaRenderable from "@/engine/renderable/AlphaRenderable";
 import * as DebugRenderable from "@/engine/renderable/DebugRenderable";
 import * as MathUtils from "@/engine/gfx/MathUtils";
 import * as THREE from "three";
+import { DARKENING_LAMP_LAYER } from "@/engine/gfx/RenderLayers";
 const d = ShpBuilder;
 const p = DamageType;
 const A = AnimationType;
@@ -128,6 +129,7 @@ export class Building {
     animPalette: any;
     isoPalette: any;
     camera: any;
+    darkeningLampCamera: any;
     lighting: any;
     debugFrame: any;
     gameSpeed: any;
@@ -362,26 +364,56 @@ export class Building {
             o = this.createLampTexture(a);
             Building.lampTextures.set(a, o);
         }
-        (a = new THREE.MeshBasicMaterial({
-            map: o,
-            depthTest: false,
-            depthWrite: false,
-            transparent: true,
-            blending: THREE.CustomBlending,
-            blendEquation: 0 < t.lightIntensity
-                ? THREE.AddEquation
-                : THREE.ReverseSubtractEquation,
-            blendSrc: THREE.DstColorFactor,
-            blendDst: THREE.OneFactor,
-        }) as any),
-            (t = t.lightVisibility),
-            (t = new THREE.PlaneGeometry(2 * t, 2 * t));
-        let l = new THREE.Mesh(t, a as any);
-        (l.rotation.x = -Math.PI / 2),
-            (l.renderOrder = 999995),
-            (l.matrixAutoUpdate = false),
-            l.updateMatrix(),
-            e.add(l);
+        const isDarkening = t.lightIntensity <= 0;
+        const material = isDarkening
+            // Real RA2 accumulates every overlapping negative-light source's
+            // contribution additively into one shared ambient multiplier and
+            // clamps the combined total once (CNCMaps.Engine.Rendering.Palette
+            // .ApplyLamp/Recalculate), rather than re-multiplying the already-
+            // rendered scene per lamp. Sequential multiplicative blending here
+            // (upstream's approach) compounds instead of summing, and 8-bit
+            // blending rounds the compounded result to literal black once a
+            // few lamps overlap - and even a single lamp's subtractive blend,
+            // drawn straight onto the scene, paints over buildings/units too.
+            // So darkening lamps render additively onto a separate layer that
+            // DarkeningComposite (see engine/gfx) accumulates in an offscreen
+            // pass and composites back with a guaranteed brightness floor.
+            ? new THREE.MeshBasicMaterial({
+                map: o,
+                depthTest: false,
+                depthWrite: false,
+                transparent: true,
+                blending: THREE.CustomBlending,
+                blendEquation: THREE.AddEquation,
+                blendSrc: THREE.OneFactor,
+                blendDst: THREE.OneFactor,
+            })
+            : new THREE.MeshBasicMaterial({
+                map: o,
+                depthTest: false,
+                depthWrite: false,
+                transparent: true,
+                blending: THREE.CustomBlending,
+                blendEquation: THREE.AddEquation,
+                blendSrc: THREE.DstColorFactor,
+                blendDst: THREE.OneFactor,
+            });
+        const lightVisibility = t.lightVisibility;
+        const geometry = new THREE.PlaneGeometry(2 * lightVisibility, 2 * lightVisibility);
+        let l = new THREE.Mesh(geometry, material);
+        l.rotation.x = -Math.PI / 2;
+        l.matrixAutoUpdate = false;
+        l.updateMatrix();
+        if (isDarkening) {
+            l.layers.set(DARKENING_LAMP_LAYER);
+            this.darkeningLampCamera = this.camera;
+            const userData = this.camera.userData as { darkeningLampCount?: number };
+            userData.darkeningLampCount = (userData.darkeningLampCount ?? 0) + 1;
+        }
+        else {
+            l.renderOrder = 999995;
+        }
+        e.add(l);
     }
     createLampTexture(e) {
         let t = document.createElement("canvas");
@@ -1332,6 +1364,11 @@ export class Building {
                     this.createExplosionAnims(t));
     }
     dispose() {
+        if (this.darkeningLampCamera) {
+            const userData = this.darkeningLampCamera.userData as { darkeningLampCount?: number };
+            userData.darkeningLampCount = Math.max(0, (userData.darkeningLampCount ?? 1) - 1);
+            this.darkeningLampCamera = undefined;
+        }
         this.plugins.forEach((e) => e.dispose()),
             this.pipOverlay?.dispose(),
             this.placeholderObj?.dispose(),
