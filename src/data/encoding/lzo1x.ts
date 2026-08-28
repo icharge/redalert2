@@ -37,6 +37,11 @@ class Lzo1xImpl {
     jj = 0;
     tt = 0;
     v = 0;
+    ip_start = 0;
+    ti = 0;
+    prev_ip = 0;
+    ll = 0;
+    l = 0;
     dict = new Uint32Array(16384);
     emptyDict = new Uint32Array(16384);
     skipToFirstLiteralFun = false;
@@ -248,8 +253,201 @@ class Lzo1xImpl {
         }
     }
 
-    compress(_state: LzoState) {
-        throw new Error('MiniLzo compression is not implemented in the ESM migration');
+    // Ported from minilzo-js (https://github.com/abraidwood/minilzo-js,
+    // GPL-2.0-or-later), itself a JS port of Markus F.X.J. Oberhumer's
+    // minilzo.c (LZO1X-1). Produces a standard LZO1X bitstream - it doesn't
+    // need to match any particular reference compressor byte-for-byte, only
+    // to be decodable by this file's own decompress() (and any other
+    // standard LZO1X decoder, including the real game's).
+    private compressCore(): void {
+        this.ip_start = this.ip;
+        this.ip_end = this.ip + this.ll - 20;
+        this.jj = this.ip;
+        this.ti = this.t;
+        this.ip += this.ti < 4 ? 4 - this.ti : 0;
+        this.ip += 1 + ((this.ip - this.jj) >> 5);
+        for (;;) {
+            if (this.ip >= this.ip_end) {
+                break;
+            }
+            this.dv_lo = this.buf![this.ip] | (this.buf![this.ip + 1] << 8);
+            this.dv_hi = this.buf![this.ip + 2] | (this.buf![this.ip + 3] << 8);
+            this.dindex = (((((this.dv_lo * 0x429d) >>> 16) + (this.dv_hi * 0x429d) + (this.dv_lo * 0x1824)) & 0xFFFF) >>> 2);
+            this.m_pos = this.ip_start + this.dict[this.dindex];
+            this.dict[this.dindex] = this.ip - this.ip_start;
+            if ((this.dv_hi << 16) + this.dv_lo !==
+                (this.buf![this.m_pos] | (this.buf![this.m_pos + 1] << 8) | (this.buf![this.m_pos + 2] << 16) | (this.buf![this.m_pos + 3] << 24))) {
+                this.ip += 1 + ((this.ip - this.jj) >> 5);
+                continue;
+            }
+            this.jj -= this.ti;
+            this.ti = 0;
+            this.v = this.ip - this.jj;
+            if (this.v !== 0) {
+                if (this.v <= 3) {
+                    this.out[this.op - 2] |= this.v;
+                    do {
+                        this.out[this.op++] = this.buf![this.jj++];
+                    } while (--this.v > 0);
+                }
+                else {
+                    if (this.v <= 18) {
+                        this.out[this.op++] = this.v - 3;
+                    }
+                    else {
+                        this.tt = this.v - 18;
+                        this.out[this.op++] = 0;
+                        while (this.tt > 255) {
+                            this.tt -= 255;
+                            this.out[this.op++] = 0;
+                        }
+                        this.out[this.op++] = this.tt;
+                    }
+                    do {
+                        this.out[this.op++] = this.buf![this.jj++];
+                    } while (--this.v > 0);
+                }
+            }
+            this.m_len = 4;
+            if (this.buf![this.ip + this.m_len] === this.buf![this.m_pos + this.m_len]) {
+                do {
+                    this.m_len += 1;
+                    if (this.buf![this.ip + this.m_len] !== this.buf![this.m_pos + this.m_len]) {
+                        break;
+                    }
+                    this.m_len += 1;
+                    if (this.buf![this.ip + this.m_len] !== this.buf![this.m_pos + this.m_len]) {
+                        break;
+                    }
+                    this.m_len += 1;
+                    if (this.buf![this.ip + this.m_len] !== this.buf![this.m_pos + this.m_len]) {
+                        break;
+                    }
+                    this.m_len += 1;
+                    if (this.buf![this.ip + this.m_len] !== this.buf![this.m_pos + this.m_len]) {
+                        break;
+                    }
+                    this.m_len += 1;
+                    if (this.buf![this.ip + this.m_len] !== this.buf![this.m_pos + this.m_len]) {
+                        break;
+                    }
+                    this.m_len += 1;
+                    if (this.buf![this.ip + this.m_len] !== this.buf![this.m_pos + this.m_len]) {
+                        break;
+                    }
+                    this.m_len += 1;
+                    if (this.buf![this.ip + this.m_len] !== this.buf![this.m_pos + this.m_len]) {
+                        break;
+                    }
+                    this.m_len += 1;
+                    if (this.buf![this.ip + this.m_len] !== this.buf![this.m_pos + this.m_len]) {
+                        break;
+                    }
+                    if (this.ip + this.m_len >= this.ip_end) {
+                        break;
+                    }
+                } while (this.buf![this.ip + this.m_len] === this.buf![this.m_pos + this.m_len]);
+            }
+            this.m_off = this.ip - this.m_pos;
+            this.ip += this.m_len;
+            this.jj = this.ip;
+            if (this.m_len <= 8 && this.m_off <= 0x0800) {
+                this.m_off -= 1;
+                this.out[this.op++] = ((this.m_len - 1) << 5) | ((this.m_off & 7) << 2);
+                this.out[this.op++] = this.m_off >> 3;
+            }
+            else if (this.m_off <= 0x4000) {
+                this.m_off -= 1;
+                if (this.m_len <= 33) {
+                    this.out[this.op++] = 32 | (this.m_len - 2);
+                }
+                else {
+                    this.m_len -= 33;
+                    this.out[this.op++] = 32;
+                    while (this.m_len > 255) {
+                        this.m_len -= 255;
+                        this.out[this.op++] = 0;
+                    }
+                    this.out[this.op++] = this.m_len;
+                }
+                this.out[this.op++] = this.m_off << 2;
+                this.out[this.op++] = this.m_off >> 6;
+            }
+            else {
+                this.m_off -= 0x4000;
+                if (this.m_len <= 9) {
+                    this.out[this.op++] = 16 | ((this.m_off >> 11) & 8) | (this.m_len - 2);
+                }
+                else {
+                    this.m_len -= 9;
+                    this.out[this.op++] = 16 | ((this.m_off >> 11) & 8);
+                    while (this.m_len > 255) {
+                        this.m_len -= 255;
+                        this.out[this.op++] = 0;
+                    }
+                    this.out[this.op++] = this.m_len;
+                }
+                this.out[this.op++] = this.m_off << 2;
+                this.out[this.op++] = this.m_off >> 6;
+            }
+        }
+        this.t = this.ll - ((this.jj - this.ip_start) - this.ti);
+    }
+
+    compress(state: LzoState) {
+        this.state = state;
+        this.ip = 0;
+        this.buf = this.state.inputBuffer;
+        this.maxSize = this.buf.length + Math.ceil(this.buf.length / 16) + 64 + 3;
+        if (this.maxSize > this.out.length) {
+            this.out = new Uint8Array(this.maxSize);
+        }
+        this.op = 0;
+        this.l = this.buf.length;
+        this.t = 0;
+        while (this.l > 20) {
+            this.ll = this.l <= 49152 ? this.l : 49152;
+            if ((this.t + this.ll) >> 5 <= 0) {
+                break;
+            }
+            this.dict.set(this.emptyDict);
+            this.prev_ip = this.ip;
+            this.compressCore();
+            this.ip = this.prev_ip + this.ll;
+            this.l -= this.ll;
+        }
+        this.t += this.l;
+        if (this.t > 0) {
+            this.ii = this.buf.length - this.t;
+            if (this.op === 0 && this.t <= 238) {
+                this.out[this.op++] = 17 + this.t;
+            }
+            else if (this.t <= 3) {
+                this.out[this.op - 2] |= this.t;
+            }
+            else if (this.t <= 18) {
+                this.out[this.op++] = this.t - 3;
+            }
+            else {
+                this.tt = this.t - 18;
+                this.out[this.op++] = 0;
+                while (this.tt > 255) {
+                    this.tt -= 255;
+                    this.out[this.op++] = 0;
+                }
+                this.out[this.op++] = this.tt;
+            }
+            do {
+                this.out[this.op++] = this.buf[this.ii++];
+            } while (--this.t > 0);
+        }
+        this.out[this.op++] = 17;
+        this.out[this.op++] = 0;
+        this.out[this.op++] = 0;
+        this.state.outputBuffer = this.returnNewBuffers
+            ? new Uint8Array(this.out.subarray(0, this.op))
+            : this.out.subarray(0, this.op);
+        return this.OK;
     }
 }
 

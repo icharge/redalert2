@@ -8,4 +8,12 @@ export class MiniLzo {
         }
         return buffer.outputBuffer;
     }
+    static compress(input: Uint8Array): Uint8Array {
+        const buffer = { inputBuffer: input, outputBuffer: null as Uint8Array | null };
+        const result = lzo1x.compress(buffer);
+        if (result !== 0 || !buffer.outputBuffer) {
+            throw new Error(`MiniLzo compress failed with code ${result}`);
+        }
+        return buffer.outputBuffer;
+    }
 }
