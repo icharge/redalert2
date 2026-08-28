@@ -52,7 +52,7 @@ section listed above: `readTiles()` (§`IsoMapPack5`, via `Format5.decodeInto`),
 (`src/data/map/trigger/TriggerReader.ts`, `src/data/map/tag/TagsReader.ts`).
 This is a mature, working `.map` parser — the read side is not a gap.
 
-### 2.2 Writing a map back out — the single most load-bearing gap
+### 2.2 Writing a map back out — the compression half is now solved
 
 **Generic INI round-tripping exists.** `IniFile` (`src/data/IniFile.ts`) has a
 real `toString()`:
@@ -74,27 +74,34 @@ reproduce sections this code doesn't specially model (`[Triggers]`,
 `[Tags]`, `[CellTags]`, `[VariableNames]`, etc.) untouched, because they
 just sit in the generic `sections: Map<string, IniSection>` the whole time.
 
-**But there is no encoder for the compressed terrain layer.** `IsoMapPack5`
-is LZO/Format80-compressed binary, and the entire compression stack in this
-repo is decode-only:
-
-```ts
-// src/data/encoding/Format5.ts
-static decode(input, outputSize, format = 5) { ... }
-static decodeInto(input, output, format = 5) { ... }
-// no encode()/encodeInto() anywhere in this file
-```
+**Update: this gap is closed.** At the time this document was first written,
+the entire compression stack was decode-only. Both compressors now exist:
 
 ```
-src/data/encoding/MiniLzo.ts:   static decompress(input, outputSize)   // no compress()
-src/data/encoding/Format80.ts:  static decode(...) / decodeInto(...)   // no encode()
+src/data/encoding/lzo1x.ts:     compress(state)                 // LZO1X-1, ported from minilzo-js (GPL-2.0-or-later)
+src/data/encoding/MiniLzo.ts:   static compress(input)           // wraps lzo1x.compress
+src/data/encoding/Format80.ts:  static encode(input)             // LCW, ported from OpenRA's LCWCompression.Encode (GPL-3.0-or-later)
 ```
 
-There is **no LZO or Format80 compressor anywhere in this codebase.** If a
-mapper paints a single terrain tile, there is currently no way to turn the
-edited `this.tiles` array back into bytes for `[IsoMapPack5]`. This blocks
-terrain and overlay painting specifically — it does **not** block object
-placement, which is plain human-readable INI (see below).
+Both were verified with `decode(encode(x)) === x` round-trips — synthetic
+edge cases, real map terrain/overlay data, and a full pipeline test that
+encodes, wraps the result in `Format5`'s chunk framing, splices it back into
+a copy of a real `.map` file's INI text, re-parses that file from scratch,
+and decodes it again, confirming an exact byte match against the original.
+`Format5` itself (the chunk-framing wrapper) still only has `decode`/
+`decodeInto` — an `encode`/`encodeInto` that chunks input and calls the two
+compressors above per-chunk hasn't been written yet, but it's a thin,
+mechanical wrapper around what already exists (see §3.4 and §5 for what's
+still unverified: this has not been tested against the real game's own
+engine or FinalAlert, only against this codebase's own decoder).
+
+This means: if a mapper paints a single terrain tile, there is now a way to
+turn the edited `this.tiles` array back into bytes for `[IsoMapPack5]` — the
+primitive no longer blocks terrain/overlay painting. What's still missing is
+everything *above* the compressor (§2.5, §3.3): `TileCollection`/
+`MapTileLayer` are still immutable/build-once, so there's nowhere yet to
+call the new encoder from. Object placement was never blocked by this gap in
+the first place, since it's plain human-readable INI (see below).
 
 **Object sections are also not currently write-safe, for a subtler reason:
 lossy parsing, not missing infrastructure.** `readStructures()` only
@@ -283,13 +290,13 @@ roughly in order of engineering cost:
   field tuples per object type, and write a `Structure`/`Vehicle`/... →
   INI-line encoder that only overwrites the fields the editor UI actually
   exposes, preserving everything else byte-for-byte from the original line.
-- **Terrain**: implement a Format80 (or LZO1X) encoder — the *decoders*
-  already in this repo (`Format80.decodeInto`, `MiniLzo.decompress`) are the
-  best available spec reference for the inverse operation, since they
-  encode the exact byte-level format expected. This is genuinely new,
-  nontrivial code — budget real time for it and test round-trip fidelity
-  (`decode(encode(x)) === x`) against real official maps before trusting it
-  on user data.
+- **Terrain**: the Format80/LZO1X encoders now exist (`Format80.encode`,
+  `MiniLzo.compress` — see §2.2) and have passed round-trip fidelity testing
+  against real map data. What's still needed for this phase: a `Format5`
+  `encode`/`encodeInto` to do the chunk-framing (mechanical — chunk the
+  input, call the relevant compressor per chunk, write the 2+2-byte
+  size headers), and, separately, the actual mutable-terrain-model work in
+  §2.5/§3.3, which the encoder doesn't touch.
 - **Everything else** (triggers, tags, lighting, waypoints, basic/map
   metadata): already round-trips via `IniFile.toString()` as long as the
   editor doesn't touch those sections' underlying `IniSection` data — so
@@ -317,14 +324,12 @@ exists, §2.6). This phase alone gets a mapper real WYSIWYG object placement
 with zero new compression/mesh-rebuild engineering — genuinely the highest
 value-to-effort ratio available.
 
-**Phase 2 — Terrain & overlay painting.** Requires both new pieces that
-don't exist today: the Format80/LZO encoder (§3.4) and incremental
-`MapTileLayer` updates (§3.3). Do the encoder first and validate it against
-real maps in isolation (decode→encode→decode round-trip, byte-compare)
-before wiring it to a live paintable UI — a silent corruption bug here is
-much worse than a slow one. Overlay painting (ore/walls) follows the same
-shape once terrain works, using the equivalent `[OverlayDataPack]` decoder
-as its own spec reference.
+**Phase 2 — Terrain & overlay painting.** The compression encoders (§3.4)
+are done and validated in isolation; what's left is the `Format5` chunk-
+framing wrapper (mechanical) and the real work: incremental `MapTileLayer`
+updates (§3.3) and making `TileCollection` mutable (§2.5) so there's
+somewhere to call the encoder from. Overlay painting (ore/walls) follows the
+same shape once terrain works.
 
 **Phase 3 — Trigger/tag/AI scripting UI.** The largest, most RA2-specific
 surface (event/action pairing, tag linking, cell tags, variables, base/AI
@@ -350,13 +355,15 @@ map model exists.
   should be explicitly tested — load a real official map, `toString()` it
   immediately with zero edits, and diff against the original — before
   relying on it for user-facing save.
-- **LZO/Format80 encoder correctness.** Writing a compressor to match an
-  existing decompressor's exact expected format (as opposed to writing a
-  format from scratch) is deceptively easy to get *subtly* wrong — e.g.
-  producing bytes the real game's *own* engine (not just this decoder)
-  rejects or misreads, if this repo's decoder is itself slightly permissive
-  in ways the original isn't. Test against the original game/CNCMaps if at
-  all possible, not just against this codebase's own decoder.
+- **LZO/Format80 encoder correctness — partially retired, one risk remains.**
+  Both encoders exist now (§2.2) and pass round-trip tests against this
+  codebase's own decoder, including on real map data. What's *not* yet
+  verified: whether the real game engine, FinalAlert, or CNCMaps Renderer
+  can decode bytes these encoders produce. It's possible for two decoders to
+  agree with each other while both are slightly more permissive than the
+  original format spec — e.g. if this repo's decoder accepts a byte pattern
+  the real game's decoder would reject. Test against the actual game or
+  CNCMaps before shipping edited terrain to real players.
 - **Full-map mesh rebuild cost, worst case.** §3.3's cheap path (UV-only
   patch) only helps when the new tile's art is already in the atlas and its
   world position doesn't change. A mapper doing large-area terrain
