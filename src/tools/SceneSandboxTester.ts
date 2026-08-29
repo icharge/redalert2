@@ -39,6 +39,7 @@ import { SuperWeaponType } from '@/game/type/SuperWeaponType';
 import { SuperWeaponsTrait } from '@/game/trait/SuperWeaponsTrait';
 import { TestToolSupport, type TestToolRuntimeContext } from '@/tools/TestToolSupport';
 import { TileTargeting, type TileTargetingContext } from '@/tools/shared/TileTargeting';
+import { ObjectCatalog } from '@/tools/shared/ObjectCatalog';
 
 type StringsLike = {
     get(key: string): string | undefined;
@@ -124,81 +125,6 @@ export class SceneSandboxTester {
         tickMultiplier: 2,
         spawnedCount: 0,
         lastMessage: 'Select a unit, then click Enter Placement Mode and left-click on the map to place.',
-    };
-    private static readonly fallbackObjectDisplayNames: Record<string, string> = {
-        E1: 'GI',
-        E2: 'Conscript',
-        GGI: 'Guardian GI',
-        ENGINEER: 'Engineer',
-        SNIPE: 'Sniper',
-        TANY: 'Tanya',
-        SEAL: 'Navy SEAL',
-        SPY: 'Spy',
-        DOG: 'Attack Dog',
-        ADOG: 'Attack Dog',
-        CLEG: 'Chrono Legionnaire',
-        YURI: 'Yuri',
-        IVAN: 'Crazy Ivan',
-        FLKT: 'Flak Trooper',
-        TERROR: 'Terrorist',
-        DESO: 'Desolator',
-        MTNK: 'Grizzly Tank',
-        HTNK: 'Rhino Tank',
-        MGTK: 'Mirage Tank',
-        SREF: 'Prism Tank',
-        FV: 'IFV',
-        TNKD: 'Tank Destroyer',
-        HARV: 'Ore Miner',
-        CMIN: 'Chrono Miner',
-        AMCV: 'Allied MCV',
-        SMCV: 'Soviet MCV',
-        PCV: 'Yuri MCV',
-        APOC: 'Apocalypse Tank',
-        V3: 'V3 Launcher',
-        DRON: 'Terror Drone',
-        HTK: 'Flak Track',
-        SAPC: 'Amphibious Transport',
-        LCRF: 'Landing Craft',
-        DEST: 'Destroyer',
-        AEGIS: 'Aegis Cruiser',
-        CARRIER: 'Aircraft Carrier',
-        DLPH: 'Dolphin',
-        SUB: 'Typhoon Sub',
-        DRED: 'Dreadnought',
-        SQD: 'Giant Squid',
-        ORCA: 'Harrier',
-        BEAG: 'Black Eagle',
-        ZEP: 'Kirov Airship',
-        GACNST: 'Allied Construction Yard',
-        NACNST: 'Soviet Construction Yard',
-        YACNST: 'Yuri Construction Yard',
-        GAPOWR: 'Allied Power Plant',
-        NAPOWR: 'Tesla Reactor',
-        YAPOWR: 'Bio Reactor',
-        GAREFN: 'Allied Ore Refinery',
-        NAREFN: 'Soviet Ore Refinery',
-        YAREFN: 'Slave Miner',
-        GAPILE: 'Allied Barracks',
-        NAHAND: 'Soviet Barracks',
-        YABRCK: 'Yuri Barracks',
-        GAWEAP: 'Allied War Factory',
-        NAWEAP: 'Soviet War Factory',
-        YAWEAP: 'Yuri War Factory',
-        GAAIRC: 'Air Force HQ',
-        NARADR: 'Radar Tower',
-        GAYARD: 'Allied Naval Yard',
-        NAYARD: 'Soviet Naval Yard',
-        YAYARD: 'Yuri Naval Yard',
-        GATECH: 'Allied Battle Lab',
-        NATECH: 'Soviet Battle Lab',
-        YATECH: 'Yuri Battle Lab',
-        GACSPH: 'Chrono Sphere',
-        GAWEAT: 'Weather Control Device',
-        NAIRON: 'Iron Curtain',
-        NAMISL: 'Nuclear Missile Silo',
-        NAMSLO: 'Nuclear Missile Silo',
-        YAPPET: 'Psychic Dominator',
-        YAGNTC: 'Genetic Mutator',
     };
 
     static async main(_mixFileLoader: any, gameMapFile: any, parentElement: HTMLElement, strings: StringsLike, context: TestToolRuntimeContext = {}, options: SceneSandboxOptions = {}): Promise<void> {
@@ -633,37 +559,9 @@ export class SceneSandboxTester {
     }
 
     private static buildCatalog(rules: any, art: any, strings: StringsLike): Record<SpawnKind, string[]> {
-        const fromRules = (rulesMap: Map<string, any>, type: ObjectType) => [...rulesMap.keys()]
-            .filter((name) => {
-                try {
-                    return art.hasObject(name, type);
-                }
-                catch {
-                    return false;
-                }
-            })
-            .sort((left, right) => {
-                const leftLabel = this.resolveObjectDisplayName(rules, strings, type, left);
-                const rightLabel = this.resolveObjectDisplayName(rules, strings, type, right);
-                return leftLabel.localeCompare(rightLabel, 'zh-CN') || left.localeCompare(right);
-            });
-        const vehicles = fromRules(rules.vehicleRules, ObjectType.Vehicle);
-        const naval = vehicles.filter((name) => this.isNavalVehicleRules(rules.getObject(name, ObjectType.Vehicle)));
-        const buildings = fromRules(rules.buildingRules, ObjectType.Building)
-            .filter((name) => !rules.getObject(name, ObjectType.Building).invisibleInGame);
-        const superweapon = buildings.filter((name) => this.isMajorSuperWeaponBuilding(rules, name));
-        return {
-            infantry: fromRules(rules.infantryRules, ObjectType.Infantry),
-            vehicle: vehicles.filter((name) => !naval.includes(name)),
-            naval,
-            aircraft: fromRules(rules.aircraftRules, ObjectType.Aircraft),
-            building: buildings,
-            superweapon,
-        };
-    }
-
-    private static isNavalVehicleRules(rules: any): boolean {
-        return Target.usesGroundLayerUnderBridge({ rules });
+        const base = ObjectCatalog.build(rules, art, strings);
+        const superweapon = base.building.filter((name) => this.isMajorSuperWeaponBuilding(rules, name));
+        return { ...base, superweapon };
     }
 
     private static isMajorSuperWeaponBuilding(rules: any, buildingName: string): boolean {
@@ -686,23 +584,7 @@ export class SceneSandboxTester {
     }
 
     private static resolveObjectDisplayName(rules: any, strings: StringsLike | undefined, type: ObjectType, name: string): string {
-        try {
-            const objectRules = rules.getObject(name, type) as any;
-            const uiName = objectRules?.uiName;
-            if (typeof uiName === 'string' && uiName.trim()) {
-                const key = uiName.trim();
-                if (/^NOSTR:/i.test(key)) {
-                    return strings?.get(key) || key.replace(/^NOSTR:/i, '');
-                }
-                if (strings?.has?.(key)) {
-                    return strings.get(key) || name;
-                }
-            }
-        }
-        catch {
-            // Fall through to the internal ID when rules are incomplete.
-        }
-        return this.fallbackObjectDisplayNames[name] ?? name;
+        return ObjectCatalog.resolveDisplayName(rules, strings, type, name);
     }
 
     private static pickInitialObject(catalog: Record<SpawnKind, string[]>): string {
@@ -1084,7 +966,7 @@ export class SceneSandboxTester {
         const type = this.objectTypeForKind(kind);
         const displayName = runtime
             ? this.resolveObjectDisplayName(runtime.game.rules, runtime.strings, type, name)
-            : this.fallbackObjectDisplayNames[name] ?? name;
+            : ObjectCatalog.resolveDisplayName(undefined, undefined, type, name);
         return displayName === name ? name : `${displayName}(${name})`;
     }
 
