@@ -12,6 +12,19 @@ It is grounded entirely in what this repo already has, not a clean-sheet
 design — the honest answer turns out to be "much closer than you'd expect for
 object placement, and genuinely hard for terrain and triggers."
 
+**Ground truth source.** EA has open-sourced the real FinalSun/FinalAlert2
+editor itself: `CNC_TS_and_RA2_Mission_Editor` (C++, MFC, GPL-3.0-or-later —
+see its own `LICENSE.md`), a sibling checkout at
+`~/development/my-experiment/CNC_TS_and_RA2_Mission_Editor/MissionEditor/`.
+Large parts of this document were originally inferred from this repo's own
+code and RA2 modding-community convention; several of those inferences
+turned out to be wrong once checked against the real editor's source (see
+§2.2's structure/aircraft field-layout correction and §5's compression
+findings below) — treat any claim in this doc *not* cross-checked against
+that source as still provisional. Its `MapData.cpp` (`CMapData`, ~169K, the
+central map-data class) is the single most load-bearing file to check next
+against any future assumption this doc makes.
+
 ## 1. What Final Alert 2 / FinalSun actually does
 
 A working checklist of what any credible replacement needs to cover:
@@ -103,32 +116,54 @@ everything *above* the compressor (§2.5, §3.3): `TileCollection`/
 call the new encoder from. Object placement was never blocked by this gap in
 the first place, since it's plain human-readable INI (see below).
 
-**Object sections are also not currently write-safe, for a subtler reason:
-lossy parsing, not missing infrastructure.** `readStructures()` only
-extracts 7 of a real structure line's ~17 comma-separated fields:
+**Update: this gap is closed too, and the field layout is now confirmed
+against the real editor, not guessed.** `readStructures()`/`readVehicles()`/
+`readInfantries()`/`readAircrafts()` in `src/data/MapFile.ts` now capture
+every field each line format has, and `MapFile` gained mirror-image
+`writeStructures()`/`writeVehicles()`/`writeInfantries()`/`writeAircrafts()`
+serializers. The field positions were cross-checked against
+`CMapData::AddStructure`/`AddUnit`/`AddInfantry`/`AddAircraft` in the real
+editor's `MapData.cpp` (see the "Ground truth source" note above) — this
+caught real bugs in an earlier pass at this fix (upgrade slots and
+spotlight were at the wrong indices; a fabricated "nominal" field that
+doesn't exist in the real format; Aircraft was assumed to share Vehicle's
+14-field shape when it actually has its own, shorter 12-field layout with
+no confirmed on-bridge slot at all). Confirmed real layouts:
 
-```ts
-readStructures(e: IniSection) {
-    ...
-    structure.owner = values[0];
-    structure.name = values[1];
-    structure.health = Number(values[2]);
-    structure.rx = Number(values[3]);
-    structure.ry = Number(values[4]);
-    structure.tag = this.readTagId(values[6]);      // facing (index 5) dropped
-    structure.poweredOn = Boolean(Number(values[9])); // indices 7,8,10+ dropped
-}
-```
+- **Structure** (17 fields): `owner,name,health,rx,ry,direction,tag,
+  flag1(aiSellable),flag2(aiRebuildable),energy(poweredOn),upgradeCount,
+  spotlight,upgrade1,upgrade2,upgrade3,flag3,flag4`
+- **Vehicle** (14 fields): `owner,name,health,rx,ry,direction,mission,tag,
+  veterancy,group,onBridge,flag4,flag5,flag6` (last 3 unmodeled by this
+  editor yet)
+- **Infantry** (14 fields): `owner,name,health,rx,ry,subCell,mission,
+  direction,tag,veterancy,group,onBridge,flag4,flag5` (last 2 unmodeled)
+- **Aircraft** (12 fields): `owner,name,health,rx,ry,direction,mission,tag,
+  flag1,flag2,flag3,flag4` — genuinely no confirmed onBridge slot; a
+  pre-existing (not introduced by this fix) `values[length-4]` read in
+  `readAircrafts()` collides with the veterancy/flag1 slot for any
+  FA2-authored (i.e. virtually all) 12-field line — left unchanged rather
+  than guessed at further, flagged in code comments, needs a real `.map`
+  sample with an on-bridge aircraft to resolve properly.
 
-(Confirmed against a real map earlier this session: `eb4.map`'s structure
-lines look like `1028701=Neutral,CAGAS01,256,61,84,0,None,0,0,1,0,0,None,
-None,None,0,0` — facing, AI-sellable flags, and the trailing upgrade slots
-are parsed by nothing.) A `Structure` instance has no back-reference to its
-original raw line, so even a "just write back what didn't change" strategy
-would silently drop those fields on re-save today. This is fixable — either
-capture the full field tuple when parsing, or keep each object's raw INI
-line alongside the parsed convenience fields and only rewrite the specific
-fields the editor UI actually changed — but it's real work, not zero.
+One structural finding worth keeping in mind for any future field-position
+question: this repo's `rx`/`ry` naming and the real editor's `x`/`y` naming
+turned out to be **transposed relative to each other** (cross-checked via
+`PosToXY`, the real editor's waypoint/cell-index decoder, against this
+repo's own already-working `readWaypoints()`/`readTerrains()` math) — i.e.
+the real editor's "X" is this repo's `ry` and vice versa. Once that's
+accounted for, the actual byte positions agree exactly; a naive "FA2 calls
+this field X, so it must be `rx`" reading would get it backwards.
+
+Structure's `aiSellable`/`aiRebuildable`/`upgradeCount`/`spotlight`/
+`upgrades`/`flag3`/`flag4` still have no live representation on the engine's
+`GameObject` — `Game.ts`'s `createInitialMapTechnos()` reads them from the
+loaded map once at boot and never stores them back onto the object it
+creates. A structure loaded from an existing map and never touched by the
+editor will lose these fields on save until that's fixed (see
+`src/tools/mapEditor/GameObjectMapSerializer.ts`'s own comment on this);
+Phase 1's editor doesn't expose editing any of them either way, so it's
+deferred rather than fixed speculatively.
 
 ### 2.3 Scene Sandbox — the best existing scaffold, closer than expected
 
@@ -204,6 +239,18 @@ This is the compounding reason terrain painting is the hard part: it's not
 just the missing LZO encoder (§2.2) — it's that both the in-memory tile grid
 and its render representation are architected as build-once snapshots, not
 mutable structures with an update path.
+
+**The real editor confirms this is the right shape to build, though.**
+`CMapData` in the real editor's `MapData.cpp` keeps terrain/overlay state as
+a flat, directly-mutable array (`FIELDDATA fielddata[x + y*IsoSize]`,
+`MapData.h`) with **a per-tile dirty bit** (`bRedrawTerrain : 1`) that its
+renderer (`IsoView.cpp`) checks each frame to redraw only changed tiles —
+structurally the same "mutable grid + per-tile invalidation" shape
+`Lighting.tileLights`/`MapTileLayer.updateLighting()` already use for
+lighting in this repo, just not yet extended to tile art. Worth copying
+that dirty-flag pattern directly: a `TileCollection` mutation method should
+mark affected tiles, and `MapTileLayer`'s incremental-update path (§3.3)
+should consume that same dirty list rather than needing its own tracking.
 
 ### 2.6 Save/publish backend — already exists, no new infrastructure needed
 
@@ -286,17 +333,43 @@ roughly in order of engineering cost:
 
 ### 3.4 New capability: `.map` serialization
 
-- **Object sections**: fix the lossy-parse gap (§2.2) by capturing full raw
-  field tuples per object type, and write a `Structure`/`Vehicle`/... →
-  INI-line encoder that only overwrites the fields the editor UI actually
-  exposes, preserving everything else byte-for-byte from the original line.
+- **Object sections**: done (§2.2) — `MapFile.write{Structures,Vehicles,
+  Infantries,Aircrafts}()` now serialize every captured field per object
+  type, confirmed against the real editor's field layouts.
 - **Terrain**: the Format80/LZO1X encoders now exist (`Format80.encode`,
   `MiniLzo.compress` — see §2.2) and have passed round-trip fidelity testing
-  against real map data. What's still needed for this phase: a `Format5`
-  `encode`/`encodeInto` to do the chunk-framing (mechanical — chunk the
-  input, call the relevant compressor per chunk, write the 2+2-byte
-  size headers), and, separately, the actual mutable-terrain-model work in
-  §2.5/§3.3, which the encoder doesn't touch.
+  against real map data. The `Format5` chunk-framing wrapper (`encode`/
+  `encodeInto`, still missing) no longer needs any guessing either — the
+  real editor's chunk format is confirmed byte-for-byte via
+  `3rdParty/xcc/misc/shp_decode.cpp`'s `encode5`/`t_pack_section_header`:
+  a `{ uint16 size_in; uint16 size_out; }` header per chunk, fixed
+  **8192-byte** chunk size, calling `encode5s` (LZO, via the genuine
+  `lzo1x_1_compress`) or `encode80` (LCW) per chunk depending on format —
+  exactly what this repo's `Format5.decodeInto` already assumes, so this is
+  now purely mechanical to implement.
+
+  **One real discrepancy worth resolving before trusting a terrain
+  encoder, though**: the real editor's actual terrain-save call is
+  `FSunPackLib::EncodeIsoMapPack5(...)` (`MapData.cpp:1241`), a distinct
+  function — not a direct call into the generic LZO/`encode5` path used for
+  `[OverlayPack]`/`[OverlayDataPack]` (both of which the real editor packs
+  via `EncodeF80`/LCW, confirmed at `MapData.cpp:1163,1203` — *not* LZO for
+  `OverlayPack` as this repo's own naming/`Format5`-format-number
+  convention might suggest). Since this repo's own `IsoMapPack5` *decoder*
+  already works correctly today (real terrain renders correctly in actual
+  gameplay), `EncodeIsoMapPack5` is most plausibly a wrapper that also
+  handles packing the `FIELDDATA` struct fields into `IsoMapPack5`'s
+  specific per-tile byte layout before calling the same generic LZO
+  compressor beneath it — not a genuinely different compression codec —
+  but this is inference, not a confirmed reading of that function's body.
+  Read `FSunPackLib::EncodeIsoMapPack5`'s actual implementation (likely in
+  `MissionEditorPackLib/`) before relying on `MiniLzo.compress()` directly
+  for real terrain writes; also note `MapData.cpp:1096-1097`'s own comment
+  — `// only activate when packing isomappack is supported` — suggesting
+  even this "modernized" 2024 release treats terrain packing as
+  not-fully-proven.
+  What's still needed beyond the encoder question for this phase: the
+  actual mutable-terrain-model work in §2.5/§3.3, which no encoder touches.
 - **Everything else** (triggers, tags, lighting, waypoints, basic/map
   metadata): already round-trips via `IniFile.toString()` as long as the
   editor doesn't touch those sections' underlying `IniSection` data — so
@@ -317,12 +390,17 @@ built.
 `EditorController` + placement-preview + selection/gizmo (§3.1) on top of
 the *existing* Scene Sandbox interaction model, targeting only
 `[Structures]`/`[Units]`/`[Infantry]`/`[Aircraft]`/`[Terrain]`/`[Smudge]`/
-`[Waypoints]`. Fix the lossy structure-line parsing (§2.2) so save doesn't
-drop fields. Save = generic `IniFile.toString()` (already works, since
-nothing here touches `[IsoMapPack5]`) + `POST /maps/upload` (already
-exists, §2.6). This phase alone gets a mapper real WYSIWYG object placement
-with zero new compression/mesh-rebuild engineering — genuinely the highest
-value-to-effort ratio available.
+`[Waypoints]`. The lossy structure-line parsing is already fixed (§2.2,
+steps 1-2 of the implementation plan below). Save = generic
+`IniFile.toString()` (already works, since nothing here touches
+`[IsoMapPack5]`) + `POST /maps/upload` (already exists, §2.6). This phase
+alone gets a mapper real WYSIWYG object placement with zero new
+compression/mesh-rebuild engineering — genuinely the highest value-to-effort
+ratio available. Remaining steps: the `GameObject`↔`MapFile` sync layer
+(§3.2), the placement-preview/selection UI (§3.1), and wiring it into a new
+tool built on the extracted Scene Sandbox placement primitives — see the
+step-by-step implementation plan tracked separately (not duplicated in this
+document to avoid drift between the two).
 
 **Phase 2 — Terrain & overlay painting.** The compression encoders (§3.4)
 are done and validated in isolation; what's left is the `Format5` chunk-
@@ -340,30 +418,151 @@ means" drifts from `TriggerReader`'s. Start from `TriggerReader`/`TagsReader`
 reinvent a parallel trigger representation), and keep raw round-trip
 fidelity as the fallback for anything the UI doesn't yet expose editing for.
 
+The real editor doesn't parse `[Events]`/`[Actions]` into typed structs
+either — it edits them as raw comma-separated `IniSection` strings, keyed by
+trigger ID, with a **shipped, complete parameter-type registry**:
+`MissionEditor/data/FinalAlert2/FAData.ini`'s `[EventsRA2]`/`[ActionsRA2]`
+sections (GPL-3.0-or-later, same license as the rest of that repo) map every
+RA2 event/action type ID to its display name, a description, and
+parameter-shape codes (e.g. `2`=house, `6`=number, `7`=team-type reference,
+`8`=building-type, `13`=text-label string, `14`=trigger reference,
+`16`=sound effect, `30`=waypoint; negative codes flag a "reference by name
+into another section" case). This is directly usable as the parameter
+registry for a real Phase 3 UI — pulling `FAData.ini` in as a reference
+asset avoids reverse-engineering RA2 trigger semantics from scratch, by far
+the most valuable single find for this phase. Confirmed field shapes:
+`[Events]` lines are `count,type1,p1a,p1b[,extra1],type2,...` (variable
+length — an event gets a 4th parameter field only when its own 2nd field
+is `2`, see `TriggerEventsDlg.cpp`'s `GetEventParamStart`); `[Actions]`
+lines are fixed at exactly 8 fields per action
+(`count,type1,p1..p7,type2,...`, `TriggerActionsDlg.cpp`); `[Tags]` lines
+are `repeatType,triggerId,tagName`; `[CellTags]` values are just the tag
+name directly, keyed by the same packed cell index Waypoints/Terrain use.
+The param-code→UI-widget mapping itself wasn't traced to source (likely
+resource/dialog-template driven, not plain C++ control flow) — a future
+pass scoping this phase in detail should chase that down.
+
+**Newly identified gap: TeamTypes/TaskForces/Scripts are a distinct,
+sizeable AI-scripting surface this plan doesn't cover at all**, separate
+from map Triggers proper. `[TeamTypes]`/`[TaskForces]`/`[ScriptTypes]` are
+**not** flat comma-line sections like everything else — they're
+index→ID lookup sections where each ID's actual data lives in its own
+separate named section (e.g. `[TeamTypes]` maps an index to `"TeamID001"`,
+whose full definition — name, house, task-force reference, script
+reference, member unit list, veterancy, waypoint — lives in a section
+literally named `[TeamID001]` with named keys, not positional fields;
+confirmed at the real editor's `TeamTypes.cpp:363-395`). This needs its own
+"read this ID, then look up and parse its own named section" parsing
+pattern, not the fixed-comma-index pattern every other object type uses.
+**Confirmed: `src/data/MapFile.ts` has zero references to `TeamType`/
+`TaskForce`/`ScriptType` today** — this isn't lossy handling, it's a
+complete gap; `[TeamTypes]`/`[TaskForces]`/`[ScriptTypes]` sections just sit
+untouched in the generic `IniFile.sections` map like any other
+editor-doesn't-model section (round-trips fine as long as nothing edits
+them, per §3.4/§5's round-trip-fidelity point, but there's no reader for
+this data at all today). Worth scoping as its own follow-up before Phase 3
+commits to a specific trigger-editing design, since a map with AI-controlled
+skirmish opponents will have real `[TeamTypes]`/`[TaskForces]`/`[Scripts]`
+content that a trigger UI referencing team types (per `FAData.ini`'s
+`ActionsRA2` param code `7`, "team-type reference") would need to resolve
+(`TeamTypes.cpp` at 29K is one of the largest files in the whole real
+editor, so this is not a small feature to add later).
+
 **Phase 4 — Lighting tuning, map bootstrap (new map / resize / theater
 switch), polish.** Straightforward given Phases 1–3; `MapLighting` and
 `Lighting.compute()` (see `docs/rendering-lighting-vxl-reference.md`) already
 give live WYSIWYG lighting preview essentially for free once an editable
 map model exists.
 
+**New-map bootstrap now has a real, authoritative default to use instead of
+inventing one.** The real editor's `CMapData::New(...)` doesn't hand-build
+default INI content — it loads a template file,
+`MissionEditor/data/FinalAlert2/StdMapRA2.ini`, then programmatically
+overwrites only `[Map]`'s `Size`/`Theater`/`LocalSize` (`LocalSize` computed
+as a fixed margin: `2,4,{width-4},{height-6}` from the full map rect — 2
+left/4 top/4 right/6 bottom). That template file's `[Basic]`/`[Lighting]`/
+`[SpecialFlags]` content (ambient `1.0`, level `0.032`, `TiberiumGrows=yes`,
+etc. — the file's own header comment notes `[Map]` itself is intentionally
+absent since the tool always generates it programmatically) is the literal,
+correct seed content for this repo's own "new map" bootstrap once Phase 4 is
+built — no need to guess reasonable lighting/gameplay-flag defaults.
+
+**Newly identified gap: no undo design exists in this plan at all.** The
+real editor's undo system (`MapData.cpp`, `SNAPSHOTDATA* m_snapshots`
+ring buffer) stores rectangular bounding-box snapshots of the raw terrain/
+overlay grid (`fielddata[]`) only — it does **not** cover object placement
+or deletion at all (structures/units/infantry live in separate arrays never
+touched by `Undo()`). This is a reasonable, cheap pattern to borrow
+directly for Phase 2 terrain/overlay undo (bounding-box snapshot capture
+around each brush stroke), but Phase 1 object placement needs its own,
+different undo approach — the natural fit given this repo's clean
+`game.spawnObject`/`unspawnObject` primitives (§3.1-3.2) is recording
+add/remove/move operations as an explicit undo stack, not attempting to
+reuse the terrain snapshot approach for objects.
+
+**Other real-editor feature categories this plan has no phase for yet**,
+noted for completeness rather than urgency — none of these block Phases
+1-4: **tunnel/tube editing** (`Tube.cpp`/`TubeTool.cpp` — a real,
+headline-featured RA2 map mechanic for infantry tunnel networks, entirely
+outside this plan's scope today); **dedicated map validation**
+(`MapValidator.cpp`, 11K — likely covers things like unreachable areas or
+missing starting locations; this plan has no equivalent concept at all);
+**bitmap-to-map import** (`Bitmap2MapConverter.cpp` — a heightmap-from-image
+terrain generator, a nice-to-have feature idea, not a gap in what this plan
+already promises).
+
+**One Phase 1 risk this research likely resolves rather than confirms**:
+the real editor's `Houses.cpp` was checked specifically for any
+`"Multi1".."Multi8"` multiplayer-slot-placeholder naming convention (this
+plan's earlier "open risk" note worried a saved map might need to
+round-trip such placeholder owners) — **no such string exists anywhere in
+FA2's source**. The real editor always works with concrete house/country
+names via its own "prepare houses" step. That placeholder-slot convention,
+if real at all, is most likely a runtime-only concept the actual game
+engine applies when resolving multiplayer slot assignments dynamically —
+not something ever written into a `.map` file by the editor that authors
+it. This meaningfully de-risks Phase 1 step 6's house/owner-bootstrap
+concern for editor-authored maps specifically, though it doesn't rule out
+encountering such names in a *live-game-exported* map.
+
 ## 5. Biggest open risks
 
-- **Round-trip fidelity on sections we don't model.** The whole "Phase 1
+- **Round-trip fidelity on sections we don't model — now has real
+  supporting evidence, not just a hopeful assumption.** The whole "Phase 1
   ships before terrain/trigger support exists" claim (§3.4) depends on
   `IniSection.toString()` faithfully reproducing byte-for-byte (or at least
-  functionally-equivalent) text for sections the editor never touches. This
-  should be explicitly tested — load a real official map, `toString()` it
+  functionally-equivalent) text for sections the editor never touches. The
+  real editor's own save path (`CMapData::UpdateIniFile`, `MapData.cpp:482`)
+  works exactly this way: each `Update*(TRUE)` call writes only into its own
+  section(s) of a long-lived, session-persistent `m_mapfile`, and sections
+  the mapper never touched (Triggers, Tags, VariableNames, ...) are never
+  rebuilt on save — this is literally how the original tool works, not a
+  convenience assumption unique to this repo. Should still be explicitly
+  tested here regardless — load a real official map, `toString()` it
   immediately with zero edits, and diff against the original — before
-  relying on it for user-facing save.
-- **LZO/Format80 encoder correctness — partially retired, one risk remains.**
-  Both encoders exist now (§2.2) and pass round-trip tests against this
-  codebase's own decoder, including on real map data. What's *not* yet
-  verified: whether the real game engine, FinalAlert, or CNCMaps Renderer
-  can decode bytes these encoders produce. It's possible for two decoders to
-  agree with each other while both are slightly more permissive than the
-  original format spec — e.g. if this repo's decoder accepts a byte pattern
-  the real game's decoder would reject. Test against the actual game or
-  CNCMaps before shipping edited terrain to real players.
+  relying on it for user-facing save; also worth noting the real editor's
+  own "map digest" is *not* a content checksum (it's a lazily-generated
+  random per-session ID, `MapData.cpp:1109-1140`), so there's no existing
+  precedent to lean on for detecting corruption beyond the diff test itself.
+- **LZO/Format80 encoder correctness — mostly retired now, two risks
+  remain.** Both encoders exist now (§2.2) and pass round-trip tests against
+  this codebase's own decoder, including on real map data. The chunk-framing
+  format (§3.4) is now confirmed byte-for-byte against the real editor's own
+  `encode5`/`t_pack_section_header` — that risk is closed. `Format80.encode`
+  is also confirmed to emit a **valid strict subset** of the real encoder's
+  command space (`encode80` in the real editor uses LZ77-style
+  back-reference copies this repo's encoder never emits, only literal-copy
+  and RLE-fill commands) — not a correctness bug, just a known,
+  already-documented output-size inefficiency, not worth fixing unless
+  output size specifically matters later. What's *still* open: (1) whether
+  the real game engine's own decoder (as opposed to FinalAlert's, which
+  should be closely related but isn't proven identical) accepts bytes these
+  encoders produce — test against the actual game or CNCMaps Renderer
+  before shipping edited terrain to real players; (2) the `IsoMapPack5`-
+  specific-encoder question raised in §3.4 (`EncodeIsoMapPack5` may not be
+  a plain call into the generic LZO path) — resolve that before trusting
+  `MiniLzo.compress()` directly for real terrain writes specifically
+  (overlay writes via `Format80.encode` aren't affected by this question).
 - **Full-map mesh rebuild cost, worst case.** §3.3's cheap path (UV-only
   patch) only helps when the new tile's art is already in the atlas and its
   world position doesn't change. A mapper doing large-area terrain
@@ -371,11 +570,20 @@ map model exists.
   `Coords.tile3dToWorld`) may hit the expensive full-rebuild path often
   enough that per-stroke (not per-tile) rebuild batching (§3.3) is load-
   bearing for the tool to feel responsive, not just a nice-to-have.
-- **Structure field data loss.** Even after the Phase 1 parsing fix, any
-  object field the UI doesn't expose (the AI/upgrade tail fields noted in
-  §2.2) needs a policy: preserve-verbatim-if-unedited is achievable, but
-  requires discipline to not accidentally re-derive/reset those fields
-  anywhere in the write path.
+- **Structure field data loss — now concrete, not hypothetical.** The
+  parsing/serialization fix (§2.2) captures every field, but
+  `aiSellable`/`aiRebuildable`/`upgradeCount`/`spotlight`/`upgrades`/
+  `flag3`/`flag4` have no live `GameObject` representation today — a
+  structure loaded from a real map and never touched by the editor will
+  still lose these fields on save, because `Game.ts`'s
+  `createInitialMapTechnos()` only reads them once at boot and never stores
+  them back onto the object it creates (see §2.2's write-up and
+  `GameObjectMapSerializer.ts`'s own comment on this). Needs either (a)
+  `Game.ts` stashing the original values onto the `GameObject` at load time,
+  or (b) a genuinely separate editable-model layer (§3.2) that doesn't lose
+  fidelity by routing everything through a live `GameObject` in the first
+  place — deferred rather than fixed speculatively, since Phase 1's editor
+  doesn't expose editing any of these fields either way.
 - **Scope of "real in-game rendering."** The core ask (real WorldScene
   lighting/shadows/VXL in the editor) is essentially free once Phase 1's
   scene-hosting works, since it's the same renderer gameplay already uses —
