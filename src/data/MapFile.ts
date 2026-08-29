@@ -342,6 +342,103 @@ export class MapFile extends IniFile {
             this.aircrafts.push(aircraft);
         }
     }
+    writeStructures(structures: mapObjects.Structure[]) {
+        const section = this.getOrCreateSection("Structures");
+        section.entries.clear();
+        structures.forEach((structure, index) => {
+            const upgrades = [structure.upgrades[0], structure.upgrades[1], structure.upgrades[2]].map((u) => u ?? "None");
+            const fields = [
+                structure.owner,
+                structure.name,
+                String(structure.health),
+                String(structure.rx),
+                String(structure.ry),
+                String(structure.direction),
+                structure.tag ?? "None",
+                structure.aiSellable ? "1" : "0",
+                structure.aiRebuildable ? "1" : "0",
+                structure.poweredOn ? "1" : "0",
+                ...upgrades,
+                structure.spotlight,
+                structure.nominal ? "1" : "0",
+            ];
+            section.set(String(index), fields.join(",") + ",");
+        });
+    }
+    // Vehicle/Infantry/Aircraft each have 3 trailing fields this editor
+    // doesn't model yet (FollowsIndex + two Autocreate-recruitable flags -
+    // see readVehicles()/readInfantries()'s dropped index-11+ fields, and
+    // readAircrafts()'s length-4-from-end onBridge read, which implies the
+    // same trailing shape). Written as fixed placeholders since Phase 1
+    // doesn't expose editing them; revisit if that assumption needs fixing.
+    private static readonly UNMODELED_TECHNO_TAIL = ["-1", "1", "1"];
+    writeVehicles(vehicles: mapObjects.Vehicle[]) {
+        const section = this.getOrCreateSection("Units");
+        section.entries.clear();
+        vehicles.forEach((vehicle, index) => {
+            const fields = [
+                vehicle.owner,
+                vehicle.name,
+                String(vehicle.health),
+                String(vehicle.rx),
+                String(vehicle.ry),
+                String(vehicle.direction),
+                vehicle.mission || "Guard",
+                vehicle.tag ?? "None",
+                String(vehicle.veterancy),
+                String(vehicle.group),
+                vehicle.onBridge ? "1" : "0",
+                ...MapFile.UNMODELED_TECHNO_TAIL,
+            ];
+            section.set(String(index), fields.join(",") + ",");
+        });
+    }
+    writeInfantries(infantries: mapObjects.Infantry[]) {
+        const section = this.getOrCreateSection("Infantry");
+        section.entries.clear();
+        infantries.forEach((infantry, index) => {
+            const fields = [
+                infantry.owner,
+                infantry.name,
+                String(infantry.health),
+                String(infantry.rx),
+                String(infantry.ry),
+                String(infantry.subCell),
+                infantry.mission || "Guard",
+                String(infantry.direction),
+                infantry.tag ?? "None",
+                String(infantry.veterancy),
+                String(infantry.group),
+                infantry.onBridge ? "1" : "0",
+                ...MapFile.UNMODELED_TECHNO_TAIL,
+            ];
+            section.set(String(index), fields.join(",") + ",");
+        });
+    }
+    writeAircrafts(aircrafts: mapObjects.Aircraft[]) {
+        const section = this.getOrCreateSection("Aircraft");
+        section.entries.clear();
+        aircrafts.forEach((aircraft, index) => {
+            // Aircraft's own type doesn't model mission/group (readAircrafts()
+            // doesn't populate them - see its comment); write the same
+            // placeholder defaults used for the vehicle/infantry tail.
+            const fields = [
+                aircraft.owner,
+                aircraft.name,
+                String(aircraft.health),
+                String(aircraft.rx),
+                String(aircraft.ry),
+                String(aircraft.direction),
+                "Guard",
+                aircraft.tag ?? "None",
+                String(aircraft.veterancy),
+                "-1",
+                aircraft.onBridge ? "1" : "0",
+                ...MapFile.UNMODELED_TECHNO_TAIL,
+            ];
+            section.set(String(index), fields.join(",") + ",");
+        });
+    }
     readTerrains(e: IniSection) {
         this.terrains = [];
         for (const [key, rawValue] of e.entries) {
