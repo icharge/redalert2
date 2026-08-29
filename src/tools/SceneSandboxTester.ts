@@ -38,6 +38,7 @@ import { SuperWeaponStatus } from '@/game/SuperWeapon';
 import { SuperWeaponType } from '@/game/type/SuperWeaponType';
 import { SuperWeaponsTrait } from '@/game/trait/SuperWeaponsTrait';
 import { TestToolSupport, type TestToolRuntimeContext } from '@/tools/TestToolSupport';
+import { TileTargeting, type TileTargetingContext } from '@/tools/shared/TileTargeting';
 
 type StringsLike = {
     get(key: string): string | undefined;
@@ -102,8 +103,6 @@ export class SceneSandboxTester {
     private static shiftPlacementActive = false;
     private static pendingSuperWeaponTile?: any;
     private static readonly tickMultipliers: TickMultiplier[] = [1, 2, 4, 8];
-    private static readonly bridgePickRadius = 3;
-    private static readonly maxBridgePickDistance = 48;
     private static readonly superWeaponPointerTypes = new Map<SuperWeaponType, PointerType>()
         .set(SuperWeaponType.MultiMissile, PointerType.Nuke)
         .set(SuperWeaponType.LightningStorm, PointerType.Storm)
@@ -1364,13 +1363,16 @@ export class SceneSandboxTester {
         this.runtime?.worldInteraction?.setEnabled?.(!this.state.placementActive && !this.state.demolitionActive && !this.state.superWeaponTargetingActive);
     }
 
+    private static tileTargetingContext(runtime: SandboxRuntime): TileTargetingContext {
+        return { game: runtime.game, worldScene: runtime.worldScene, tileHelper: runtime.tileHelper };
+    }
+
     private static getTargetTileAtScreenPoint(pointer: { x: number; y: number }): any | undefined {
         const runtime = this.runtime;
         if (!runtime) {
             return undefined;
         }
-        return this.getHighBridgeTileAtScreenPoint(pointer) ??
-            runtime.tileHelper.getTileAtScreenPoint(pointer);
+        return TileTargeting.getTargetTileAtScreenPoint(this.tileTargetingContext(runtime), pointer);
     }
 
     private static getHighBridgeTileAtScreenPoint(pointer: { x: number; y: number }): any | undefined {
@@ -1378,98 +1380,7 @@ export class SceneSandboxTester {
         if (!runtime) {
             return undefined;
         }
-        const result = this.pickClosestBridgeTileByScreenPoint(this.collectHighBridgeCandidates(pointer), pointer);
-        return result && result.distance <= this.maxBridgePickDistance
-            ? result.tile
-            : undefined;
-    }
-
-    private static collectHighBridgeCandidates(pointer: { x: number; y: number }): any[] {
-        const runtime = this.runtime;
-        if (!runtime) {
-            return [];
-        }
-        const candidates: any[] = [];
-        const seen = new Set<string>();
-        const addTile = (tile: any): void => {
-            if (!tile) {
-                return;
-            }
-            const bridge = runtime.game.map.tileOccupation.getBridgeOnTile(tile);
-            if (!bridge?.isHighBridge?.()) {
-                return;
-            }
-            const key = `${tile.rx},${tile.ry}`;
-            if (!seen.has(key)) {
-                seen.add(key);
-                candidates.push(tile);
-            }
-        };
-        const addNearbyTiles = (tile: any, radius: number): void => {
-            if (!tile) {
-                return;
-            }
-            for (let dx = -radius; dx <= radius; dx += 1) {
-                for (let dy = -radius; dy <= radius; dy += 1) {
-                    addTile(runtime.game.map.tiles.getByMapCoords(tile.rx + dx, tile.ry + dy));
-                }
-            }
-        };
-        for (const tile of runtime.tileHelper.intersectTilesByScreenPos(pointer, 4)) {
-            addNearbyTiles(tile, 1);
-        }
-        for (const tile of runtime.tileHelper.intersectTilesByScreenPos(pointer)) {
-            addNearbyTiles(tile, this.bridgePickRadius);
-        }
-        addNearbyTiles(runtime.tileHelper.getTileAtScreenPoint(pointer), this.bridgePickRadius);
-        return candidates;
-    }
-
-    private static pickClosestBridgeTileByScreenPoint(tiles: any[], pointer: { x: number; y: number }): { tile: any; distance: number } | undefined {
-        const runtime = this.runtime;
-        if (!runtime) {
-            return undefined;
-        }
-        let closestTile: any;
-        let closestDistance = Number.POSITIVE_INFINITY;
-        const seen = new Set<string>();
-        for (const tile of tiles) {
-            if (!tile) {
-                continue;
-            }
-            const key = `${tile.rx},${tile.ry}`;
-            if (seen.has(key)) {
-                continue;
-            }
-            seen.add(key);
-            const bridge = runtime.game.map.tileOccupation.getBridgeOnTile(tile);
-            if (!bridge) {
-                continue;
-            }
-            const screenPoint = runtime.tileHelper.getTileCenterScreenPoint?.(tile, bridge.tileElevation ?? 0) ??
-                this.getTileCenterScreenPoint(tile, bridge.tileElevation ?? 0);
-            const distance = Math.hypot(pointer.x - screenPoint.x, pointer.y - screenPoint.y);
-            if (distance < closestDistance) {
-                closestDistance = distance;
-                closestTile = tile;
-            }
-        }
-        if (!closestTile) {
-            return undefined;
-        }
-        return { tile: closestTile, distance: closestDistance };
-    }
-
-    private static getTileCenterScreenPoint(tile: any, tileElevation: number): { x: number; y: number } {
-        const runtime = this.runtime!;
-        const viewport = runtime.worldScene.viewport;
-        const origin = IsoCoords.worldToScreen(0, 0);
-        const pan = runtime.worldScene.cameraPan.getPan();
-        const screenPos = IsoCoords.tile3dToScreen(tile.rx + 0.5, tile.ry + 0.5, tile.z + tileElevation);
-        return {
-            x: screenPos.x - origin.x - pan.x + viewport.x + viewport.width / 2,
-            y: screenPos.y - origin.y - pan.y + viewport.y + viewport.height / 2,
-        };
+        return TileTargeting.getHighBridgeTileAtScreenPoint(this.tileTargetingContext(runtime), pointer);
     }
 
     private static updateDemolitionPointer(pointer: { x: number; y: number } | undefined): void {
