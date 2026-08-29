@@ -49,19 +49,28 @@ export class TechnoObject extends NamedMapObject {
 }
 export class TechnoTypeObject extends TechnoObject {
 }
+// Field layout confirmed against EA's official FinalSun/FinalAlert2 mission
+// editor source (CMapData::AddStructure/UpdateStructures in MapData.cpp,
+// https://github.com/ElectronicArts/CnC_Remastered_Collection-adjacent
+// FinalSun/FinalAlert2 release) - flag1/flag2/flag3/flag4 are FA2's own
+// generic, unlabeled placeholder names; aiSellable/aiRebuildable are this
+// codebase's inferred labels for flag1/flag2 (common RA2 modding
+// convention), not names FA2 itself uses.
 export class Structure extends TechnoTypeObject {
-    poweredOn = false;
-    aiSellable = false;
+    aiSellable = true;
     aiRebuildable = false;
+    poweredOn = true;
+    upgradeCount = 0;
+    spotlight = 0;
     upgrades: string[] = [];
-    spotlight = "NONE";
-    nominal = false;
+    flag3 = false;
+    flag4 = false;
     constructor() {
         super(ObjectType.Building);
     }
 }
 export class Vehicle extends TechnoTypeObject {
-    mission = "";
+    mission = "Guard";
     group = -1;
     constructor() {
         super(ObjectType.Vehicle);
@@ -69,13 +78,14 @@ export class Vehicle extends TechnoTypeObject {
 }
 export class Infantry extends TechnoTypeObject {
     subCell = 0;
-    mission = "";
+    mission = "Guard";
     group = -1;
     constructor() {
         super(ObjectType.Infantry);
     }
 }
 export class Aircraft extends TechnoTypeObject {
+    mission = "Guard";
     constructor() {
         super(ObjectType.Aircraft);
     }

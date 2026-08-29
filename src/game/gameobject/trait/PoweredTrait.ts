@@ -10,6 +10,9 @@ export class PoweredTrait {
     setTurnedOn(turnedOn: boolean): void {
         this.turnedOn = turnedOn;
     }
+    isTurnedOn(): boolean {
+        return this.turnedOn;
+    }
     isCharged(): boolean {
         return (!!this.obj.isBuilding() &&
             !!this.obj.overpoweredTrait?.hasChargersToPowerOn());

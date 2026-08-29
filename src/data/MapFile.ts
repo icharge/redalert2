@@ -236,11 +236,16 @@ export class MapFile extends IniFile {
             this.waypoints.push({ number, rx, ry });
         }
     }
+    // Field layout confirmed against EA's official FinalSun/FinalAlert2
+    // mission editor source (CMapData::AddStructure, MapData.cpp): House,
+    // ID, HP%, Y, X, Facing, Tag, flag1, flag2, Energy(poweredOn),
+    // UpgradeCount, Spotlight, Upgrade1, Upgrade2, Upgrade3, flag3, flag4 -
+    // 17 fields total.
     readStructures(e: IniSection) {
         this.structures = [];
         for (const [, rawValue] of e.entries) {
             const values = this.normalizeIniEntryValue(rawValue).split(",");
-            if (values.length > 15) {
+            if (values.length > 16) {
                 const structure = new mapObjects.Structure();
                 structure.owner = values[0];
                 structure.name = values[1];
@@ -252,9 +257,11 @@ export class MapFile extends IniFile {
                 structure.aiSellable = values[7] === "1";
                 structure.aiRebuildable = values[8] === "1";
                 structure.poweredOn = Boolean(Number(values[9]));
-                structure.upgrades = [values[10], values[11], values[12]].filter((v) => v && v.toLowerCase() !== "none");
-                structure.spotlight = values[13] ?? "NONE";
-                structure.nominal = values[14] === "1";
+                structure.upgradeCount = Number(values[10]);
+                structure.spotlight = Number(values[11]);
+                structure.upgrades = [values[12], values[13], values[14]].filter((v) => v && v.toLowerCase() !== "none");
+                structure.flag3 = values[15] === "1";
+                structure.flag4 = values[16] === "1";
                 this.structures.push(structure);
             }
         }
@@ -317,6 +324,17 @@ export class MapFile extends IniFile {
             this.infantries.push(infantry);
         }
     }
+    // Field layout confirmed against EA's official FinalSun/FinalAlert2
+    // mission editor source (CMapData::AddAircraft, MapData.cpp): House,
+    // ID, HP%, Y, X, Facing, Mission, Tag, flag1, flag2, flag3, flag4 - only
+    // 12 fields total (Aircraft is NOT shaped like Vehicle/Infantry - it has
+    // no dedicated onBridge slot in FA2's own format). The pre-existing
+    // `values[length - 4]` onBridge read predates this fix and, per the
+    // confirmed 12-field layout, lands on index 8 - the same slot as
+    // veterancy/flag1 - for any FA2-authored (i.e. virtually all) Aircraft
+    // line. Left unchanged rather than guessed at further: fixing it needs
+    // a real .map sample with an on-bridge aircraft to confirm what (if
+    // anything) actually carries that state in practice.
     readAircrafts() {
         this.aircrafts = [];
         const section = this.getSection("Aircraft");
@@ -336,6 +354,7 @@ export class MapFile extends IniFile {
             aircraft.rx = Number(values[3]);
             aircraft.ry = Number(values[4]);
             aircraft.direction = Number(values[5]);
+            aircraft.mission = values[6];
             aircraft.tag = this.readTagId(values[7]);
             aircraft.veterancy = Number(values[8]);
             aircraft.onBridge = values[values.length - 4] === "1";
@@ -358,20 +377,15 @@ export class MapFile extends IniFile {
                 structure.aiSellable ? "1" : "0",
                 structure.aiRebuildable ? "1" : "0",
                 structure.poweredOn ? "1" : "0",
+                String(structure.upgradeCount),
+                String(structure.spotlight),
                 ...upgrades,
-                structure.spotlight,
-                structure.nominal ? "1" : "0",
+                structure.flag3 ? "1" : "0",
+                structure.flag4 ? "1" : "0",
             ];
             section.set(String(index), fields.join(",") + ",");
         });
     }
-    // Vehicle/Infantry/Aircraft each have 3 trailing fields this editor
-    // doesn't model yet (FollowsIndex + two Autocreate-recruitable flags -
-    // see readVehicles()/readInfantries()'s dropped index-11+ fields, and
-    // readAircrafts()'s length-4-from-end onBridge read, which implies the
-    // same trailing shape). Written as fixed placeholders since Phase 1
-    // doesn't expose editing them; revisit if that assumption needs fixing.
-    private static readonly UNMODELED_TECHNO_TAIL = ["-1", "1", "1"];
     writeVehicles(vehicles: mapObjects.Vehicle[]) {
         const section = this.getOrCreateSection("Units");
         section.entries.clear();
@@ -388,7 +402,10 @@ export class MapFile extends IniFile {
                 String(vehicle.veterancy),
                 String(vehicle.group),
                 vehicle.onBridge ? "1" : "0",
-                ...MapFile.UNMODELED_TECHNO_TAIL,
+                // flag4/flag5/flag6: not modeled by this editor yet (FA2's
+                // own defaults for a freshly-placed vehicle - MapData.cpp's
+                // CMapData::AddUnit).
+                "-1", "1", "0",
             ];
             section.set(String(index), fields.join(",") + ",");
         });
@@ -410,7 +427,10 @@ export class MapFile extends IniFile {
                 String(infantry.veterancy),
                 String(infantry.group),
                 infantry.onBridge ? "1" : "0",
-                ...MapFile.UNMODELED_TECHNO_TAIL,
+                // flag4/flag5: not modeled by this editor yet (FA2's own
+                // defaults for a freshly-placed infantry unit -
+                // MapData.cpp's CMapData::AddInfantry).
+                "1", "0",
             ];
             section.set(String(index), fields.join(",") + ",");
         });
@@ -419,9 +439,12 @@ export class MapFile extends IniFile {
         const section = this.getOrCreateSection("Aircraft");
         section.entries.clear();
         aircrafts.forEach((aircraft, index) => {
-            // Aircraft's own type doesn't model mission/group (readAircrafts()
-            // doesn't populate them - see its comment); write the same
-            // placeholder defaults used for the vehicle/infantry tail.
+            // flag2/flag3/flag4: not modeled by this editor yet (FA2's own
+            // defaults for a freshly-placed aircraft - MapData.cpp's
+            // CMapData::AddAircraft). onBridge has no confirmed slot in
+            // this 12-field layout - see readAircrafts()'s comment - so it
+            // isn't written here; a round-tripped on-bridge aircraft will
+            // lose that flag until that's resolved against real map data.
             const fields = [
                 aircraft.owner,
                 aircraft.name,
@@ -429,12 +452,10 @@ export class MapFile extends IniFile {
                 String(aircraft.rx),
                 String(aircraft.ry),
                 String(aircraft.direction),
-                "Guard",
+                aircraft.mission || "Guard",
                 aircraft.tag ?? "None",
                 String(aircraft.veterancy),
-                "-1",
-                aircraft.onBridge ? "1" : "0",
-                ...MapFile.UNMODELED_TECHNO_TAIL,
+                "0", "1", "0",
             ];
             section.set(String(index), fields.join(",") + ",");
         });
