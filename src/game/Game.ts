@@ -81,6 +81,15 @@ interface ObjectKiller {
     obj?: GameObject;
     weapon?: Weapon;
 }
+export interface GameInitOptions {
+    /**
+     * Also spawn map-placed technos owned by a non-neutral house (normally
+     * skipped — see createInitialMapTechnos). Only meaningful when the
+     * caller has ensured a Player exists in playerList for every house
+     * name referenced by the map's object sections.
+     */
+    includeNonNeutralMapTechnos?: boolean;
+}
 export class Game {
     public updatableObjects = new Set<GameObject>();
     public constructionWorkers = new Map<Player, ConstructionWorker>();
@@ -203,9 +212,9 @@ export class Game {
     getUnitSelection() {
         return this.unitSelection;
     }
-    init(localPlayer: Player) {
+    init(localPlayer: Player, options: GameInitOptions = {}) {
         this.localPlayer = localPlayer;
-        this.createMapObjects();
+        this.createMapObjects(options);
         this.createPlayerInitialUnits();
         this.map.terrain.computeAllPassabilityGraphs();
         this.mapShroudTrait.init(this);
@@ -239,13 +248,13 @@ export class Game {
             }
         }
     }
-    createMapObjects() {
+    createMapObjects(options: GameInitOptions = {}) {
         const noHarvesters = this.rules.general.harvesterUnit.every((unitName: string) => !isBetween((this.rules.getObject(unitName, ObjectType.Vehicle) as TechnoRules).techLevel, 0, this.rules.mpDialogSettings.techLevel));
         const mapObjects = this.map.getInitialMapObjects();
         this.createInitialMapTerrains(mapObjects.terrains, noHarvesters);
         this.createInitialMapOverlays(mapObjects.overlays, noHarvesters);
         this.createInitialMapSmudges(mapObjects.smudges);
-        this.createInitialMapTechnos(mapObjects.technos);
+        this.createInitialMapTechnos(mapObjects.technos, options);
     }
     createInitialMapTerrains(terrains: MapTerrain[], noHarvesters: boolean) {
         for (const terrain of terrains) {
@@ -398,7 +407,7 @@ export class Game {
             this.spawnObject(smudgeObj, tile);
         }
     }
-    createInitialMapTechnos(technos: MapTechno[]) {
+    createInitialMapTechnos(technos: MapTechno[], options: GameInitOptions = {}) {
         const playersByCountry = new Map(this.playerList
             .getAll()
             .filter((player: Player) => !!player.country)
@@ -419,7 +428,14 @@ export class Game {
                 console.warn(`Invalid owner "${techno.owner}" for map object`, techno);
                 continue;
             }
-            if (!owner.isNeutral) {
+            // Real multiplayer matches only pre-place neutral-owned map
+            // technos (civilians, tech buildings); house-owned ones are a
+            // single-player/campaign map feature that assumes a Player
+            // exists for that house, which a live match normally doesn't
+            // create for non-participating houses. Tools that build their
+            // own full player-per-house roster (e.g. MapEditorTester) opt
+            // in via includeNonNeutralMapTechnos to load them too.
+            if (!owner.isNeutral && !options.includeNonNeutralMapTechnos) {
                 continue;
             }
             const obj = this.createObject(techno.type, name);
