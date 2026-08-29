@@ -130,6 +130,7 @@ export class TestEntryScreen implements Screen {
             this.createRouteButton('World Test', 'Open the world scene test tool', '/worldscenetest'),
             this.createRouteButton('Movement Test', 'Open the unit movement test tool', '/unitmovementtest'),
             this.createRouteButton('Scene Sandbox', 'Open the map sandbox where units can be placed manually', '/scenesandbox'),
+            this.createRouteButton('Map Editor', 'Open the in-engine map editor for placing and saving objects', '/mapeditor'),
             this.createRouteButton('Performance Test', 'Open the performance benchmark test tool', '/perftest'),
             this.createBackToCategoriesButton(),
             this.createBackToMenuButton()

@@ -1124,6 +1124,49 @@ export class Application {
             });
             this.currentRouteHandler = SceneSandboxTester;
         });
+        this.routing.addRoute("/mapeditor", async (params) => {
+            if (!Engine.vfs) {
+                throw new Error("Original game files must be provided.");
+            }
+            console.log('[Application] Initializing MapEditorTester');
+            const { TestToolSupport } = await this.importOptionalDevModule('./tools/TestToolSupport');
+            // Optional #/mapeditor/<map title or filename> — same resolution
+            // as /scenesandbox above.
+            let mapCandidates = ["mp18s3.map", "mp03t4.map"];
+            const requestedMapQuery = params[0] ? decodeURIComponent(params[0]) : undefined;
+            if (requestedMapQuery) {
+                const query = requestedMapQuery.toLowerCase();
+                const match = Engine.getMapList().getAll().find((map: any) => map.fileName.toLowerCase() === query ||
+                    (map.getFullMapTitle(this.strings) as string).toLowerCase().includes(query));
+                if (match) {
+                    console.log(`[Application] Resolved map editor map query "${requestedMapQuery}" -> ${match.fileName}`);
+                    mapCandidates = [match.fileName, ...mapCandidates];
+                }
+                else {
+                    console.warn(`[Application] No map found matching "${requestedMapQuery}"; falling back to defaults`);
+                }
+            }
+            let loadedMap: any;
+            let loadedMapName = "";
+            for (const mapName of mapCandidates) {
+                try {
+                    loadedMap = await TestToolSupport.loadMap(this.createTestToolContext().mapResourceLoader!, mapName);
+                    loadedMapName = mapName;
+                    break;
+                }
+                catch (error) {
+                    console.warn(`[Application] Failed to load map editor map "${mapName}"`, error);
+                }
+            }
+            if (!loadedMap) {
+                throw new Error("Failed to load a map editor map.");
+            }
+            const { MapEditorTester } = await this.importOptionalDevModule('./tools/MapEditorTester');
+            await MapEditorTester.main(Engine.vfs, loadedMap, this.rootEl!, this.strings, this.createTestToolContext(), {
+                mapName: loadedMapName,
+            });
+            this.currentRouteHandler = MapEditorTester;
+        });
         this.routing.addRoute("/liveinteraction", async () => {
             if (!Engine.vfs) {
                 throw new Error("Original game files must be provided.");
