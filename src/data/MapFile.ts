@@ -247,8 +247,14 @@ export class MapFile extends IniFile {
                 structure.health = Number(values[2]);
                 structure.rx = Number(values[3]);
                 structure.ry = Number(values[4]);
+                structure.direction = Number(values[5]);
                 structure.tag = this.readTagId(values[6]);
+                structure.aiSellable = values[7] === "1";
+                structure.aiRebuildable = values[8] === "1";
                 structure.poweredOn = Boolean(Number(values[9]));
+                structure.upgrades = [values[10], values[11], values[12]].filter((v) => v && v.toLowerCase() !== "none");
+                structure.spotlight = values[13] ?? "NONE";
+                structure.nominal = values[14] === "1";
                 this.structures.push(structure);
             }
         }
@@ -275,8 +281,10 @@ export class MapFile extends IniFile {
             vehicle.rx = Number(values[3]);
             vehicle.ry = Number(values[4]);
             vehicle.direction = Number(values[5]);
+            vehicle.mission = values[6];
             vehicle.tag = this.readTagId(values[7]);
             vehicle.veterancy = Number(values[8]);
+            vehicle.group = Number(values[9]);
             vehicle.onBridge = values[10] === "1";
             this.vehicles.push(vehicle);
         }
@@ -300,9 +308,11 @@ export class MapFile extends IniFile {
             infantry.rx = Number(values[3]);
             infantry.ry = Number(values[4]);
             infantry.subCell = Number(values[5]);
+            infantry.mission = values[6];
             infantry.direction = Number(values[7]);
             infantry.tag = this.readTagId(values[8]);
             infantry.veterancy = Number(values[9]);
+            infantry.group = Number(values[10]);
             infantry.onBridge = values[11] === "1";
             this.infantries.push(infantry);
         }
@@ -315,6 +325,10 @@ export class MapFile extends IniFile {
         }
         for (const rawValue of section.entries.values()) {
             const values = this.normalizeIniEntryValue(rawValue).split(",");
+            if (values.length <= 8) {
+                console.warn(`Invalid Aircraft entry: "${this.normalizeIniEntryValue(rawValue)}"`);
+                continue;
+            }
             const aircraft = new mapObjects.Aircraft();
             aircraft.owner = values[0];
             aircraft.name = values[1];

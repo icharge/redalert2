@@ -51,17 +51,26 @@ export class TechnoTypeObject extends TechnoObject {
 }
 export class Structure extends TechnoTypeObject {
     poweredOn = false;
+    aiSellable = false;
+    aiRebuildable = false;
+    upgrades: string[] = [];
+    spotlight = "NONE";
+    nominal = false;
     constructor() {
         super(ObjectType.Building);
     }
 }
 export class Vehicle extends TechnoTypeObject {
+    mission = "";
+    group = -1;
     constructor() {
         super(ObjectType.Vehicle);
     }
 }
 export class Infantry extends TechnoTypeObject {
     subCell = 0;
+    mission = "";
+    group = -1;
     constructor() {
         super(ObjectType.Infantry);
     }
