@@ -433,6 +433,87 @@ built.
 
 ## 4. Phased implementation plan
 
+### Status checklist
+
+**Phase 1 — Object placement editor: shipped.**
+
+- [x] Step 1: fix/extend the map-object parser (`MapObjects.ts`, `MapFile.ts`
+      `read*`) — full field capture, real editor-confirmed layouts
+- [x] Step 2: reverse serializers — `MapFile.write{Structures,Vehicles,
+      Infantries,Aircrafts}()`
+- [x] Step 3: `GameObject → MapObjects` extraction —
+      `GameObjectMapSerializer.ts`'s `extractMapObjects()`
+- [x] Step 4: full save pipeline proven end-to-end (no UI) —
+      `MapEditorSaveEndToEnd.test.ts`
+- [x] Step 5: shared placement primitives extracted — `TileTargeting.ts`,
+      `ObjectCatalog.ts` (narrower than originally sketched; see §4 Phase 1
+      write-up for why)
+- [x] Step 6: `MapEditorTester` built and reachable at `/mapeditor`
+- [x] Step 7: `/mapeditor` route registered
+- [x] Bonus (found necessary during live testing, not in the original 7):
+      Delete Object Mode, Download Map File, editable Save-As filename,
+      localhost-only dev session token
+- [x] Bonus fix: `WorldInteraction` no longer eats Backspace/arrow keys
+      typed into real HTML inputs (`WorldInteraction.ts`)
+- [ ] Placement-preview/ghost object before commit (§3.1) — not built,
+      click-to-commit only
+- [ ] Selection/gizmo to move or re-edit an already-placed object (§3.1) —
+      not built, add/delete only
+- [ ] Round-trip fidelity verified against a **real official map** (load →
+      `toString()` with zero edits → diff against original bytes) — only
+      verified against synthetic test fixtures so far (§5, still open)
+
+**Phase 2 — Terrain & overlay painting: planned, not started.**
+
+- [ ] Step 1: `Format5.encode`/`encodeInto`
+- [ ] Step 2: expose `mapRenderable` from `WorldView.init()`
+- [ ] Step 3: `TileCollection.repaintTile()`
+- [ ] Step 4: `MapTileLayer` persistent `uv`/drawable state +
+      `repaintTile()` (Tier 1: art already in atlas)
+- [ ] Step 5: `MapFile.writeTiles()` (`[IsoMapPack5]`) — blocked on
+      resolving the `EncodeIsoMapPack5` open question (§3.4, §5) before
+      trusting it for real saves
+- [ ] Step 6: `MapFile.writeOverlays()` (`[OverlayPack]`/`[OverlayDataPack]`)
+- [ ] Step 7: paint-mode UI in `MapEditorTester` (tile-art picker + mode
+      toggle)
+- [ ] Step 8: wire `buildMapIniString()` to call the new writers
+- [ ] Tier 2 (new art not yet in atlas, full repack) — deliberately deferred
+      past v1 (§4 design decision 2)
+- [ ] Height/`z` painting — deliberately excluded from v1 (§4 design
+      decision 1)
+
+**Phase 3 — Trigger/tag/AI scripting UI: sketched only, not planned to
+step level.**
+
+- [ ] Dedicated research/planning pass (this phase's own detailed plan,
+      mirroring Phase 1/2's) — not started
+- [ ] `TeamTypes`/`TaskForces`/`ScriptTypes` parser — confirmed zero
+      references in `MapFile.ts` today, a complete gap, not just lossy
+      handling
+- [ ] Trigger/Event/Action/Tag editing UI, using `FAData.ini`'s
+      `[EventsRA2]`/`[ActionsRA2]` as the parameter-type registry (§4)
+
+**Phase 4 — Lighting tuning, map bootstrap, polish: sketched only.**
+
+- [ ] New-map bootstrap from `StdMapRA2.ini`'s confirmed template content
+- [ ] Resize / theater switch
+- [ ] Live `[Lighting]` tuning UI (`MapLighting`/`Lighting.compute()` already
+      support this "essentially for free" once an editable model exists)
+- [ ] Undo system — **no design exists yet for either phase**: terrain/
+      overlay should borrow the real editor's bounding-box snapshot
+      approach (Phase 2), object placement needs a separate add/remove/move
+      operation stack (Phase 1) — see §4's "no undo design exists" note
+
+**Cross-phase, not tied to one phase specifically:**
+
+- [ ] LZO/Format80 encoder output validated against the real game or CNCMaps
+      Renderer (not just this repo's own decoder) — still open (§5)
+- [ ] Structure fields with no live `GameObject` representation
+      (`aiSellable`/`aiRebuildable`/`upgradeCount`/`spotlight`/`upgrades`/
+      `flag3`/`flag4`) — still lost on save for untouched structures (§5)
+- [ ] Tunnel/tube editing, dedicated map validation, bitmap-to-map import —
+      noted for completeness, no phase assigned (§4)
+
 **Phase 1 — Object placement editor. Shipped.** All 7 steps of the
 implementation plan (`.claude/plans/eventual-prancing-willow.md`) are done,
 committed, and verified end-to-end live in a real browser — not just unit
