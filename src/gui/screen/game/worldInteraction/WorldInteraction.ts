@@ -189,17 +189,36 @@ export class WorldInteraction {
     };
     private readonly handleKeyDown = (event: KeyboardEvent): void => {
         this.handleKeyModifierChange(event);
+        if (WorldInteraction.isTextEditingTarget(event.target)) {
+            return;
+        }
         this.keyboardHandler.handleKeyDown(event);
         this.arrowScrollHandler.handleKeyDown(event);
         this.chatTypingHandler?.handleKeyDown?.(event);
     };
     private readonly handleKeyUp = (event: KeyboardEvent): void => {
         this.handleKeyModifierChange(event);
+        if (WorldInteraction.isTextEditingTarget(event.target)) {
+            return;
+        }
         this.keyboardHandler.handleKeyUp(event);
         this.arrowScrollHandler.handleKeyUp(event);
         this.chatTypingHandler?.handleKeyUp?.(event);
         this.tooltipHandler.reset();
     };
+    // The real in-game chat box is a custom canvas-rendered text buffer, not
+    // a native <input> - none of the handlers below (keyboard shortcuts,
+    // arrow-key map scrolling, chat-open detection) ever needed to consider
+    // real DOM text editing. Tools that layer real HTML form controls over
+    // an active WorldInteraction (e.g. MapEditorTester's Save-As/session-
+    // token fields) need this to back off while one of those has focus -
+    // otherwise native text editing (Backspace/arrow-key cursor movement,
+    // both unconditionally preventDefault()'d by keyboardHandler/
+    // arrowScrollHandler) never reaches the input at all.
+    private static isTextEditingTarget(target: EventTarget | null): boolean {
+        const element = target as HTMLElement | null;
+        return !!element?.closest?.('input, textarea, [contenteditable="true"]');
+    }
     private handleKeyModifierChange(event: KeyboardEvent): void {
         const previous = this.lastKeyMods;
         const normalized = this.normalizeModifierEvent(event);
