@@ -84,6 +84,21 @@ export class Renderer {
                 canvas: canvas,
                 preserveDrawingBuffer: true,
                 powerPreference: 'high-performance',
+                // Map tiles are alpha-tested (PaletteBasicMaterial's
+                // alphaTest: 0.5) to cut each tile's rectangular sprite down
+                // to its actual diamond shape - a hard, unblended cutout
+                // edge. Without MSAA, NearestFilter sampling along that
+                // diagonal edge aliases into a dashed/broken outline that
+                // traces every tile boundary, most visible on flat, low-
+                // contrast terrain (e.g. snow) and worse at some zoom levels
+                // since the screen-to-texel ratio shifts. Confirmed live: a
+                // solid-color material (no alphaTest) shows zero artifacts
+                // on the same geometry, and disabling alphaTest on the real
+                // material turns the dashes into fully-solid black corners
+                // (the same edge, just no longer alpha-cut at all) - so the
+                // aliasing is specifically at this cutout edge, and MSAA is
+                // the standard fix for exactly this class of artifact.
+                antialias: true,
             });
         }
         catch (error) {
