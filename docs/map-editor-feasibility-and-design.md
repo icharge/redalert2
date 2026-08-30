@@ -470,10 +470,10 @@ built.
       `toString()` with zero edits → diff against original bytes) — only
       verified against synthetic test fixtures so far (§5, still open)
 
-**Phase 2 — Terrain & overlay painting: in progress (1/8 steps shipped).**
+**Phase 2 — Terrain & overlay painting: in progress (2/8 steps shipped).**
 
 - [x] Step 1: `Format5.encode`
-- [ ] Step 2: expose `mapRenderable` from `WorldView.init()`
+- [x] Step 2: expose `mapRenderable` from `WorldView.init()`
 - [ ] Step 3: `TileCollection.repaintTile()`
 - [ ] Step 4: `MapTileLayer` persistent `uv`/drawable state +
       `repaintTile()` (Tier 1: art already in atlas)
@@ -649,14 +649,18 @@ Phase 1's step discipline):
    cases (empty, 1-byte, exact chunk boundary, multi-chunk, all-zero) for
    both formats. No engine/UI dependency — pure data, like Phase 1 steps
    1-2.
-2. **Expose `mapRenderable` from `WorldView.init()`** (§3.3 point 3):
-   add it to the returned object literal (`src/gui/screen/game/
+2. **Shipped.** Expose `mapRenderable` from `WorldView.init()` (§3.3
+   point 3): added to the returned object literal (`src/gui/screen/game/
    WorldView.ts`'s `return { worldScene, worldSound, renderableManager,
    superWeaponFxHandler, beaconFxHandler, mapRenderable }`). Purely
-   additive — existing destructuring call sites (`SceneSandboxTester`,
-   `MapSnapshotRenderer`, `MapEditorTester`) that don't ask for the new
-   field are unaffected. *Test*: `tsc --noEmit`, then a manual smoke check
-   that `/scenesandbox` and `/mapeditor` still boot and behave identically.
+   additive — existing destructuring call sites (`GameScreen`,
+   `ReplayScreen`, `MapSnapshotRenderer`, `SceneSandboxTester`,
+   `LiveInteractionTester`) that don't ask for the new field are
+   unaffected. `MapEditorTester`'s `EditorRuntime` now carries it as
+   `runtime.mapRenderable`, ready for the paint-mode steps ahead.
+   *Verified*: `tsc --noEmit` clean, full test suite green, and a live
+   browser smoke check confirming `/scenesandbox` and `/mapeditor` both
+   still boot and render identically, no new console errors.
 3. **`TileCollection.repaintTile()`** (design decision 1 above).
    *Test*: standalone script (matching Phase 1's scratchpad-script
    pattern) — construct a `TileCollection` from fixture `TileData[]`,
