@@ -69,6 +69,7 @@ type EditorRuntime = {
     housePlayers: Map<string, any>;
     worldScene: any;
     worldInteraction: any;
+    mapRenderable: any;
     pointer: Pointer;
     tileHelper: MapTileIntersectHelper;
     catalog: Record<CatalogKind, string[]>;
@@ -309,6 +310,7 @@ export class MapEditorTester {
             housePlayers,
             worldScene,
             worldInteraction,
+            mapRenderable: worldViewInit.mapRenderable,
             pointer,
             tileHelper,
             catalog,

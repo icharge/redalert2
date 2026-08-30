@@ -130,7 +130,8 @@ export class WorldView {
             worldSound,
             renderableManager,
             superWeaponFxHandler,
-            beaconFxHandler
+            beaconFxHandler,
+            mapRenderable
         };
     }
     handleViewportChange(viewport: any): void {
