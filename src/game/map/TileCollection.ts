@@ -59,6 +59,7 @@ export interface Tile extends TileData {
     occluded: boolean;
 }
 export class TileCollection {
+    private static readonly terrainTypes = new Set(Object.values(TerrainType));
     private tileSets: TileSets;
     private generalRules: GeneralRules;
     private rSize: Size;
@@ -92,14 +93,13 @@ export class TileCollection {
         const tiles = this.tiles = new Array<Tile>(tileData.length);
         const cliffTiles: Tile[] = [];
         const bridgeSetTiles = this.bridgeSetTiles = [];
-        const terrainTypes = new Set(Object.values(TerrainType));
         this.minTileHeight = Number.POSITIVE_INFINITY;
         this.maxTileHeight = 0;
         for (let i = 0, len = tileData.length; i < len; ++i) {
             const tileDataItem = tileData[i];
             const tileImage = tileSets.getTileImage(tileDataItem.tileNum, tileDataItem.subTile, randomIndexSelector) as TileImage;
             const terrainType = tileImage.terrainType;
-            if (!terrainTypes.has(terrainType)) {
+            if (!TileCollection.terrainTypes.has(terrainType)) {
                 throw new Error(`Tile (${tileDataItem.rx}, ${tileDataItem.ry}) has unknown terrain type "${terrainType}"`);
             }
             const tile: Tile = {
@@ -296,6 +296,29 @@ export class TileCollection {
             }
         }
         return result;
+    }
+    // Texture-only repaint: mutates an existing Tile's art in place, leaving
+    // rx/ry/dx/dy/z/id untouched. Height changes and the one-time cliff-
+    // adjacency pass (computeLandBehindCliffTiles, constructor-only) are out
+    // of scope for v1 - repainting a tile into/out of TerrainType.Cliff
+    // won't refresh neighbouring tiles' landType, a known limitation
+    // (docs/map-editor-feasibility-and-design.md §4 design decision 1).
+    repaintTile(rx: number, ry: number, tileNum: number, subTile: number, randomIndexSelector: (min: number, max: number) => number): Tile {
+        const tile = this.getByMapCoords(rx, ry);
+        if (!tile) {
+            throw new Error(`No tile at map coordinates (${rx}, ${ry})`);
+        }
+        const tileImage = this.tileSets.getTileImage(tileNum, subTile, randomIndexSelector) as TileImage;
+        const terrainType = tileImage.terrainType;
+        if (!TileCollection.terrainTypes.has(terrainType)) {
+            throw new Error(`Tile (${rx}, ${ry}) repaint has unknown terrain type "${terrainType}"`);
+        }
+        tile.tileNum = tileNum;
+        tile.subTile = subTile;
+        tile.terrainType = terrainType;
+        tile.landType = getLandType(terrainType);
+        tile.rampType = tileImage.rampType;
+        return tile;
     }
     getPlaceholderTile(rx: number, ry: number): Tile {
         const referenceTile = this.tiles[0];
