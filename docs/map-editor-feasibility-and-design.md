@@ -312,24 +312,71 @@ to `MapFile` sections at all. Concretely:
 
 ### 3.3 New capability: incremental terrain mesh updates
 
-`MapTileLayer` needs a real "repaint this tile" path. Two viable shapes,
-roughly in order of engineering cost:
+`MapTileLayer` needs a real "repaint this tile" path. Confirmed directly by
+reading `MapTileLayer.ts` and `SpriteUtils.ts` (not just inferred) — two
+viable tiers, roughly in order of engineering cost:
 
-1. **Cheap, works for texture-only changes**: since terrain tiles are drawn
-   from a shared `TextureAtlas`, if the new tile's art is already resident
-   in the atlas, only the affected sprite's UV rect in the merged geometry's
-   `uv` buffer attribute needs updating in place (same technique
-   `updateColorMultBufferAtIndex` already uses for the color-mult buffer) —
-   no geometry rebuild, no atlas rebuild, as long as `tileIndexes.get(tile)`
-   (already tracked) gives a stable vertex-range to patch.
-2. **General case (new tile art, e.g. painting in a brand-new tileset
-   variant not yet in the atlas, or a height/`z` change that moves the
-   sprite's world position)**: requires re-packing the atlas and/or
-   rebuilding that tile's quad geometry and splicing it into the merged
-   buffer — meaningfully more work, closer to (but hopefully well short of)
-   a full rebuild. A pragmatic middle ground: batch edits within one brush
-   stroke/frame and rebuild only the tiles touched that stroke, not the
-   whole map.
+1. **Tier 1 — cheap, texture-only, art already resident in the atlas.**
+   Since terrain tiles are drawn from a shared `TextureAtlas`, if the new
+   tile's art is already packed, only the affected sprite's UV rect in the
+   merged geometry's `uv` buffer attribute needs updating in place — same
+   technique `updateColorMultBufferAtIndex` already uses for the color-mult
+   buffer, keyed by the already-tracked `tileIndexes.get(tile)`.
+
+   **One subtlety the original version of this document missed, worth
+   flagging explicitly**: each tile is not one quad. `SpriteUtils.
+   createSpriteGeometry` (the function `MapTileLayer.createTileObjects`
+   calls to build each tile's geometry) always splits a sprite into **two**
+   indexed rects — left half and right half, `splitX = spriteWidth / cosY /
+   2` when `depth` isn't requested (which `MapTileLayer`'s call doesn't) —
+   merged together, 8 vertices total (`VERTICES_PER_SPRITE` with
+   `USE_INDEXED_GEOMETRY = true`). A correct per-tile UV patch has to call
+   `SpriteUtils.writeIndexedRectUvsIntoBuffer` **twice**, once per half with
+   its own partial `textureArea` slice — exactly mirroring
+   `createSpriteGeometry`'s own `addRectUvs(leftGeometry, {...textureArea,
+   width: splitX}, imageSize)` / `addRectUvs(rightGeometry, {...textureArea,
+   x: textureArea.x + splitX, width: textureArea.width - splitX},
+   imageSize)` calls. Writing only one rect (the realistic first-attempt
+   mistake) would leave half of every repainted tile showing stale/garbage
+   UVs, not fail loudly.
+
+   This also means `MapTileLayer` needs two new persistent fields it
+   currently discards after use: the merged geometry's `uv`
+   `BufferAttribute` itself (currently a local `const uvAttribute` used only
+   for a one-time sanity check, never stored on `this` the way
+   `colorMultAttribute` is), and a `Map<Tile, IndexedBitmap>` recording
+   which atlas-packed drawable each tile currently shows (`tileImageMap` is
+   already built during `createTileObjects` but is local, not kept).
+
+2. **Tier 2 — general case: art not yet in the atlas, or a height/`z`
+   change.** Confirmed by reading `TextureAtlas.pack()` directly: it always
+   allocates a fresh `GrowingPacker` and a brand-new `THREE.DataTexture`,
+   with no incremental-add API. Re-packing to fit a genuinely new drawable
+   reflows **every** block's position, not just the new one — so this tier
+   isn't "rebuild one tile," it's "recompute and rewrite the UV pair for
+   every tile in the map, then swap `material.map` to the new texture and
+   set `material.needsUpdate = true`." Still well short of rebuilding the
+   merged *geometry* (positions/indices are untouched, only UVs and the
+   texture), but a genuinely full-map operation, confirmed rather than
+   assumed. A height/`z` change is a separate, harder case again — it moves
+   the sprite's world position (`Coords.tile3dToWorld`), which lives in the
+   `position` attribute this tier doesn't touch at all; out of scope for the
+   first version of terrain painting (see §4's Phase 2 step list).
+
+   Practically: most real brush strokes repaint using art already present in
+   the loaded map's own theater tileset (adjacent terrain variants, cliff/
+   shore auto-transition tiles the mapper is already using elsewhere), so
+   Tier 1 should cover the large majority of editing; Tier 2 exists for
+   completeness and for genuinely introducing new tileset variants.
+
+3. **Wiring gap, not yet closed**: `MapTileLayer` (owned by `MapRenderable.
+   tileLayer`) isn't reachable from outside `WorldView` today —
+   `WorldView.init()`'s return value is `{ worldScene, worldSound,
+   renderableManager, superWeaponFxHandler, beaconFxHandler }`, no
+   `mapRenderable`. `MapEditorTester` (or any future paint-mode UI) has no
+   handle to call a future `repaintTile()` on without this. Small, additive,
+   low-risk fix: add `mapRenderable` to that returned object literal —
+   see §4's Phase 2 step list, step 0.
 
 ### 3.4 New capability: `.map` serialization
 
@@ -386,28 +433,209 @@ built.
 
 ## 4. Phased implementation plan
 
-**Phase 1 — Object placement editor, nearly free.** Build the
-`EditorController` + placement-preview + selection/gizmo (§3.1) on top of
-the *existing* Scene Sandbox interaction model, targeting only
-`[Structures]`/`[Units]`/`[Infantry]`/`[Aircraft]`/`[Terrain]`/`[Smudge]`/
-`[Waypoints]`. The lossy structure-line parsing is already fixed (§2.2,
-steps 1-2 of the implementation plan below). Save = generic
-`IniFile.toString()` (already works, since nothing here touches
-`[IsoMapPack5]`) + `POST /maps/upload` (already exists, §2.6). This phase
-alone gets a mapper real WYSIWYG object placement with zero new
-compression/mesh-rebuild engineering — genuinely the highest value-to-effort
-ratio available. Remaining steps: the `GameObject`↔`MapFile` sync layer
-(§3.2), the placement-preview/selection UI (§3.1), and wiring it into a new
-tool built on the extracted Scene Sandbox placement primitives — see the
-step-by-step implementation plan tracked separately (not duplicated in this
-document to avoid drift between the two).
+**Phase 1 — Object placement editor. Shipped.** All 7 steps of the
+implementation plan (`.claude/plans/eventual-prancing-willow.md`) are done,
+committed, and verified end-to-end live in a real browser — not just unit
+tests. What exists today, reachable at `/mapeditor`:
 
-**Phase 2 — Terrain & overlay painting.** The compression encoders (§3.4)
-are done and validated in isolation; what's left is the `Format5` chunk-
-framing wrapper (mechanical) and the real work: incremental `MapTileLayer`
-updates (§3.3) and making `TileCollection` mutable (§2.5) so there's
-somewhere to call the encoder from. Overlay painting (ore/walls) follows the
-same shape once terrain works.
+- `src/tools/MapEditorTester.ts` — a persistent editor scene (real
+  `Game`/`WorldView`/`WorldScene`/`Renderer`, real lighting/shadows/VXL),
+  structured after `MapSnapshotRenderer.createGame()`'s bootstrap pattern.
+  One combatant `Player` is built per house the loaded map's technos
+  reference (plus every standard multiplayer house), so `Game.init()` can be
+  called with the new `includeNonNeutralMapTechnos` option (`Game.ts`) and
+  load *every* pre-placed object, not just neutral-owned ones — closing the
+  Phase 1 open risk this document originally flagged. Gameplay systems are
+  suppressed by simply never starting a game-tick interval (only
+  `UiAnimationLoop`'s render loop runs), since AI/triggers/combat/
+  superweapons are all driven from `game.update()` — the cleanest possible
+  version of §5's "scope of real in-game rendering" suppression concern.
+- **Place**, **Delete**, **Download Map File** (client-side, no auth), and
+  **Save to Server** (`POST /maps/upload`, auth via a pasted WOL session
+  bearer token) are all live and manually verified: placed/deleted objects
+  render immediately with correct lighting, and both the downloaded file and
+  the server-stored blob contain byte-correct `[Structures]`/`[Units]`/
+  `[Infantry]`/`[Aircraft]` lines with the rest of the map preserved
+  untouched. Delete and Download were added after the original 7-step plan,
+  in response to live testing — not in the original scope, but small,
+  contained additions (`deleteObjectAt()`/`downloadMap()` in the same file).
+- `src/tools/shared/TileTargeting.ts` and `src/tools/shared/ObjectCatalog.ts`
+  — extracted from `SceneSandboxTester` (screen→tile resolution including
+  high-bridge picking; object catalog + display-name resolution). Narrower
+  than this plan's original §3.1 sketch, which imagined a single shared
+  "placement primitives" extraction covering spawn logic too — reading the
+  actual code showed `spawnAt`/`setPlacementActive` are tightly coupled to
+  Scene-Sandbox-only concepts (synthetic local/enemy owner toggle, count-
+  based multi-spawn, veterancy/health presets, superweapon auto-arm) that an
+  editor shouldn't inherit, so `MapEditorTester` writes its own leaner
+  placement/delete logic on top of just the tile-targeting and catalog
+  primitives.
+- The `GameObject`↔`MapFile` sync layer (§3.2) exists as
+  `src/tools/mapEditor/GameObjectMapSerializer.ts`'s `extractMapObjects()`,
+  feeding `MapFile.write{Structures,Vehicles,Infantries,Aircrafts}()`. This
+  turned out sufficient without the fuller "editable model separate from the
+  live game" architecture §3.2 originally proposed — Phase 1 routes
+  everything through live `GameObject`s (extraction runs at save time, not
+  continuously), which was enough for object placement specifically. Phase 2
+  needs the fuller model (§3.2, §2.5) since a live tile mesh can't be "the
+  model" the way a `GameObject` already is.
+- **Not built**: the placement-preview/ghost object and selection/gizmo
+  system §3.1 originally sketched. Placement is still click-to-commit
+  (matching Scene Sandbox's UX, not FinalSun's preview-then-place UX) and
+  there's no way to select-and-move an already-placed object, only add/
+  delete. Worth its own follow-up if move/preview UX becomes a priority, but
+  wasn't necessary to hit "real WYSIWYG object placement that saves
+  correctly," which was the actual bar for calling Phase 1 done.
+
+**Phase 2 — Terrain & overlay painting.** Next up. The compression encoders
+(§3.4) are done and validated in isolation; what's left is the `Format5`
+chunk-framing wrapper, incremental `MapTileLayer` updates (§3.3), and making
+`TileCollection` mutable (§2.5). Planned below at the same file/method-level
+detail Phase 1's implementation plan used
+(`.claude/plans/eventual-prancing-willow.md`), informed by direct reading of
+`TileCollection.ts`, `MapTileLayer.ts`, `SpriteUtils.ts`, `TextureAtlas.ts`,
+and `WorldView.ts` this pass — not re-guessed from the original sketch
+above. Overlay painting (ore/walls) follows the same shape once terrain
+works (design decision 4, step 6 below).
+
+*Design decisions:*
+
+1. **`TileCollection` mutation is texture-only in v1, no height/`z`
+   changes.** Add `repaintTile(rx, ry, tileNum, subTile, tileSets,
+   randomIndexSelector): Tile` that looks up the existing `Tile` object via
+   the internal `tilesByRxy`/`tilesByDxy` arrays and mutates its `tileNum`/
+   `subTile`/`terrainType`/`landType`/`rampType` fields **in place** — since
+   `Tile` is a plain object with no `readonly` enforcement and the same
+   object reference is stored in both lookup arrays, an in-place mutation
+   needs no additional bookkeeping to stay consistent. `rx`/`ry`/`dx`/`dy`/
+   `z`/`id` are left untouched. Height changes are excluded because they
+   ripple into far more than rendering — `computeAllPassabilityGraphs()`,
+   `Coords.tile3dToWorld`'s world position (§3.3 Tier 2), min/max/cutoff
+   tile height, cliff-adjacency (`computeLandBehindCliffTiles`, run once at
+   construction) — each a separate, harder problem not worth conflating with
+   "repaint this tile's art." **Known v1 limitation, not fixed**: repainting
+   a tile into or out of a `TerrainType.Cliff` won't re-trigger
+   `computeLandBehindCliffTiles`'s one-time neighbor-`landType` side effect,
+   so cliff-adjacent passability can go stale after such an edit — acceptable
+   for a first version that's mainly about flat-terrain art painting
+   (clear/shore/road variants), not cliff reshaping.
+2. **`MapTileLayer.repaintTile()` is Tier 1 only in v1** (§3.3) — texture
+   swap for art already resident in the atlas. Tier 2 (new art, full atlas
+   repack) is real, scoped, and described in §3.3, but adds meaningfully
+   more risk (every tile's UVs rewritten, texture swap) for less common
+   real-world usage (§3.3's "most brush strokes reuse existing theater
+   art" reasoning) — ship Tier 1, come back for Tier 2 once Tier 1 is
+   proven solid in real use, rather than building both at once.
+3. **`Format5.encode` first, before any mutability work.** Zero dependency
+   on the mutability work below — it's a pure function operating on bytes
+   the existing round-trip tests already exercise via `decode`. Doing it
+   first means every later step (writeTiles/writeOverlays) has a working,
+   already-tested encoder to call, rather than discovering an encoder bug
+   at the same time as a new mutability bug.
+4. **`MapFile.writeTiles()`/`writeOverlays()` mirror the Phase 1 write*
+   pattern exactly** — pure data-in/INI-out, no `Game`/live-object
+   dependency, matching how `writeStructures()` etc. stay dependency-free.
+   Unlike Phase 1's writers, these read from a mutated `TileCollection`/
+   overlay array rather than from `extractMapObjects()`'s live-`GameObject`
+   inversion, since terrain/overlay have no `GameObject` representation at
+   all — `TileCollection` itself is the editable model here (§3.2's
+   "terrain painting → mutate `MapFile.tiles[i]`" sketch, now made concrete:
+   it's actually `MapFile`'s own `TileCollection` instance, not a separate
+   `tiles[]` array).
+
+*Ordered implementation steps* (each independently testable, matching
+Phase 1's step discipline):
+
+1. **`Format5.encode`/`encodeInto`** (`src/data/encoding/Format5.ts`): chunk
+   input into 8192-byte pieces (confirmed spec, §3.4), write the `{u16
+   size_in (compressed); u16 size_out (decompressed)}` header per chunk,
+   call `MiniLzo.compress`/`Format80.encode` depending on the `format`
+   param, mirroring `decodeInto`'s existing chunk-loop shape in reverse.
+   *Test*: round-trip a real `[IsoMapPack5]`/`[OverlayDataPack]` blob
+   extracted from an actual map file through `decode(encode(x))`, byte-
+   compare. No engine/UI dependency — pure data, like Phase 1 steps 1-2.
+2. **Expose `mapRenderable` from `WorldView.init()`** (§3.3 point 3):
+   add it to the returned object literal (`src/gui/screen/game/
+   WorldView.ts`'s `return { worldScene, worldSound, renderableManager,
+   superWeaponFxHandler, beaconFxHandler, mapRenderable }`). Purely
+   additive — existing destructuring call sites (`SceneSandboxTester`,
+   `MapSnapshotRenderer`, `MapEditorTester`) that don't ask for the new
+   field are unaffected. *Test*: `tsc --noEmit`, then a manual smoke check
+   that `/scenesandbox` and `/mapeditor` still boot and behave identically.
+3. **`TileCollection.repaintTile()`** (design decision 1 above).
+   *Test*: standalone script (matching Phase 1's scratchpad-script
+   pattern) — construct a `TileCollection` from fixture `TileData[]`,
+   call `repaintTile`, assert `getByMapCoords(rx, ry)` returns the mutated
+   `tileNum`/`subTile`/`terrainType` and that `getByDisplayCoords` for the
+   same tile's `dx`/`dy` returns the *same object* (reference equality),
+   proving the in-place mutation stayed consistent across both lookup
+   paths. No engine/UI dependency.
+4. **`MapTileLayer` persistent state + `repaintTile()` (Tier 1)**
+   (§3.3 points 1 and design decision 2): store `uvAttribute` and a
+   `tileDrawableMap: Map<Tile, IndexedBitmap>` as fields at build time
+   (mechanical addition inside the existing `createTileObjects` loop);
+   add `repaintTile(tile: Tile, newDrawable: IndexedBitmap): boolean`
+   that looks up `tileIndexes.get(tile)` for the vertex offset, computes
+   the offset's two half-rect `textureArea`s via `textureAtlas.
+   getImageRect(newDrawable)` mirroring `createSpriteGeometry`'s own
+   split math, calls `SpriteUtils.writeIndexedRectUvsIntoBuffer` twice
+   into `uvAttribute.array`, sets `uvAttribute.needsUpdate = true`, and
+   updates `tileDrawableMap.set(tile, newDrawable)`. Returns `false`
+   (caller falls back to Tier 2, not built yet in this step) if
+   `newDrawable` isn't in the atlas. *Test*: needs a real WebGL context —
+   verify visually (via `/mapeditor` once step 8 wires a paint UI, or a
+   minimal standalone repaint-test route if that's not ready yet) that
+   repainting one tile changes only that tile's rendered art with no
+   seam/UV corruption on the shared edge between its two half-rects, and
+   that `updateLighting()` (unmodified, shares the same `tileIndexes` map)
+   still tints the repainted tile correctly afterward.
+5. **`MapFile.writeTiles()`**: mirrors `writeStructures()`'s pattern —
+   iterate `this.tiles.getAll()`, re-encode via `Format5.encode` into
+   `[IsoMapPack5]`. **Before trusting this for real saves**, resolve §3.4's
+   open `EncodeIsoMapPack5`-may-not-be-the-generic-path question (read
+   `FSunPackLib::EncodeIsoMapPack5`'s actual implementation) — this step
+   can still be built and tested against this repo's own decoder in the
+   meantime, same caveat Phase 1 already lived with for structure fields
+   before the FA2-source check happened. *Test*: fixture round-trip (read →
+   `repaintTile` one tile → `writeTiles()` → re-read → assert the one
+   mutation stuck and every other tile matches the original), matching
+   Phase 1 step 2's round-trip test shape.
+6. **`MapFile.writeOverlays()`**: same pattern, `[OverlayPack]`/
+   `[OverlayDataPack]` via `Format80.encode` — not subject to the
+   `EncodeIsoMapPack5` open question (§3.4 already confirms overlay uses
+   the generic LCW path, `EncodeF80`, at the real editor's
+   `MapData.cpp:1163,1203`), so no blocker analogous to step 5's.
+7. **Paint-mode UI in `MapEditorTester`**: a tile-art picker (grouped by
+   terrain type, reusing whatever tileset browsing this repo's theater
+   loading already exposes) + a "Paint Terrain Mode" toggle button,
+   following the exact mutual-exclusivity pattern `placementActive`/
+   `deleteActive` already established in Phase 1 (`setPlacementActive`/
+   `setDeleteActive` both reset each other) — add `paintActive` as a third
+   mutually-exclusive mode. Click handler calls `TileCollection.
+   repaintTile()` then `MapTileLayer.repaintTile()` (falling back to a
+   "not in atlas yet" status message, not Tier 2, in this step) at the
+   clicked tile. Single-tile only in this step; multi-tile brush radius
+   is a follow-up, not required to prove the mechanism end-to-end.
+8. **Wire `buildMapIniString()` to also call the new writers**: currently
+   (`src/tools/MapEditorTester.ts`) it only calls the four object writers;
+   add `writeTiles()`/`writeOverlays()` calls so Download/Save-to-Server
+   actually persist terrain edits, not just object placement.
+
+*Verification (Phase 2, end-to-end)*, mirroring Phase 1's:
+
+1. `bunx tsc --noEmit` clean after each step.
+2. Steps 1, 3, 5, 6: standalone script/test assertions, no browser needed
+   (same shape as Phase 1 steps 1-4).
+3. Steps 4, 7: manual browser check at `/mapeditor` — repaint a tile,
+   confirm correct rendering, confirm Download/Save still produce a
+   correct file (§5's still-open "round-trip fidelity against a real
+   official map" risk should be closed around here too, not deferred
+   further — this is the first phase where an editor can actually corrupt
+   terrain data, unlike Phase 1's purely additive object placement).
+4. Before shipping terrain edits to real players (not just this repo's own
+   decoder): validate encoded output against the actual game or CNCMaps
+   Renderer, per §5's existing LZO/Format80 risk bullet — still unclosed,
+   inherited unchanged from before this phase started.
 
 **Phase 3 — Trigger/tag/AI scripting UI.** The largest, most RA2-specific
 surface (event/action pairing, tag linking, cell tags, variables, base/AI
@@ -563,13 +791,19 @@ encountering such names in a *live-game-exported* map.
   a plain call into the generic LZO path) — resolve that before trusting
   `MiniLzo.compress()` directly for real terrain writes specifically
   (overlay writes via `Format80.encode` aren't affected by this question).
-- **Full-map mesh rebuild cost, worst case.** §3.3's cheap path (UV-only
-  patch) only helps when the new tile's art is already in the atlas and its
-  world position doesn't change. A mapper doing large-area terrain
-  reshaping (changing height `z`, which shifts world position per
-  `Coords.tile3dToWorld`) may hit the expensive full-rebuild path often
-  enough that per-stroke (not per-tile) rebuild batching (§3.3) is load-
-  bearing for the tool to feel responsive, not just a nice-to-have.
+- **Full-atlas-repack cost, confirmed rather than assumed.** §3.3's Tier 1
+  (UV-only patch) only helps when the new tile's art is already in the
+  atlas. Reading `TextureAtlas.pack()` directly confirmed Tier 2 isn't "a
+  bit more work per tile" — `GrowingPacker` allocates fresh and can reflow
+  *every* block's position, so introducing one new drawable means
+  recomputing and rewriting UVs for every tile in the map, plus swapping
+  `material.map`. Height/`z` changes (moving a tile's world position via
+  `Coords.tile3dToWorld`) are excluded from Phase 2 v1 entirely (§4's design
+  decision 1) rather than routed through Tier 2, since v1's
+  `TileCollection.repaintTile()` doesn't touch `z` at all. Phase 2 v1 should
+  be comfortably fast as a result (Tier 1 only, no full-map operations) —
+  the risk is scoped specifically to a *future* Tier 2 pass, not v1 as
+  planned in §4.
 - **Structure field data loss — now concrete, not hypothetical.** The
   parsing/serialization fix (§2.2) captures every field, but
   `aiSellable`/`aiRebuildable`/`upgradeCount`/`spotlight`/`upgrades`/
