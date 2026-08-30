@@ -470,11 +470,11 @@ built.
       `toString()` with zero edits → diff against original bytes) — only
       verified against synthetic test fixtures so far (§5, still open)
 
-**Phase 2 — Terrain & overlay painting: in progress (2/8 steps shipped).**
+**Phase 2 — Terrain & overlay painting: in progress (3/8 steps shipped).**
 
 - [x] Step 1: `Format5.encode`
 - [x] Step 2: expose `mapRenderable` from `WorldView.init()`
-- [ ] Step 3: `TileCollection.repaintTile()`
+- [x] Step 3: `TileCollection.repaintTile()`
 - [ ] Step 4: `MapTileLayer` persistent `uv`/drawable state +
       `repaintTile()` (Tier 1: art already in atlas)
 - [ ] Step 5: `MapFile.writeTiles()` (`[IsoMapPack5]`) — blocked on
@@ -661,14 +661,21 @@ Phase 1's step discipline):
    *Verified*: `tsc --noEmit` clean, full test suite green, and a live
    browser smoke check confirming `/scenesandbox` and `/mapeditor` both
    still boot and render identically, no new console errors.
-3. **`TileCollection.repaintTile()`** (design decision 1 above).
-   *Test*: standalone script (matching Phase 1's scratchpad-script
-   pattern) — construct a `TileCollection` from fixture `TileData[]`,
-   call `repaintTile`, assert `getByMapCoords(rx, ry)` returns the mutated
-   `tileNum`/`subTile`/`terrainType` and that `getByDisplayCoords` for the
-   same tile's `dx`/`dy` returns the *same object* (reference equality),
-   proving the in-place mutation stayed consistent across both lookup
-   paths. No engine/UI dependency.
+3. **Shipped.** `TileCollection.repaintTile(rx, ry, tileNum, subTile,
+   randomIndexSelector)` (design decision 1 above): looks up the
+   existing `Tile` via `getByMapCoords`, mutates `tileNum`/`subTile`/
+   `terrainType`/`landType`/`rampType` in place, leaves `rx`/`ry`/`dx`/
+   `dy`/`z`/`id` untouched. Throws (doesn't silently no-op) for
+   out-of-range coordinates or an unknown `tileNum`, matching the
+   constructor's own error style. No separate `tileSets` parameter was
+   added — `this.tileSets` was already an instance field, so threading it
+   through as a call argument too would've been redundant.
+   *Test* (`src/test/TileCollectionRepaint.test.ts`, standalone, no
+   engine/UI dependency): constructs a `TileCollection` from fixture
+   `TileData[]`, confirms the mutation lands on the same object reference
+   reachable through both `getByMapCoords` and `getByDisplayCoords`,
+   confirms neighbouring tiles are unaffected, and confirms bad input
+   throws.
 4. **`MapTileLayer` persistent state + `repaintTile()` (Tier 1)**
    (§3.3 points 1 and design decision 2): store `uvAttribute` and a
    `tileDrawableMap: Map<Tile, IndexedBitmap>` as fields at build time
