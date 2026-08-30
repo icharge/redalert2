@@ -24,6 +24,14 @@ type MapTile = {
     z: number;
     tileNum: number;
     subTile: number;
+    // Per-cell "ice growth" byte (snow-theater ice cracking under vehicle
+    // weight). This engine doesn't simulate that gameplay mechanic, but the
+    // byte is real per-cell IsoMapPack5 data (confirmed against CNCMaps
+    // Renderer's ground-truth parser, CNCMaps.FileFormats/Map/MapFile.cs's
+    // ReadIsoMapPack5) - captured so a repainted tile's save doesn't zero it
+    // out on a real snow map, matching design decision 2's "capture every
+    // field, don't lossy-discard" rule from Phase 1.
+    iceGrowth: number;
 };
 type Waypoint = {
     number: number;
@@ -180,12 +188,17 @@ export class MapFile extends IniFile {
         for (let T = (this.maxTileNum = 0); T < i; T++) {
             const rx = s.readUint16();
             const ry = s.readUint16();
+            // tileNum is a 4-byte field on disk (confirmed against CNCMaps
+            // Renderer's ReadInt32 read of it); reading it as two little-
+            // endian int16s and discarding the upper half is equivalent as
+            // long as tileNum never reaches 65536, which real tilesets never
+            // do.
             const tileNum = Math.max(0, s.readInt16());
             this.maxTileNum = Math.max(this.maxTileNum, tileNum);
             s.readInt16();
             const subTile = s.readUint8();
             const z = s.readUint8();
-            s.readUint8();
+            const iceGrowth = s.readUint8();
             const dx = rx - ry + this.fullSize.width - 1;
             const dy = rx + ry - this.fullSize.width - 1;
             if (0 <= dx &&
@@ -200,6 +213,7 @@ export class MapFile extends IniFile {
                     z,
                     tileNum,
                     subTile,
+                    iceGrowth,
                 };
                 this.tiles[h(dx, Math.floor(dy / 2))] = tile;
             }
@@ -221,6 +235,7 @@ export class MapFile extends IniFile {
                             z: 0,
                             tileNum: 0,
                             subTile: 0,
+                            iceGrowth: 0,
                         }));
     }
     readWaypoints(e: IniSection) {
@@ -459,6 +474,46 @@ export class MapFile extends IniFile {
             ];
             section.set(String(index), fields.join(",") + ",");
         });
+    }
+    // [IsoMapPack5]: mirrors readTiles()'s own per-record layout exactly (11
+    // bytes/tile: rx u16, ry u16, tileNum i32, subTile u8, z u8, iceGrowth
+    // u8), Format5-encoded (LZO1X, format 5) and base64-chunked the same way
+    // a real .map file stores it. Each record is self-describing (carries
+    // its own rx/ry), so tiles can be written in any order - readTiles()
+    // places each one by its own coordinates regardless of stream order.
+    //
+    // Trust caveat (docs/map-editor-feasibility-and-design.md §3.4/§5): this
+    // has only been round-trip tested against this repo's own decoder and a
+    // real map's actual terrain bytes, not against the real editor's
+    // FSunPackLib::EncodeIsoMapPack5 or verified inside actual gameplay -
+    // treat a save through this path as unconfirmed until that's checked.
+    writeTiles(tiles: MapTile[]) {
+        const stream = new DataStream(new ArrayBuffer(11 * tiles.length));
+        for (const tile of tiles) {
+            stream.writeUint16(tile.rx);
+            stream.writeUint16(tile.ry);
+            stream.writeInt32(tile.tileNum);
+            stream.writeUint8(tile.subTile);
+            stream.writeUint8(tile.z);
+            stream.writeUint8(tile.iceGrowth);
+        }
+        const encoded = Format5.encode(new Uint8Array(stream.buffer), 5);
+        this.writeBase64Section("IsoMapPack5", encoded);
+    }
+    // Chunks a byte blob into the same base64-line-per-numbered-key layout
+    // real .map files use for binary INI data (confirmed against a real
+    // map's [IsoMapPack5]/[OverlayPack]/[OverlayDataPack]: sequential
+    // integer keys starting at 1, 71 base64 characters per line, final line
+    // holding the remainder).
+    private writeBase64Section(sectionName: string, bytes: Uint8Array): void {
+        const BASE64_CHARS_PER_LINE = 71;
+        const section = this.getOrCreateSection(sectionName);
+        section.entries.clear();
+        const base64 = stringUtil.uint8ArrayToBase64String(bytes);
+        let key = 1;
+        for (let offset = 0; offset < base64.length; offset += BASE64_CHARS_PER_LINE) {
+            section.set(String(key++), base64.slice(offset, offset + BASE64_CHARS_PER_LINE));
+        }
     }
     readTerrains(e: IniSection) {
         this.terrains = [];
