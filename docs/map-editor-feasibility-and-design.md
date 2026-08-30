@@ -470,16 +470,19 @@ built.
       `toString()` with zero edits → diff against original bytes) — only
       verified against synthetic test fixtures so far (§5, still open)
 
-**Phase 2 — Terrain & overlay painting: in progress (3/8 steps shipped).**
+**Phase 2 — Terrain & overlay painting: in progress (5/8 steps shipped).**
 
 - [x] Step 1: `Format5.encode`
 - [x] Step 2: expose `mapRenderable` from `WorldView.init()`
 - [x] Step 3: `TileCollection.repaintTile()`
-- [ ] Step 4: `MapTileLayer` persistent `uv`/drawable state +
-      `repaintTile()` (Tier 1: art already in atlas)
-- [ ] Step 5: `MapFile.writeTiles()` (`[IsoMapPack5]`) — blocked on
-      resolving the `EncodeIsoMapPack5` open question (§3.4, §5) before
-      trusting it for real saves
+- [x] Step 4: `MapTileLayer` persistent `uv`/drawable state +
+      `repaintTile()` (Tier 1: art already in atlas) — not yet verified
+      live in a real WebGL scene, no paint-mode UI exists yet to drive it
+      through (that's step 7)
+- [x] Step 5: `MapFile.writeTiles()` (`[IsoMapPack5]`) — implemented and
+      round-trip tested against a real map; still unconfirmed against the
+      real editor's `EncodeIsoMapPack5` or real gameplay (§3.4, §5) — treat
+      a save through this path as provisionally trustworthy, not proven
 - [ ] Step 6: `MapFile.writeOverlays()` (`[OverlayPack]`/`[OverlayDataPack]`)
 - [ ] Step 7: paint-mode UI in `MapEditorTester` (tile-art picker + mode
       toggle)
@@ -676,36 +679,70 @@ Phase 1's step discipline):
    reachable through both `getByMapCoords` and `getByDisplayCoords`,
    confirms neighbouring tiles are unaffected, and confirms bad input
    throws.
-4. **`MapTileLayer` persistent state + `repaintTile()` (Tier 1)**
-   (§3.3 points 1 and design decision 2): store `uvAttribute` and a
-   `tileDrawableMap: Map<Tile, IndexedBitmap>` as fields at build time
-   (mechanical addition inside the existing `createTileObjects` loop);
-   add `repaintTile(tile: Tile, newDrawable: IndexedBitmap): boolean`
-   that looks up `tileIndexes.get(tile)` for the vertex offset, computes
-   the offset's two half-rect `textureArea`s via `textureAtlas.
-   getImageRect(newDrawable)` mirroring `createSpriteGeometry`'s own
-   split math, calls `SpriteUtils.writeIndexedRectUvsIntoBuffer` twice
-   into `uvAttribute.array`, sets `uvAttribute.needsUpdate = true`, and
-   updates `tileDrawableMap.set(tile, newDrawable)`. Returns `false`
-   (caller falls back to Tier 2, not built yet in this step) if
-   `newDrawable` isn't in the atlas. *Test*: needs a real WebGL context —
-   verify visually (via `/mapeditor` once step 8 wires a paint UI, or a
-   minimal standalone repaint-test route if that's not ready yet) that
-   repainting one tile changes only that tile's rendered art with no
-   seam/UV corruption on the shared edge between its two half-rects, and
-   that `updateLighting()` (unmodified, shares the same `tileIndexes` map)
-   still tints the repainted tile correctly afterward.
-5. **`MapFile.writeTiles()`**: mirrors `writeStructures()`'s pattern —
-   iterate `this.tiles.getAll()`, re-encode via `Format5.encode` into
-   `[IsoMapPack5]`. **Before trusting this for real saves**, resolve §3.4's
-   open `EncodeIsoMapPack5`-may-not-be-the-generic-path question (read
-   `FSunPackLib::EncodeIsoMapPack5`'s actual implementation) — this step
-   can still be built and tested against this repo's own decoder in the
-   meantime, same caveat Phase 1 already lived with for structure fields
-   before the FA2-source check happened. *Test*: fixture round-trip (read →
-   `repaintTile` one tile → `writeTiles()` → re-read → assert the one
-   mutation stuck and every other tile matches the original), matching
-   Phase 1 step 2's round-trip test shape.
+4. **Shipped.** `MapTileLayer` persistent state + `repaintTile()` (Tier 1)
+   (§3.3 points 1 and design decision 2): `textureAtlas`, `uvAttribute`,
+   and `tileDrawableMap: Map<any, any>` are now fields, set during the
+   existing `createTileObjects` loop. `repaintTile(tile, newDrawable):
+   boolean` looks up `tileIndexes.get(tile)` for the vertex offset,
+   computes the two half-rect `textureArea`s via `textureAtlas.
+   getImageRect(newDrawable)` (camera/scale cancel out of
+   `createSpriteGeometry`'s split math algebraically, so the split is just
+   "exactly half the rect's width" — no camera dependency needed here),
+   calls `SpriteUtils.writeIndexedRectUvsIntoBuffer` twice directly into
+   `uvAttribute.array` at offsets `tileIndex*2`/`tileIndex*2+1` (exact,
+   since `mergeBufferAttributes` just concatenates per-tile arrays in
+   order), sets `uvAttribute.needsUpdate = true`, and updates
+   `tileDrawableMap`. Returns `false` (Tier 2, not built) if `newDrawable`
+   isn't in the atlas, or if the tile isn't one this layer knows about.
+   *Test* (`src/test/MapTileLayerRepaint.test.ts`): headless — THREE's
+   `BufferAttribute`/geometry machinery doesn't need a WebGL context for
+   pure math, so this builds a `MapTileLayer` with just the fields
+   `repaintTile` touches (skipping the full `createTileObjects` pipeline)
+   and checks the written UVs match `writeIndexedRectUvsIntoBuffer`'s own
+   output exactly, that only the target tile's floats change, and both
+   `false`-return paths. **Not yet verified live in a real WebGL scene** —
+   no paint-mode UI exists yet to drive it through (step 7); the visual
+   seam/lighting check this step originally called for is still open.
+5. **Shipped.** `MapFile.writeTiles(tiles: MapTile[])`: mirrors
+   `writeStructures()`'s pattern exactly — takes the tile list as a
+   parameter (not read from `this.tiles` internally), so it doesn't
+   require `MapFile.tiles` to become a live `TileCollection` instance the
+   way §4 design decision 4's text originally implied; that integration
+   question is deferred to whichever step actually wires painting into
+   `MapEditorTester`'s save flow, since a pure serializer doesn't need it
+   resolved first. Encodes each tile as an 11-byte record (rx u16, ry u16,
+   tileNum i32, subTile u8, z u8, iceGrowth u8) via a new `MapTile.
+   iceGrowth` field — **a real bug found while implementing this step**:
+   `readTiles()` was silently discarding a real per-cell byte (confirmed
+   against CNCMaps Renderer's ground-truth parser, which names it
+   `icegrowth` — a snow-theater gameplay mechanic this engine doesn't
+   simulate, but the byte is real on-disk data), which would have zeroed
+   it out on every save. Now captured and round-tripped, per design
+   decision 2's "capture every field" rule. `Format5.encode`s the buffer
+   and chunks it into `[IsoMapPack5]` via a new shared
+   `writeBase64Section()` helper (71 base64 chars/line, sequential integer
+   keys from 1 — confirmed against a real map's actual `[IsoMapPack5]`/
+   `[OverlayPack]`/`[OverlayDataPack]` layout), reusable for step 6's
+   `writeOverlays()`. Before trusting this for real saves, §3.4's
+   `EncodeIsoMapPack5` question is still open — this step is tested against
+   this repo's own decoder and a real map, same caveat Phase 1 lived with
+   for structure fields before its own FA2-source check happened.
+   **A second real bug found and fixed while testing this step**: the
+   first implementation never actually called `Format5.encode()` before
+   handing bytes to `writeBase64Section()` — raw, uncompressed tile
+   records went straight into `[IsoMapPack5]`. Reading that back
+   interpreted the first bytes of real tile data as a Format5 chunk
+   header, feeding effectively-random "compressed" bytes into
+   `MiniLzo.decompress()`, which hung indefinitely (confirmed: 2+ minutes
+   of sustained CPU with no termination, not a slow-but-finite case) — a
+   real DoS-shaped bug against untrusted/malformed compressed input, not
+   just a wrong-output bug. Fixed by actually calling `Format5.encode()`.
+   *Test* (`src/test/MapFileWriteTiles.test.ts`): loads the real map
+   fixture, round-trips `[IsoMapPack5]` byte-for-byte with zero edits;
+   edits one tile in place and confirms only that tile changes after a
+   full `writeTiles → toString() → re-parse` cycle; confirms a non-zero
+   `iceGrowth` value survives the same round-trip instead of being
+   zeroed.
 6. **`MapFile.writeOverlays()`**: same pattern, `[OverlayPack]`/
    `[OverlayDataPack]` via `Format80.encode` — not subject to the
    `EncodeIsoMapPack5` open question (§3.4 already confirms overlay uses
