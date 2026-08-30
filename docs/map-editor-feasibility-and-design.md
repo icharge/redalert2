@@ -101,12 +101,12 @@ edge cases, real map terrain/overlay data, and a full pipeline test that
 encodes, wraps the result in `Format5`'s chunk framing, splices it back into
 a copy of a real `.map` file's INI text, re-parses that file from scratch,
 and decodes it again, confirming an exact byte match against the original.
-`Format5` itself (the chunk-framing wrapper) still only has `decode`/
-`decodeInto` — an `encode`/`encodeInto` that chunks input and calls the two
-compressors above per-chunk hasn't been written yet, but it's a thin,
-mechanical wrapper around what already exists (see §3.4 and §5 for what's
-still unverified: this has not been tested against the real game's own
-engine or FinalAlert, only against this codebase's own decoder).
+`Format5` itself (the chunk-framing wrapper) now also has `encode` (§3.4,
+§4 Phase 2 step 1) alongside the existing `decode`/`decodeInto` — a thin,
+mechanical wrapper that chunks input and calls the two compressors above
+per-chunk, as expected. See §3.4 and §5 for what's still unverified: this
+has not been tested against the real game's own engine or FinalAlert, only
+against this codebase's own decoder.
 
 This means: if a mapper paints a single terrain tile, there is now a way to
 turn the edited `this.tiles` array back into bytes for `[IsoMapPack5]` — the
@@ -385,15 +385,22 @@ viable tiers, roughly in order of engineering cost:
   type, confirmed against the real editor's field layouts.
 - **Terrain**: the Format80/LZO1X encoders now exist (`Format80.encode`,
   `MiniLzo.compress` — see §2.2) and have passed round-trip fidelity testing
-  against real map data. The `Format5` chunk-framing wrapper (`encode`/
-  `encodeInto`, still missing) no longer needs any guessing either — the
-  real editor's chunk format is confirmed byte-for-byte via
-  `3rdParty/xcc/misc/shp_decode.cpp`'s `encode5`/`t_pack_section_header`:
-  a `{ uint16 size_in; uint16 size_out; }` header per chunk, fixed
+  against real map data. The `Format5` chunk-framing wrapper (`Format5.
+  encode`, shipped) no longer needs any guessing either — the real editor's
+  chunk format is confirmed byte-for-byte via `3rdParty/xcc/misc/
+  shp_decode.cpp`'s `encode5`/`t_pack_section_header`: a
+  `{ uint16 size_in; uint16 size_out; }` header per chunk, fixed
   **8192-byte** chunk size, calling `encode5s` (LZO, via the genuine
   `lzo1x_1_compress`) or `encode80` (LCW) per chunk depending on format —
-  exactly what this repo's `Format5.decodeInto` already assumes, so this is
-  now purely mechanical to implement.
+  exactly what `Format5.encode` implements and `Format5.decodeInto` already
+  assumed. No separate `encodeInto` was added: unlike decode, there's no
+  known output size to write into ahead of time, so the plain
+  allocate-and-return `encode()` is the only method that makes sense here.
+  Verified via `src/test/Format5.test.ts`: synthetic edge cases for both
+  formats, plus a decode → re-encode → decode round-trip against a real
+  official campaign map's actual `[IsoMapPack5]`/`[OverlayPack]`/
+  `[OverlayDataPack]` bytes (`src/test/fixtures/campaign-sample.map`, the
+  first real `.map` fixture committed to this repo).
 
   **One real discrepancy worth resolving before trusting a terrain
   encoder, though**: the real editor's actual terrain-save call is
@@ -463,9 +470,9 @@ built.
       `toString()` with zero edits → diff against original bytes) — only
       verified against synthetic test fixtures so far (§5, still open)
 
-**Phase 2 — Terrain & overlay painting: planned, not started.**
+**Phase 2 — Terrain & overlay painting: in progress (1/8 steps shipped).**
 
-- [ ] Step 1: `Format5.encode`/`encodeInto`
+- [x] Step 1: `Format5.encode`
 - [ ] Step 2: expose `mapRenderable` from `WorldView.init()`
 - [ ] Step 3: `TileCollection.repaintTile()`
 - [ ] Step 4: `MapTileLayer` persistent `uv`/drawable state +
@@ -627,14 +634,21 @@ works (design decision 4, step 6 below).
 *Ordered implementation steps* (each independently testable, matching
 Phase 1's step discipline):
 
-1. **`Format5.encode`/`encodeInto`** (`src/data/encoding/Format5.ts`): chunk
-   input into 8192-byte pieces (confirmed spec, §3.4), write the `{u16
+1. **Shipped.** `Format5.encode` (`src/data/encoding/Format5.ts`): chunks
+   input into 8192-byte pieces (confirmed spec, §3.4), writes the `{u16
    size_in (compressed); u16 size_out (decompressed)}` header per chunk,
-   call `MiniLzo.compress`/`Format80.encode` depending on the `format`
-   param, mirroring `decodeInto`'s existing chunk-loop shape in reverse.
-   *Test*: round-trip a real `[IsoMapPack5]`/`[OverlayDataPack]` blob
-   extracted from an actual map file through `decode(encode(x))`, byte-
-   compare. No engine/UI dependency — pure data, like Phase 1 steps 1-2.
+   calls `MiniLzo.compress`/`Format80.encode` depending on the `format`
+   param, mirroring `decodeInto`'s existing chunk-loop shape in reverse. No
+   `encodeInto` — the output size isn't known ahead of time the way decode's
+   is, so a plain `encode()` returning a new array is the whole API.
+   *Test* (`src/test/Format5.test.ts`): round-tripped real `[IsoMapPack5]`/
+   `[OverlayPack]`/`[OverlayDataPack]` blobs extracted from
+   `src/test/fixtures/campaign-sample.map` (a real official campaign map,
+   newly committed as this repo's first real `.map` fixture) through
+   `decode(encode(x))`, byte-compared exactly equal — plus synthetic edge
+   cases (empty, 1-byte, exact chunk boundary, multi-chunk, all-zero) for
+   both formats. No engine/UI dependency — pure data, like Phase 1 steps
+   1-2.
 2. **Expose `mapRenderable` from `WorldView.init()`** (§3.3 point 3):
    add it to the returned object literal (`src/gui/screen/game/
    WorldView.ts`'s `return { worldScene, worldSound, renderableManager,
