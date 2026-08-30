@@ -55,7 +55,7 @@ export class TextureAtlas {
         }
         return rect;
     }
-    pack(images: IndexedBitmap[]): void {
+    pack(images: IndexedBitmap[], options?: { minFilter?: THREE.TextureFilter }): void {
         const blocks: AtlasBlock[] = [];
         images.forEach(image => {
             blocks.push({
@@ -75,7 +75,15 @@ export class TextureAtlas {
         const texture = new THREE.DataTexture(rgbaData, width, height, THREE.RGBAFormat);
         texture.needsUpdate = true;
         texture.flipY = true;
-        texture.minFilter = THREE.NearestFilter;
+        // magFilter stays NearestFilter unconditionally - that's what keeps
+        // the pixel-art look crisp when zoomed in, unaffected by minFilter.
+        // minFilter defaults to plain NearestFilter too (no mip chain), same
+        // as before this option existed - callers whose atlas content
+        // benefits from mipmapped minification (e.g. large tiled surfaces
+        // that can render much smaller than their source texels, where a
+        // hard alphaTest cutout aliases badly with no mip averaging to
+        // smooth it) opt in explicitly.
+        texture.minFilter = options?.minFilter ?? THREE.NearestFilter;
         texture.magFilter = THREE.NearestFilter;
         texture.colorSpace = THREE.NoColorSpace;
         this.width = width;

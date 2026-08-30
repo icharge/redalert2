@@ -110,7 +110,16 @@ export class MapTileLayer {
         tmpImageMap.forEach((drawable) => {
             drawables.push(drawable);
         });
-        textureAtlas.pack(drawables);
+        // NearestMipmapLinear (not plain NearestFilter): tile sprites use a
+        // hard alphaTest cutout to their diamond shape, and the whole map
+        // can render at a small fraction of its source texel resolution
+        // (small window / zoomed out) - with no mip chain, that cutout edge
+        // aliases into visible dashed lines tracing every tile boundary,
+        // worse the smaller the map renders on screen. Mip averaging softens
+        // the alpha values feeding that cutout as tiles shrink, same fix
+        // class as mipmapping any alpha-tested foliage/fence billboard.
+        // magFilter is unaffected (still NearestFilter, crisp when zoomed in).
+        textureAtlas.pack(drawables, { minFilter: THREE.NearestMipmapLinearFilter });
         this.textureAtlas = textureAtlas;
         try {
             console.log('[MapTileLayer] textureAtlas packed', { drawables: drawables.length });
