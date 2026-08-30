@@ -22,10 +22,13 @@ export class MapTileLayer {
     private useSpriteBatching: any;
     private tileIndexes: Map<any, any>;
     private tileAnimLightMultsByTile: Map<any, any>;
+    private tileDrawableMap: Map<any, any>;
     private disposables: CompositeDisposable;
     private allTiles: any[];
     private target: any;
     private colorMultAttribute: any;
+    private uvAttribute: any;
+    private textureAtlas: any;
     private anims: any[];
     constructor(mapData: any, theater: any, art: any, imageFinder: any, camera: any, debugFrame: any, gameSpeed: any, worldSound: any, lighting: any, useSpriteBatching: any) {
         this.theater = theater;
@@ -39,6 +42,7 @@ export class MapTileLayer {
         this.useSpriteBatching = useSpriteBatching;
         this.tileIndexes = new Map();
         this.tileAnimLightMultsByTile = new Map();
+        this.tileDrawableMap = new Map();
         this.disposables = new CompositeDisposable();
         this.allTiles = mapData.tiles.getAll();
     }
@@ -107,6 +111,7 @@ export class MapTileLayer {
             drawables.push(drawable);
         });
         textureAtlas.pack(drawables);
+        this.textureAtlas = textureAtlas;
         try {
             console.log('[MapTileLayer] textureAtlas packed', { drawables: drawables.length });
         }
@@ -125,6 +130,7 @@ export class MapTileLayer {
             }
             const worldPos = Coords.tile3dToWorld(tile.rx, tile.ry, tile.z);
             const drawable = tmpImageMap.get(tmpImage);
+            this.tileDrawableMap.set(tile, drawable);
             const spriteGeometry = SpriteUtils.createSpriteGeometry({
                 texture: textureAtlas.getTexture(),
                 textureArea: textureAtlas.getImageRect(drawable),
@@ -154,6 +160,7 @@ export class MapTileLayer {
         const vertexCount = mergedGeometry.getAttribute("position").count;
         const positionAttribute = mergedGeometry.getAttribute("position");
         const uvAttribute = mergedGeometry.getAttribute("uv");
+        this.uvAttribute = uvAttribute;
         let invalidPositionValues = 0;
         for (let i = 0; i < positionAttribute.array.length; i++) {
             if (!Number.isFinite(positionAttribute.array[i])) {
@@ -233,6 +240,42 @@ export class MapTileLayer {
         for (const anim of this.anims) {
             anim.update(deltaTime);
         }
+    }
+    // Tier 1 repaint: swaps a tile's art for art already resident in the
+    // texture atlas by rewriting its two half-rect quads' UVs in place - no
+    // geometry rebuild, no atlas repack. Returns false if newDrawable isn't
+    // in the atlas yet (Tier 2 - full repack - not implemented; caller must
+    // fall back to that or refuse the paint). Shares tileIndexes with
+    // updateLighting, so a lighting pass after a repaint still tints the
+    // right vertices.
+    repaintTile(tile: any, newDrawable: any): boolean {
+        const tileIndex = this.tileIndexes.get(tile);
+        if (tileIndex === undefined) {
+            return false;
+        }
+        let newTextureArea: { x: number; y: number; width: number; height: number };
+        try {
+            newTextureArea = this.textureAtlas.getImageRect(newDrawable);
+        }
+        catch {
+            return false;
+        }
+        const imageSize = this.textureAtlas.getTexture().image as { width: number; height: number };
+        // Mirrors SpriteUtils.createSpriteGeometry's own (non-depth) split:
+        // each tile sprite is two equal-width half-rect quads, first 4
+        // vertices left, last 4 right (§3.3's UV finding). Splitting the
+        // atlas rect exactly in half reproduces that split; camera rotation
+        // and scale cancel out of createSpriteGeometry's splitX derivation
+        // algebraically, so this needs neither.
+        const splitWidth = newTextureArea.width / 2;
+        const leftArea = { x: newTextureArea.x, y: newTextureArea.y, width: splitWidth, height: newTextureArea.height };
+        const rightArea = { x: newTextureArea.x + splitWidth, y: newTextureArea.y, width: newTextureArea.width - splitWidth, height: newTextureArea.height };
+        const uvArray = this.uvAttribute.array as Float32Array;
+        SpriteUtils.writeIndexedRectUvsIntoBuffer(uvArray, tileIndex * 2, leftArea, imageSize);
+        SpriteUtils.writeIndexedRectUvsIntoBuffer(uvArray, tileIndex * 2 + 1, rightArea, imageSize);
+        this.uvAttribute.needsUpdate = true;
+        this.tileDrawableMap.set(tile, newDrawable);
+        return true;
     }
     updateLighting(tiles?: any[]): void {
         if (tiles) {
