@@ -56,6 +56,7 @@ const optionalDevModuleImporters: Record<string, () => Promise<any>> = {
     './tools/PerformanceTester': () => import('./tools/PerformanceTester'),
     './tools/LiveInteractionTester': () => import('./tools/LiveInteractionTester'),
     './tools/SceneSandboxTester': () => import('./tools/SceneSandboxTester'),
+    './tools/MapEditorTester': () => import('./tools/MapEditorTester'),
 };
 
 export type SplashScreenUpdateCallback = (props: ComponentProps<typeof SplashScreenComponent> | null) => void;
