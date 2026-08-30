@@ -8,6 +8,12 @@ interface AtlasImageRect {
     height: number;
 }
 type AtlasBlock = GrowingPackerBlock & { image: IndexedBitmap };
+const MIPMAP_FILTERS: ReadonlySet<THREE.TextureFilter> = new Set([
+    THREE.NearestMipmapNearestFilter,
+    THREE.NearestMipmapLinearFilter,
+    THREE.LinearMipmapNearestFilter,
+    THREE.LinearMipmapLinearFilter,
+]);
 function createAtlasBitmap(blocks: AtlasBlock[], width: number, height: number, imageRects?: Map<IndexedBitmap, AtlasImageRect>): IndexedBitmap {
     const atlasBitmap = new IndexedBitmap(width, height);
     blocks.forEach(block => {
@@ -85,6 +91,13 @@ export class TextureAtlas {
         // smooth it) opt in explicitly.
         texture.minFilter = options?.minFilter ?? THREE.NearestFilter;
         texture.magFilter = THREE.NearestFilter;
+        // THREE.DataTexture defaults generateMipmaps to false unconditionally
+        // (unlike plain Texture, which defaults it true) - a mip-variant
+        // minFilter with generateMipmaps still false builds no mip chain at
+        // all, silently falling back to level-0-only sampling (identical to
+        // plain NearestFilter). Must be set explicitly whenever a mipmap
+        // minFilter is requested.
+        texture.generateMipmaps = MIPMAP_FILTERS.has(texture.minFilter);
         texture.colorSpace = THREE.NoColorSpace;
         this.width = width;
         this.height = height;
