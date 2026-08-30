@@ -35,11 +35,26 @@ type MapEditorOptions = {
     mapName?: string;
 };
 
+// Local-testing convenience only: pre-fills the Session Token field so Save
+// doesn't need a token pasted in by hand every reload. Only takes effect on
+// localhost/127.0.0.1/::1 - a deployed build (LAN IP, real hostname) always
+// starts with an empty token, since a hardcoded token is a real credential
+// once a matching session exists server-side. Seed a matching session with
+// the same token via a script that calls
+// SqliteStorage.insertSession(token, username, Date.now()) directly against
+// server/data/ra2web.sqlite - see chat history for the exact one-off script.
+const DEV_DEFAULT_SESSION_TOKEN = 'dev-map-editor-test-token';
+function isLocalDevHost(): boolean {
+    const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+}
+
 type EditorState = {
     kind: CatalogKind;
     objectName: string;
     ownerName: string;
     placementActive: boolean;
+    deleteActive: boolean;
     panelCollapsed: boolean;
     placedCount: number;
     lastMessage: string;
@@ -62,6 +77,8 @@ type EditorRuntime = {
     objectSelect: HTMLSelectElement;
     ownerSelect: HTMLSelectElement;
     placeButton: HTMLButtonElement;
+    deleteButton: HTMLButtonElement;
+    nameInput: HTMLInputElement;
     statusEl: HTMLDivElement;
     tokenInput: HTMLInputElement;
     strings: StringsLike;
@@ -114,10 +131,11 @@ export class MapEditorTester {
         objectName: '',
         ownerName: '',
         placementActive: false,
+        deleteActive: false,
         panelCollapsed: false,
         placedCount: 0,
         mapFileName: '',
-        saveToken: '',
+        saveToken: isLocalDevHost() ? DEV_DEFAULT_SESSION_TOKEN : '',
         lastMessage: 'Select an object and owner, then click Enter Placement Mode and left-click on the map to place.',
     };
 
@@ -272,6 +290,7 @@ export class MapEditorTester {
             objectName: this.pickInitialObject(catalog),
             ownerName: ownerNames[0] ?? '',
             placementActive: false,
+            deleteActive: false,
             panelCollapsed: false,
             placedCount: 0,
             mapFileName,
@@ -298,14 +317,35 @@ export class MapEditorTester {
             objectSelect: panel.querySelector('[data-testid="mapeditor-object"]') as HTMLSelectElement,
             ownerSelect: panel.querySelector('[data-testid="mapeditor-owner"]') as HTMLSelectElement,
             placeButton: panel.querySelector('[data-testid="mapeditor-place"]') as HTMLButtonElement,
+            deleteButton: panel.querySelector('[data-testid="mapeditor-delete"]') as HTMLButtonElement,
+            nameInput: panel.querySelector('[data-testid="mapeditor-name"]') as HTMLInputElement,
             statusEl: panel.querySelector('[data-testid="mapeditor-status"]') as HTMLDivElement,
             tokenInput: panel.querySelector('[data-testid="mapeditor-token"]') as HTMLInputElement,
             strings,
         };
         this.syncControls();
 
-        const handlePlacementClick = (event: any) => {
-            if (!this.runtime || !this.state.placementActive) {
+        const handleCanvasClick = (event: any) => {
+            if (!this.runtime) {
+                return;
+            }
+            if (this.state.deleteActive) {
+                if (event.button === 2) {
+                    this.setDeleteActive(false);
+                    return;
+                }
+                if (event.button !== 0) {
+                    return;
+                }
+                const tile = this.getTargetTileAtScreenPoint(event.pointer);
+                if (!tile) {
+                    this.setStatus('No map tile found at this point.');
+                    return;
+                }
+                this.deleteObjectAt(tile);
+                return;
+            }
+            if (!this.state.placementActive) {
                 return;
             }
             if (event.button === 2) {
@@ -322,10 +362,13 @@ export class MapEditorTester {
             }
             this.placeObjectAt(tile);
         };
-        pointer.pointerEvents.addEventListener('canvas', 'mouseup', handlePlacementClick);
-        this.disposables.add(() => pointer.pointerEvents.removeEventListener('canvas', 'mouseup', handlePlacementClick));
+        pointer.pointerEvents.addEventListener('canvas', 'mouseup', handleCanvasClick);
+        this.disposables.add(() => pointer.pointerEvents.removeEventListener('canvas', 'mouseup', handleCanvasClick));
 
         const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape' && this.state.deleteActive) {
+                this.setDeleteActive(false);
+            }
             if (event.key === 'Escape' && this.state.placementActive) {
                 this.setPlacementActive(false);
             }
@@ -539,11 +582,88 @@ export class MapEditorTester {
     }
 
     private static setPlacementActive(active: boolean, message?: string): void {
+        if (active) {
+            this.state.deleteActive = false;
+        }
         this.state.placementActive = active;
-        this.runtime?.worldInteraction?.setEnabled?.(!active);
+        this.runtime?.worldInteraction?.setEnabled?.(!active && !this.state.deleteActive);
         this.setStatus(message ?? (active
             ? 'Placement mode enabled: left-click on the map to place; right-click or Esc to exit.'
             : 'Placement mode disabled: pan/select normally.'));
+        this.syncControls();
+    }
+
+    private static setDeleteActive(active: boolean, message?: string): void {
+        if (active) {
+            this.state.placementActive = false;
+        }
+        this.state.deleteActive = active;
+        this.runtime?.worldInteraction?.setEnabled?.(!active && !this.state.placementActive);
+        this.setStatus(message ?? (active
+            ? 'Delete mode enabled: left-click an object to remove it; right-click or Esc to exit.'
+            : 'Delete mode disabled: pan/select normally.'));
+        this.syncControls();
+    }
+
+    private static deleteObjectAt(tile: any): boolean {
+        const runtime = this.runtime;
+        if (!runtime) {
+            return false;
+        }
+        const target = runtime.game.map.getObjectsOnTile(tile).find((obj: any) => obj.isTechno?.());
+        if (!target) {
+            this.setStatus(`No object found @ ${tile.rx},${tile.ry}.`);
+            return false;
+        }
+        const objectType = target.isBuilding?.() ? ObjectType.Building
+            : target.isInfantry?.() ? ObjectType.Infantry
+                : target.isAircraft?.() ? ObjectType.Aircraft
+                    : ObjectType.Vehicle;
+        const label = ObjectCatalog.resolveDisplayName(runtime.game.rules, runtime.strings, objectType, target.name);
+        try {
+            runtime.game.unspawnObject(target);
+            target.dispose?.();
+        }
+        catch (error) {
+            this.setStatus(`Delete failed: ${String(error)}`);
+            return false;
+        }
+        this.setStatus(`Deleted ${label}(${target.name}) @ ${tile.rx},${tile.ry}.`);
+        this.syncControls();
+        return true;
+    }
+
+    /** Runs the extract -> write pipeline and returns the serialized .map INI text. Shared by download and server-save. */
+    private static buildMapIniString(runtime: EditorRuntime): string {
+        const extracted = extractMapObjects(runtime.game.world.getAllObjects());
+        runtime.mapFile.writeStructures(extracted.structures);
+        runtime.mapFile.writeVehicles(extracted.vehicles);
+        runtime.mapFile.writeInfantries(extracted.infantries);
+        runtime.mapFile.writeAircrafts(extracted.aircrafts);
+        return runtime.mapFile.toString();
+    }
+
+    /**
+     * Saves the current map to a local file via the browser's download flow -
+     * no server/auth needed, so the .map bytes can be inspected/verified
+     * directly before trusting the upload path.
+     */
+    private static downloadMap(): void {
+        const runtime = this.runtime;
+        if (!runtime) {
+            return;
+        }
+        const iniString = this.buildMapIniString(runtime);
+        const blob = new Blob([iniString], { type: 'application/octet-stream' });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = this.state.mapFileName;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(url);
+        this.setStatus(`Downloaded ${this.state.mapFileName} (${iniString.length} bytes).`);
         this.syncControls();
     }
 
@@ -557,12 +677,7 @@ export class MapEditorTester {
             this.setStatus('Save failed: enter a session bearer token first.');
             return;
         }
-        const extracted = extractMapObjects(runtime.game.world.getAllObjects());
-        runtime.mapFile.writeStructures(extracted.structures);
-        runtime.mapFile.writeVehicles(extracted.vehicles);
-        runtime.mapFile.writeInfantries(extracted.infantries);
-        runtime.mapFile.writeAircrafts(extracted.aircrafts);
-        const iniString: string = runtime.mapFile.toString();
+        const iniString = this.buildMapIniString(runtime);
         this.setStatus('Saving...');
         this.syncControls();
         try {
@@ -702,6 +817,36 @@ export class MapEditorTester {
         placeButton.dataset.testid = 'mapeditor-place';
         body.appendChild(placeButton);
 
+        const deleteButton = this.createButton('Delete Object Mode', () => this.setDeleteActive(!this.state.deleteActive));
+        deleteButton.dataset.testid = 'mapeditor-delete';
+        deleteButton.style.marginTop = '4px';
+        body.appendChild(deleteButton);
+
+        const nameInput = document.createElement('input');
+        nameInput.dataset.testid = 'mapeditor-name';
+        nameInput.type = 'text';
+        nameInput.style.width = '100%';
+        nameInput.value = this.state.mapFileName;
+        nameInput.onchange = () => {
+            this.state.mapFileName = nameInput.value.trim() || mapName;
+            nameInput.value = this.state.mapFileName;
+            this.syncControls();
+        };
+        // The map server is content-addressed (sha256 of the bytes), not
+        // filename-addressed: there's no "update the existing map" - every
+        // edit that changes the bytes becomes its own independent record.
+        // This name is just the filename attached to that new record (or,
+        // if you happen to reproduce byte-identical content to something
+        // already stored, it's ignored in favor of that record's original
+        // filename). Change it to avoid several edits of the same map
+        // colliding under one name in the map list.
+        row(`Save As (loaded: ${mapName})`, nameInput);
+
+        const downloadButton = this.createButton('Download Map File', () => this.downloadMap());
+        downloadButton.dataset.testid = 'mapeditor-download';
+        downloadButton.style.marginTop = '8px';
+        body.appendChild(downloadButton);
+
         const tokenInput = document.createElement('input');
         tokenInput.dataset.testid = 'mapeditor-token';
         tokenInput.type = 'password';
@@ -753,6 +898,10 @@ export class MapEditorTester {
         }
         runtime.ownerSelect.value = this.state.ownerName;
         runtime.placeButton.textContent = this.state.placementActive ? 'Exit Placement Mode (Esc)' : 'Enter Placement Mode';
+        runtime.deleteButton.textContent = this.state.deleteActive ? 'Exit Delete Mode (Esc)' : 'Delete Object Mode';
+        if (runtime.nameInput.value !== this.state.mapFileName) {
+            runtime.nameInput.value = this.state.mapFileName;
+        }
         this.updateStatus();
     }
 
