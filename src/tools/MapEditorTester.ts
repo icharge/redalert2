@@ -302,6 +302,26 @@ export class MapEditorTester {
         const panel = this.buildControlPanel(host, catalog, ownerNames, mapFileName);
         this.disposables.add(() => panel.remove());
 
+        // Unlike GameScreen (which reacts to Application's own shared
+        // viewport BoxedVar via onViewportChange), this tool builds its own
+        // standalone Renderer/WorldView outside that lifecycle and never
+        // gets told about window resizes - the canvas and host element were
+        // both sized once at boot and left there, so resizing the browser
+        // window left the map stretched/misaligned until a full page reload
+        // recomputed everything from scratch. Mirror what GameScreen.
+        // rerenderHud() does for the parts that matter here.
+        const handleWindowResize = () => {
+            const nextViewport = this.getViewport();
+            host.style.width = `${nextViewport.width}px`;
+            host.style.height = `${nextViewport.height}px`;
+            renderer.setSize(nextViewport.width, nextViewport.height);
+            uiScene.setViewport(nextViewport);
+            worldView.handleViewportChange(nextViewport);
+            this.layoutMinimap(minimap, nextViewport);
+        };
+        window.addEventListener('resize', handleWindowResize);
+        this.disposables.add(() => window.removeEventListener('resize', handleWindowResize));
+
         const tileHelper = new MapTileIntersectHelper(game.map, worldScene);
         this.runtime = {
             game,
