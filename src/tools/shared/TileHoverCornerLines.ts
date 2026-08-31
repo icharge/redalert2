@@ -52,7 +52,11 @@ export class TileHoverCornerLines {
     private material?: MeshLineMaterial;
     private lineMeshes: THREE.Mesh[] = [];
     private currentTile?: HoverTile;
-    constructor(private readonly camera: Camera, private readonly color: number) { }
+    constructor(
+        private readonly camera: Camera,
+        private readonly color: number,
+        private readonly lineWidth: number = 1,
+    ) { }
     get3DObject(): THREE.Object3D | undefined {
         return this.target;
     }
@@ -62,7 +66,7 @@ export class TileHoverCornerLines {
         this.target = object;
         this.material = new MeshLineMaterial({
             color: new THREE.Color(this.color),
-            lineWidth: getMeshLineWidth(this.camera, 1.5),
+            lineWidth: getMeshLineWidth(this.camera, this.lineWidth),
             resolution: getMeshLineResolution(this.camera),
             transparent: true,
             sizeAttenuation: 0,
@@ -110,7 +114,7 @@ export class TileHoverCornerLines {
             return;
         }
         this.material.uniforms.resolution.value.copy(getMeshLineResolution(this.camera));
-        this.material.uniforms.lineWidth.value = getMeshLineWidth(this.camera, 1.5);
+        this.material.uniforms.lineWidth.value = getMeshLineWidth(this.camera, this.lineWidth);
     }
     private computeSegments(tile: HoverTile): Array<[THREE.Vector3, THREE.Vector3]> {
         const heights = rampHeights[tile.rampType] ?? rampHeights[0];

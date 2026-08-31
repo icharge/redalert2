@@ -280,6 +280,11 @@ export class MapEditorTester {
         worldInteraction.init?.();
         this.disposables.add(worldInteraction);
 
+        // Hover cursor colors/width - tune here, nowhere else.
+        const HOVER_DIAMOND_COLOR = 0xffd84a;
+        const HOVER_CORNER_LINE_COLOR = 0x000000;
+        const HOVER_CORNER_LINE_WIDTH = 1;
+
         // Final Alert-style hover cursor: reuses PlacementGrid (the real
         // game's building-placement footprint renderer) purely for its
         // ramp-height-aware diamond geometry - it already bakes a per-
@@ -293,7 +298,7 @@ export class MapEditorTester {
             visible: boolean;
             showBusy: boolean;
             hoverColor: number;
-        } = { tiles: [], visible: false, showBusy: false, hoverColor: 0xffd84a };
+        } = { tiles: [], visible: false, showBusy: false, hoverColor: HOVER_DIAMOND_COLOR };
         const hoverCursor = new PlacementGrid(hoverCursorModel, worldScene.camera, game.map.tiles);
         worldScene.add(hoverCursor);
         this.disposables.add(() => worldScene.remove(hoverCursor));
@@ -303,7 +308,7 @@ export class MapEditorTester {
         // Alert cue for how far above the ground plane an elevated/ramped
         // tile actually sits, which the flat diamond overlay alone doesn't
         // convey.
-        const hoverCornerLines = new TileHoverCornerLines(worldScene.camera, 0xffd84a);
+        const hoverCornerLines = new TileHoverCornerLines(worldScene.camera, HOVER_CORNER_LINE_COLOR, HOVER_CORNER_LINE_WIDTH);
         worldScene.add(hoverCornerLines);
         this.disposables.add(() => worldScene.remove(hoverCornerLines));
         this.disposables.add(() => hoverCornerLines.dispose());
@@ -401,13 +406,32 @@ export class MapEditorTester {
         };
         this.syncControls();
 
+        // Right-click now doubles as the drag-to-pan gesture (worldInteraction
+        // stays enabled through placement/delete mode - see setDeleteActive's
+        // comment) as well as "exit the mode" - a plain right-click still
+        // needs to exit, but a right-click-drag-to-pan release must not, or
+        // panning the view while placing/deleting would kick you out of the
+        // mode on every single pan. Distinguish them the same way
+        // WorldInteraction's own click-vs-drag detection does: a small
+        // movement tolerance between mousedown and mouseup.
+        const RIGHT_CLICK_DRAG_THRESHOLD_PX = 6;
+        let rightMouseDownPos: { x: number; y: number } | undefined;
+        const handleCanvasMouseDown = (event: any) => {
+            if (event.button === 2) {
+                rightMouseDownPos = { x: event.pointer.x, y: event.pointer.y };
+            }
+        };
+        const wasRightClickDrag = (event: any): boolean => !!rightMouseDownPos &&
+            Math.hypot(event.pointer.x - rightMouseDownPos.x, event.pointer.y - rightMouseDownPos.y) > RIGHT_CLICK_DRAG_THRESHOLD_PX;
         const handleCanvasClick = (event: any) => {
             if (!this.runtime) {
                 return;
             }
             if (this.state.deleteActive) {
                 if (event.button === 2) {
-                    this.setDeleteActive(false);
+                    if (!wasRightClickDrag(event)) {
+                        this.setDeleteActive(false);
+                    }
                     return;
                 }
                 if (event.button !== 0) {
@@ -425,7 +449,9 @@ export class MapEditorTester {
                 return;
             }
             if (event.button === 2) {
-                this.setPlacementActive(false);
+                if (!wasRightClickDrag(event)) {
+                    this.setPlacementActive(false);
+                }
                 return;
             }
             if (event.button !== 0) {
@@ -438,6 +464,8 @@ export class MapEditorTester {
             }
             this.placeObjectAt(tile);
         };
+        pointer.pointerEvents.addEventListener('canvas', 'mousedown', handleCanvasMouseDown);
+        this.disposables.add(() => pointer.pointerEvents.removeEventListener('canvas', 'mousedown', handleCanvasMouseDown));
         pointer.pointerEvents.addEventListener('canvas', 'mouseup', handleCanvasClick);
         this.disposables.add(() => pointer.pointerEvents.removeEventListener('canvas', 'mouseup', handleCanvasClick));
 
@@ -540,9 +568,25 @@ export class MapEditorTester {
     /**
      * One combatant Player per house the map's technos reference, plus
      * every standard multiplayer house (so new objects can be placed under
-     * any of them even if unused so far) - everything except the "Map
-     * Editor" viewpoint player and the neutral civilian house, both of
-     * which GameFactory.create already added.
+     * any of them even if unused so far), plus the neutral/civilian house -
+     * everything except the "Map Editor" viewpoint player, which
+     * GameFactory.create already added.
+     *
+     * Neutral is included deliberately, not filtered out: Game.
+     * createInitialMapTechnos() only pre-places NEUTRAL-owned map technos in
+     * a real multiplayer match (see that method's own comment) - a
+     * non-neutral owner is a single-player/campaign-map feature that
+     * assumes a live Player for that house, which a real MP match never
+     * creates for houses no one is playing. This editor's own
+     * includeNonNeutralMapTechnos option loads non-neutral objects too (so
+     * an existing campaign map's pre-placed house-owned units are visible
+     * and editable here), but that's an editor-only accommodation - it does
+     * not change what a real match actually spawns. Placing a new object
+     * under, say, "Americans" on an ordinary multiplayer map will render
+     * fine here and save fine, but silently never appear when that map is
+     * actually played, unless something else (a trigger, a production
+     * queue) is responsible for spawning it instead of the map placement
+     * itself.
      */
     private static buildHousePlayers(game: any, gameMapFile: any): Map<string, any> {
         const neutralPlayer = game.playerList.getAll().find((player: any) => player.isNeutral);
@@ -567,6 +611,15 @@ export class MapEditorTester {
         const playerFactory = new PlayerFactory(game.rules, game.gameOpts, productionTrait.getAvailableObjects());
         const colorNames = [...game.rules.getMultiplayerColors().keys()];
         const housePlayers = new Map<string, any>();
+        // Reuse the game's own single neutral Player rather than looping it
+        // through Country.factory/createCombatant below like every other
+        // house - a second, distinct "Neutral" Player object would fork
+        // away from whatever the rest of the engine (shroud, owner lookups
+        // elsewhere) treats as *the* neutral house. Inserted first so it
+        // sorts first in buildOwnerNameList below, as the safe default.
+        if (neutralPlayer && neutralCountryName) {
+            housePlayers.set(neutralCountryName, neutralPlayer);
+        }
         let index = 0;
         for (const name of referencedNames) {
             let country: Country;
@@ -587,7 +640,14 @@ export class MapEditorTester {
     }
 
     private static buildOwnerNameList(housePlayers: Map<string, any>): string[] {
-        return [...housePlayers.keys()].sort((left, right) => left.localeCompare(right));
+        const names = [...housePlayers.keys()];
+        const neutralName = names.find((name) => housePlayers.get(name)?.isNeutral);
+        const rest = names.filter((name) => name !== neutralName).sort((left, right) => left.localeCompare(right));
+        // Neutral pinned first (not just alphabetically wherever it falls)
+        // so it's the default selection and the most visible option - see
+        // buildHousePlayers' doc comment for why it's the only owner
+        // guaranteed to actually appear in a real multiplayer match.
+        return neutralName ? [neutralName, ...rest] : rest;
     }
 
     private static tileTargetingContext(runtime: EditorRuntime): TileTargetingContext {
@@ -662,7 +722,9 @@ export class MapEditorTester {
             this.state.deleteActive = false;
         }
         this.state.placementActive = active;
-        this.runtime?.worldInteraction?.setEnabled?.(!active && !this.state.deleteActive);
+        // worldInteraction stays enabled throughout (see setDeleteActive's
+        // matching comment) - it drives hover tracking and right-click-drag
+        // panning, both of which need to keep working while placing.
         this.setStatus(message ?? (active
             ? 'Placement mode enabled: left-click on the map to place; right-click or Esc to exit.'
             : 'Placement mode disabled: pan/select normally.'));
@@ -674,7 +736,18 @@ export class MapEditorTester {
             this.state.placementActive = false;
         }
         this.state.deleteActive = active;
-        this.runtime?.worldInteraction?.setEnabled?.(!active && !this.state.placementActive);
+        // Deliberately never disabling worldInteraction here (it used to be
+        // setEnabled(!active && ...) while a mode was active): that also
+        // tears down its mousemove/mousedown/mouseup listeners entirely, so
+        // the hover cursor froze on whatever tile was last hovered before
+        // entering a mode, and right-click-drag panning (which is
+        // worldInteraction's own default handling, not something this file
+        // implements) stopped working too. handleCanvasClick's own button/
+        // mode checks below already gate what left/right-click do in
+        // placement/delete mode without needing worldInteraction disabled;
+        // its own default left-click-select running alongside is a harmless
+        // cosmetic side effect (no order gets issued - see the "No onOrder
+        // subscription" comment where worldInteraction is constructed).
         this.setStatus(message ?? (active
             ? 'Delete mode enabled: left-click an object to remove it; right-click or Esc to exit.'
             : 'Delete mode disabled: pan/select normally.'));
@@ -888,6 +961,11 @@ export class MapEditorTester {
             this.syncControls();
         };
         row('Owner (House)', ownerSelect);
+        const ownerHint = document.createElement('div');
+        ownerHint.style.cssText = 'font-size: 11px; opacity: 0.75; margin: -4px 0 7px;';
+        ownerHint.textContent = 'Only Neutral-owned objects reliably appear in a real multiplayer '
+            + 'match - other houses are for single-player/campaign maps.';
+        body.appendChild(ownerHint);
 
         const placeButton = this.createButton('Enter Placement Mode', () => this.setPlacementActive(!this.state.placementActive));
         placeButton.dataset.testid = 'mapeditor-place';
