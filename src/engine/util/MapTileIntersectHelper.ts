@@ -112,7 +112,10 @@ export class MapTileIntersectHelper {
             .floor();
         const centerTile = this.map.tiles.getByMapCoords(tileCoords.x, tileCoords.y);
         if (!centerTile) {
-            console.warn(`Tile coordinates (${tileCoords.x},${tileCoords.y}) out of range`);
+            // Routine, not exceptional: fires on every hover frame whenever
+            // the cursor sits outside the map (UI panels, letterboxed
+            // edges, panning near map bounds) - was spamming the console
+            // and even showing up in plain test-suite output.
             return [];
         }
         const candidateTiles = this.collectCandidateTiles(centerTile, tileElevation);
@@ -163,7 +166,8 @@ export class MapTileIntersectHelper {
             const tileY = Math.floor(worldPos.y / Coords.LEPTONS_PER_TILE);
             const centerTile = this.map.tiles.getByMapCoords(tileX, tileY);
             if (!centerTile) {
-                console.warn(`Tile coordinates (${tileX},${tileY}) out of range`);
+                // See the legacy path's identical check above: routine, not
+                // exceptional.
                 return [];
             }
             testPoint.set(worldScreenX, 0, worldScreenY);
