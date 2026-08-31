@@ -462,6 +462,37 @@ built.
       localhost-only dev session token
 - [x] Bonus fix: `WorldInteraction` no longer eats Backspace/arrow keys
       typed into real HTML inputs (`WorldInteraction.ts`)
+- [x] Bonus fix: tile-boundary rendering artifact (dashed/black lines along
+      every tile edge) — four separate real causes fixed: missing MSAA
+      (`Renderer.ts`), a no-op mipmap "fix" that never actually generated
+      mipmaps (`THREE.DataTexture` defaults `generateMipmaps` false),
+      atlas UV-rect padding for odd-width/height tile images
+      (`TextureAtlas.ts`), and `renderer.setPixelRatio()` never being
+      called anywhere in this codebase (`Renderer.ts`)
+- [x] Bonus fix: `CanvasMetrics` (`src/gui/CanvasMetrics.ts`) converted
+      pointer coordinates into drawing-buffer pixel space instead of the
+      CSS-pixel space every consumer expects — dormant until the
+      `devicePixelRatio` fix above surfaced it; affects real gameplay
+      click-to-select/move and drag-to-pan on any HiDPI display, not just
+      this tool
+- [x] Bonus fix: `/mapeditor` window resize — canvas/host/renderer size,
+      `UiScene` camera reprojection (missing on the first pass, left the
+      minimap mispositioned after a resize until added), `WorldScene`
+      viewport, and minimap layout, previously required a full page reload
+- [x] Bonus fix: "Tile coordinates ... out of range" console spam removed
+      (`MapTileIntersectHelper.ts`) — was firing every frame on any
+      off-map hit-test, a routine condition, not an error; was also
+      polluting plain `bun test` output
+- [x] Bonus: Final Alert-style tile hover cursor — elevation-aware diamond
+      outline (`PlacementGrid.ts`, reused from real building placement) plus
+      dashed corner-to-base drop-lines on sloped tiles
+      (`src/tools/shared/TileHoverCornerLines.ts`), relative to each tile's
+      own base height so flat ground at a nonzero map baseline stays quiet
+- [x] Verified (no fix needed): Delete Object Mode already stays active
+      across repeated deletions — left-click keeps deleting until Esc/
+      right-click/toggling the button again; confirmed live across two
+      vehicle deletes and one building delete in the same session without
+      re-entering the mode
 - [ ] Placement-preview/ghost object before commit (§3.1) — not built,
       click-to-commit only
 - [ ] Selection/gizmo to move or re-edit an already-placed object (§3.1) —
@@ -577,6 +608,25 @@ tests. What exists today, reachable at `/mapeditor`:
   delete. Worth its own follow-up if move/preview UX becomes a priority, but
   wasn't necessary to hit "real WYSIWYG object placement that saves
   correctly," which was the actual bar for calling Phase 1 done.
+- **Live-testing hardening pass** (this session, after the above): a
+  multi-round investigation into a tile-boundary rendering artifact
+  (dashed/black lines tracing every tile edge, worse at small window
+  sizes) found four separate real causes rather than one — see the Bonus
+  fix bullets above for the full breakdown. The interesting one: fixing
+  missing `devicePixelRatio` support (why the artifact was invisible in
+  real gameplay but obvious in this tool) surfaced a genuinely separate,
+  more serious bug in `CanvasMetrics` that had been silently wrong for the
+  codebase's entire lifetime — pointer coordinates resolving to the wrong
+  world position on any HiDPI display, in real gameplay's click-to-select/
+  move too, not just here. Also shipped in this pass: `/mapeditor`'s
+  missing window-resize handling, a per-frame console-spam warning that
+  had no business being routine-condition noise, and a Final Alert-style
+  hover cursor (elevation-aware diamond + dashed corner-to-base drop-lines
+  on sloped tiles) that didn't exist before. None of this is Phase 2 scope
+  — it's general rendering/interaction correctness this tool's live use
+  happened to surface — but it's real, committed, verified work worth
+  tracking here since it came out of using `/mapeditor` for its intended
+  purpose.
 
 **Phase 2 — Terrain & overlay painting.** Next up. The compression encoders
 (§3.4) are done and validated in isolation; what's left is the `Format5`
