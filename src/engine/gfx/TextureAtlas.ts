@@ -23,7 +23,21 @@ function createAtlasBitmap(blocks: AtlasBlock[], width: number, height: number, 
         const image = block.image;
         const x = block.fit.x;
         const y = block.fit.y;
-        imageRects?.set(image, { x, y, width: block.w, height: block.h });
+        // block.w/block.h are the packer's own block size, rounded up to even
+        // (pack()'s own w/h computation below) purely so the packer always
+        // deals in even-aligned blocks - drawIndexedImage() below draws only
+        // image.width x image.height real pixels at (x, y), so any image with
+        // an odd width/height (confirmed real: ramp/cliff/elevation tiles
+        // whose TmpDrawable.draw() offsets a real, even blockWidth/blockHeight
+        // by an odd hasExtraData offset) leaves a 1px column/row of the
+        // packer's padding - genuinely transparent (Uint8Array default-zero-
+        // filled IndexedBitmap data, never drawn to) - inside what callers
+        // would otherwise think is real image content. That phantom texel
+        // discards regardless of alphaTest threshold (it's truly alpha 0,
+        // not a soft/aliased edge) and exposes the WebGL clear color (black)
+        // as a hard seam along that tile's edge. Report the image's own true
+        // size here instead, independent of the packer's padding.
+        imageRects?.set(image, { x, y, width: image.width, height: image.height });
         atlasBitmap.drawIndexedImage(image, x, y);
     });
     return atlasBitmap;
