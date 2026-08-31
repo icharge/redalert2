@@ -315,6 +315,17 @@ export class MapEditorTester {
             host.style.width = `${nextViewport.width}px`;
             host.style.height = `${nextViewport.height}px`;
             renderer.setSize(nextViewport.width, nextViewport.height);
+            // UiScene.setViewport() only stores the new dimensions for pixel-
+            // based layout math (e.g. layoutMinimap below) - it does NOT
+            // reproject the UI scene's own orthographic camera, which was
+            // built once for the old viewport size in UiScene.factory(). The
+            // real app's equivalent path (Gui.ts's handleViewportChange)
+            // rebuilds and swaps that camera on every resize; skipping it
+            // left every UI element's pixel coordinates rendering through a
+            // camera still framed for the pre-resize viewport, so positions
+            // like the minimap's (computed correctly against the new
+            // viewport) landed in the wrong physical spot on screen.
+            uiScene.setCamera(UiScene.createCamera(nextViewport));
             uiScene.setViewport(nextViewport);
             worldView.handleViewportChange(nextViewport);
             this.layoutMinimap(minimap, nextViewport);
