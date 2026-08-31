@@ -493,10 +493,55 @@ built.
       right-click/toggling the button again; confirmed live across two
       vehicle deletes and one building delete in the same session without
       re-entering the mode
+- [x] Bonus fix: hover cursor and right-click-drag panning both froze once
+      Placement or Delete mode was entered — root cause was
+      `worldInteraction.setEnabled(false)` tearing down all of
+      `WorldInteraction`'s own mouse listeners (hover tracking *and*
+      camera panning are both its default handling, not implemented by
+      `MapEditorTester` itself); fixed by leaving it enabled throughout and
+      distinguishing a right-click-drag-to-pan release from a genuine
+      right-click-to-exit via a small movement threshold, the same
+      click-vs-drag test `WorldInteraction`'s own selection logic uses
+- [x] Bonus fix: Owner (House) dropdown was missing Neutral entirely
+      (`buildHousePlayers()` explicitly deleted it from its own candidate
+      list) — confirmed via `Game.createInitialMapTechnos()`'s own comment
+      that a **real multiplayer match only pre-places neutral-owned map
+      technos**; a house-owned object placed here would render and save
+      fine but silently never appear in an actual match. Neutral is now
+      included, reusing the game's single canonical neutral `Player`
+      rather than creating a second one, and pinned first as the default
+      selection; a hint line under the dropdown states the caveat directly
 - [ ] Placement-preview/ghost object before commit (§3.1) — not built,
       click-to-commit only
-- [ ] Selection/gizmo to move or re-edit an already-placed object (§3.1) —
-      not built, add/delete only
+- [ ] Selection + move/re-edit for an already-placed object (§3.1) — not
+      built, add/delete only. Scoped (not yet implemented): **select** by
+      reusing `deleteObjectAt()`'s tile-lookup plus
+      `game.unitSelection.addToSelection([obj])` for free selection-bracket
+      visuals (existing real-game infra, already wired up via
+      `WorldInteractionFactory`); **move** via `game.limboObject(obj, {})`
+      then `game.unlimboObject(obj, newTile, true)` — the same detach/
+      reattach-the-same-instance primitive the engine already uses for
+      transports/garrisons, which re-triggers spawn/despawn events (so the
+      renderable rebuilds) while preserving every other property, instead
+      of unspawning and reconstructing from scratch; **re-edit owner** via
+      `game.changeObjectOwner()` (already a live-safe operation elsewhere,
+      proper `NotifyOwnerChange` dispatch, re-tints the model without a
+      respawn); health/direction are continuously-read live properties in
+      real gameplay so should update the same way, but that specific
+      rendering path hasn't been confirmed yet. UI shape: a third mode
+      button mirroring Placement/Delete's click pattern.
+- [ ] Map boundary / "safe zone" visualization, like FinalSun/Final Alert's
+      playable-area rectangle — not built. Scoped (not yet implemented):
+      `game.map.mapBounds` (`src/game/map/MapBounds.ts`) already exposes
+      `getLocalSize()` (the playable-area rect) vs `getFullSize()`/
+      `getClampedFullSize()` (the full underlying tile grid, which extends
+      further at the edges) — this is existing engine infrastructure, nothing
+      new to compute. Draw the `getLocalSize()` rect's 4 corners (via
+      `Coords.tile3dToWorld`) as a persistent (not hover-only) outline in
+      the editor scene, reusing the same `MeshLine`/`MeshLineMaterial`
+      technique `TileHoverCornerLines` already uses, so mappers can see at
+      a glance which area is actually playable/visible in a real match vs.
+      the full tile grid the underlying `.map` file spans.
 - [ ] Round-trip fidelity verified against a **real official map** (load →
       `toString()` with zero edits → diff against original bytes) — only
       verified against synthetic test fixtures so far (§5, still open)
