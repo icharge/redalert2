@@ -38,7 +38,13 @@ export class PlacementGrid {
                 }
                 const mesh = overlay.clone();
                 const material = (overlay.material as THREE.MeshBasicMaterial).clone();
-                material.color.set(tile.buildable ? (this.viewModel.showBusy ? 0xffff00 : 0x00ff00) : 0xff0000);
+                // hoverColor is an opt-in override for non-placement callers
+                // (e.g. a plain tile-hover cursor) that want this grid's
+                // ramp-height-aware diamond shape without the buildable/
+                // busy/red-invalid color semantics real building placement
+                // needs. Existing callers never set it, so their behavior
+                // (buildable/showBusy -> green/yellow/red) is unchanged.
+                material.color.set(this.viewModel.hoverColor ?? (tile.buildable ? (this.viewModel.showBusy ? 0xffff00 : 0x00ff00) : 0xff0000));
                 mesh.material = material;
                 mesh.position.copy(this.getTilePosition(mapTile));
                 tilesContainer.add(mesh);

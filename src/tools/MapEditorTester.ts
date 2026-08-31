@@ -7,6 +7,7 @@ import { GeneralOptions } from '@/gui/screen/options/GeneralOptions';
 import { WorldView } from '@/gui/screen/game/WorldView';
 import { Minimap } from '@/gui/screen/game/component/Minimap';
 import { WorldInteractionFactory } from '@/gui/screen/game/worldInteraction/WorldInteractionFactory';
+import { PlacementGrid } from '@/gui/screen/game/worldInteraction/placementMode/PlacementGrid';
 import { Engine, EngineType } from '@/engine/Engine';
 import { IsoCoords } from '@/engine/IsoCoords';
 import { Renderer } from '@/engine/gfx/Renderer';
@@ -277,6 +278,37 @@ export class MapEditorTester {
         // deselect via WorldInteractionFactory's own default handling.
         worldInteraction.init?.();
         this.disposables.add(worldInteraction);
+
+        // Final Alert-style hover cursor: reuses PlacementGrid (the real
+        // game's building-placement footprint renderer) purely for its
+        // ramp-height-aware diamond geometry - it already bakes a per-
+        // rampType outline texture so the highlight correctly follows a
+        // tile's slope on ramps/cliffs instead of floating flat over it.
+        // hoverColor overrides its buildable/busy green-yellow-red tinting
+        // (which has no meaning here - this isn't validating a placement)
+        // with the editor's own accent color.
+        const hoverCursorModel: {
+            tiles: Array<{ rx: number; ry: number; buildable: boolean }>;
+            visible: boolean;
+            showBusy: boolean;
+            hoverColor: number;
+        } = { tiles: [], visible: false, showBusy: false, hoverColor: 0xffd84a };
+        const hoverCursor = new PlacementGrid(hoverCursorModel, worldScene.camera, game.map.tiles);
+        worldScene.add(hoverCursor);
+        this.disposables.add(() => worldScene.remove(hoverCursor));
+        this.disposables.add(() => hoverCursor.dispose());
+        let lastHoverTile: any;
+        const updateHoverCursor = (): void => {
+            const tile = worldInteraction.mapHoverHandler.getCurrentHover()?.tile;
+            if (tile === lastHoverTile) {
+                return;
+            }
+            lastHoverTile = tile;
+            hoverCursorModel.tiles = tile ? [{ rx: tile.rx, ry: tile.ry, buildable: true }] : [];
+            hoverCursorModel.visible = !!tile;
+        };
+        renderer.onFrame.subscribe(updateHoverCursor);
+        this.disposables.add(() => renderer.onFrame.unsubscribe(updateHoverCursor));
 
         renderer.addScene(worldScene);
         renderer.addScene(uiScene);
