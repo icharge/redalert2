@@ -558,6 +558,22 @@ built.
       calling `extractMapObjects()` - otherwise a Save/Download triggered
       while a preview was live would have serialized it into the map as
       if actually placed.
+- [x] Bonus fix: a building preview replayed its buildup ("rising
+      construction") animation from scratch on every tile the mouse
+      crossed - `Building`'s constructor always starts `_buildStatus` at
+      `BuildStatus.BuildUp`. Fixed by setting `_buildStatus`/
+      `lastBuildStatus` to `BuildStatus.Ready` directly on preview
+      buildings only, right after creation, so the object starts already-
+      built with no animation ever queued. Deliberately *not*
+      `obj.setBuildStatus(Ready, game)` - that method's real purpose is
+      firing `NotifyBuildStatus` trait callbacks for an actual
+      construction-complete transition, and `FreeUnitTrait` listens for
+      exactly that to spawn a real bonus unit for any building whose rules
+      set `FreeUnit` - calling it on a preview would have spawned a real,
+      untracked extra unit on every hover for those building types. The
+      real, committed placement in `placeObjectAt()` deliberately keeps
+      the normal buildup animation - seeing it construct once actually
+      placed is the point
 - [ ] Selection + move/re-edit for an already-placed object (§3.1) — not
       built, add/delete only. Scoped (not yet implemented): **select** by
       reusing `deleteObjectAt()`'s tile-lookup plus

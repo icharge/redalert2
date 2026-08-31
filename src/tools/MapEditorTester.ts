@@ -26,6 +26,7 @@ import { TileSets } from '@/game/theater/TileSets';
 import { VxlGeometryPool } from '@/engine/renderable/builder/vxlGeometry/VxlGeometryPool';
 import { VxlGeometryCache } from '@/engine/gfx/geometry/VxlGeometryCache';
 import { ObjectType } from '@/engine/type/ObjectType';
+import { BuildStatus } from '@/game/gameobject/Building';
 import { getZoneType, ZoneType } from '@/game/gameobject/unit/ZoneType';
 import { MapTileIntersectHelper } from '@/engine/util/MapTileIntersectHelper';
 import { TestToolSupport, type TestToolRuntimeContext } from '@/tools/TestToolSupport';
@@ -1077,6 +1078,25 @@ export class MapEditorTester {
         }
         if (objectType !== ObjectType.Building) {
             this.applySpawnLayer(obj, desiredTile);
+        }
+        else {
+            // Skip the buildup ("rising construction") animation for a
+            // preview - it'd replay from scratch on every tile the mouse
+            // crosses, which reads as constant flicker rather than a
+            // preview. Set both backing fields directly instead of calling
+            // obj.setBuildStatus(Ready, game): that method's whole purpose
+            // is firing NotifyBuildStatus trait callbacks for a *real*
+            // construction-complete transition - FreeUnitTrait listens for
+            // exactly that and spawns a real bonus unit for any building
+            // whose rules set FreeUnit, which would fire on every preview
+            // update for those building types. Setting _buildStatus/
+            // lastBuildStatus directly starts the object already-built,
+            // with no BuildUp -> Ready transition (and so no notification)
+            // ever happening at all. The real, committed placement in
+            // placeObjectAt() deliberately does NOT do this - seeing the
+            // building actually construct once you place it is the point.
+            obj._buildStatus = BuildStatus.Ready;
+            obj.lastBuildStatus = BuildStatus.Ready;
         }
         runtime.game.changeObjectOwner(obj, owner);
         runtime.game.spawnObject(obj, desiredTile);
