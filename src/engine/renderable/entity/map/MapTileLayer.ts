@@ -286,6 +286,16 @@ export class MapTileLayer {
         this.tileDrawableMap.set(tile, newDrawable);
         return true;
     }
+    // Exposes the Tier-1 repaint lookup (docs/map-editor-feasibility-and-
+    // design.md §4 design decision 2, Phase 2 step 7): the atlas-resident
+    // drawable already backing an existing map tile's art, keyed by Tile
+    // object identity (the same references TileCollection hands out via
+    // getAll()/getByMapCoords()). Paint-mode UI always sources its "brush"
+    // from an already-placed tile's own drawable via this method, so the
+    // result - when found - never requires an atlas repack to paint with.
+    getDrawableForTile(tile: any): any | undefined {
+        return this.tileDrawableMap.get(tile);
+    }
     updateLighting(tiles?: any[]): void {
         if (tiles) {
             for (const tile of tiles) {

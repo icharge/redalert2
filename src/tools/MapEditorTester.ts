@@ -32,9 +32,27 @@ import { TestToolSupport, type TestToolRuntimeContext } from '@/tools/TestToolSu
 import { TileTargeting, type TileTargetingContext } from '@/tools/shared/TileTargeting';
 import { ObjectCatalog, type CatalogKind, type StringsLike } from '@/tools/shared/ObjectCatalog';
 import { extractMapObjects } from '@/tools/mapEditor/GameObjectMapSerializer';
+import { getRandomInt } from '@/util/math';
+import { TerrainType } from '@/engine/type/TerrainType';
 
 type MapEditorOptions = {
     mapName?: string;
+};
+
+// One brush option in the terrain-paint picker: a (tileNum, subTile) pair
+// already used somewhere on the loaded map, plus one representative Tile
+// object from that map carrying that art - MapTileLayer.getDrawableForTile()
+// looks the brush's atlas-resident drawable up by that exact Tile reference
+// (Tier 1 repaint per docs/map-editor-feasibility-and-design.md §4 design
+// decision 2: only art already resident in the atlas can be painted with, no
+// repack), so every swatch offered here is guaranteed paintable.
+type TileSwatch = {
+    key: string;
+    tileNum: number;
+    subTile: number;
+    terrainType: TerrainType;
+    terrainLabel: string;
+    referenceTile: any;
 };
 
 // Local-testing convenience only: pre-fills the Session Token field so Save
@@ -57,8 +75,11 @@ type EditorState = {
     ownerName: string;
     placementActive: boolean;
     deleteActive: boolean;
+    paintActive: boolean;
+    paintTileKey: string;
     panelCollapsed: boolean;
     placedCount: number;
+    paintedCount: number;
     lastMessage: string;
     mapFileName: string;
     saveToken: string;
@@ -72,15 +93,19 @@ type EditorRuntime = {
     worldScene: any;
     worldInteraction: any;
     mapRenderable: any;
+    tileLayer: any;
     pointer: Pointer;
     tileHelper: MapTileIntersectHelper;
     catalog: Record<CatalogKind, string[]>;
     ownerNames: string[];
+    paintSwatches: TileSwatch[];
     kindSelect: HTMLSelectElement;
     objectSelect: HTMLSelectElement;
     ownerSelect: HTMLSelectElement;
     placeButton: HTMLButtonElement;
     deleteButton: HTMLButtonElement;
+    paintSelect: HTMLSelectElement;
+    paintButton: HTMLButtonElement;
     nameInput: HTMLInputElement;
     statusEl: HTMLDivElement;
     tokenInput: HTMLInputElement;
@@ -135,8 +160,11 @@ export class MapEditorTester {
         ownerName: '',
         placementActive: false,
         deleteActive: false,
+        paintActive: false,
+        paintTileKey: '',
         panelCollapsed: false,
         placedCount: 0,
+        paintedCount: 0,
         mapFileName: '',
         saveToken: isLocalDevHost() ? DEV_DEFAULT_SESSION_TOKEN : '',
         lastMessage: 'Select an object and owner, then click Enter Placement Mode and left-click on the map to place.',
@@ -333,6 +361,7 @@ export class MapEditorTester {
 
         const catalog = ObjectCatalog.build(game.rules, game.art, strings);
         const ownerNames = this.buildOwnerNameList(housePlayers);
+        const paintSwatches = this.buildPaintSwatches(game);
         this.state = {
             ...this.state,
             kind: 'vehicle',
@@ -340,14 +369,17 @@ export class MapEditorTester {
             ownerName: ownerNames[0] ?? '',
             placementActive: false,
             deleteActive: false,
+            paintActive: false,
+            paintTileKey: paintSwatches[0]?.key ?? '',
             panelCollapsed: false,
             placedCount: 0,
+            paintedCount: 0,
             mapFileName,
             saveToken: this.state.saveToken,
             lastMessage: `Loaded ${mapFileName}. Select an object and owner, then Enter Placement Mode and click the map.`,
         };
 
-        const panel = this.buildControlPanel(host, catalog, ownerNames, mapFileName);
+        const panel = this.buildControlPanel(host, catalog, ownerNames, paintSwatches, mapFileName);
         this.disposables.add(() => panel.remove());
 
         // Unlike GameScreen (which reacts to Application's own shared
@@ -390,15 +422,19 @@ export class MapEditorTester {
             worldScene,
             worldInteraction,
             mapRenderable: worldViewInit.mapRenderable,
+            tileLayer: worldViewInit.mapRenderable.getTileLayer(),
             pointer,
             tileHelper,
             catalog,
             ownerNames,
+            paintSwatches,
             kindSelect: panel.querySelector('[data-testid="mapeditor-kind"]') as HTMLSelectElement,
             objectSelect: panel.querySelector('[data-testid="mapeditor-object"]') as HTMLSelectElement,
             ownerSelect: panel.querySelector('[data-testid="mapeditor-owner"]') as HTMLSelectElement,
             placeButton: panel.querySelector('[data-testid="mapeditor-place"]') as HTMLButtonElement,
             deleteButton: panel.querySelector('[data-testid="mapeditor-delete"]') as HTMLButtonElement,
+            paintSelect: panel.querySelector('[data-testid="mapeditor-paint-tile"]') as HTMLSelectElement,
+            paintButton: panel.querySelector('[data-testid="mapeditor-paint"]') as HTMLButtonElement,
             nameInput: panel.querySelector('[data-testid="mapeditor-name"]') as HTMLInputElement,
             statusEl: panel.querySelector('[data-testid="mapeditor-status"]') as HTMLDivElement,
             tokenInput: panel.querySelector('[data-testid="mapeditor-token"]') as HTMLInputElement,
@@ -445,6 +481,24 @@ export class MapEditorTester {
                 this.deleteObjectAt(tile);
                 return;
             }
+            if (this.state.paintActive) {
+                if (event.button === 2) {
+                    if (!wasRightClickDrag(event)) {
+                        this.setPaintActive(false);
+                    }
+                    return;
+                }
+                if (event.button !== 0) {
+                    return;
+                }
+                const tile = this.getTargetTileAtScreenPoint(event.pointer);
+                if (!tile) {
+                    this.setStatus('No map tile found at this point.');
+                    return;
+                }
+                this.paintTileAt(tile);
+                return;
+            }
             if (!this.state.placementActive) {
                 return;
             }
@@ -475,6 +529,9 @@ export class MapEditorTester {
             }
             if (event.key === 'Escape' && this.state.placementActive) {
                 this.setPlacementActive(false);
+            }
+            if (event.key === 'Escape' && this.state.paintActive) {
+                this.setPaintActive(false);
             }
         };
         document.addEventListener('keydown', handleKeyDown, true);
@@ -720,6 +777,7 @@ export class MapEditorTester {
     private static setPlacementActive(active: boolean, message?: string): void {
         if (active) {
             this.state.deleteActive = false;
+            this.state.paintActive = false;
         }
         this.state.placementActive = active;
         // worldInteraction stays enabled throughout (see setDeleteActive's
@@ -734,6 +792,7 @@ export class MapEditorTester {
     private static setDeleteActive(active: boolean, message?: string): void {
         if (active) {
             this.state.placementActive = false;
+            this.state.paintActive = false;
         }
         this.state.deleteActive = active;
         // Deliberately never disabling worldInteraction here (it used to be
@@ -778,6 +837,93 @@ export class MapEditorTester {
             return false;
         }
         this.setStatus(`Deleted ${label}(${target.name}) @ ${tile.rx},${tile.ry}.`);
+        this.syncControls();
+        return true;
+    }
+
+    /**
+     * Terrain-paint brush list: every distinct (tileNum, subTile) pair
+     * already used somewhere on the loaded map, deduplicated, each carrying
+     * one representative Tile object from that map. Sourced from the map's
+     * own tileset rather than the theater's full tile catalog because Tier 1
+     * repaint (docs/map-editor-feasibility-and-design.md §4 design decision
+     * 2) can only paint with art already resident in the texture atlas,
+     * which is built once from exactly the art this map's own tiles use
+     * (MapTileLayer.createTileObjects) - offering anything else here would
+     * be a brush that's guaranteed to fail the moment it's used. This is
+     * also the primary real-world case per §4's Phase 2 write-up: "most
+     * real brush strokes repaint using art already present in the loaded
+     * map's own theater tileset."
+     */
+    private static buildPaintSwatches(game: any): TileSwatch[] {
+        const swatches = new Map<string, TileSwatch>();
+        for (const tile of game.map.tiles.getAll()) {
+            const key = `${tile.tileNum}:${tile.subTile}`;
+            if (!swatches.has(key)) {
+                const terrainType: TerrainType = tile.terrainType;
+                swatches.set(key, {
+                    key,
+                    tileNum: tile.tileNum,
+                    subTile: tile.subTile,
+                    terrainType,
+                    terrainLabel: TerrainType[terrainType] ?? String(terrainType),
+                    referenceTile: tile,
+                });
+            }
+        }
+        return [...swatches.values()].sort((a, b) => a.terrainLabel.localeCompare(b.terrainLabel)
+            || a.tileNum - b.tileNum
+            || a.subTile - b.subTile);
+    }
+
+    private static setPaintActive(active: boolean, message?: string): void {
+        if (active) {
+            this.state.placementActive = false;
+            this.state.deleteActive = false;
+        }
+        this.state.paintActive = active;
+        this.setStatus(message ?? (active
+            ? 'Paint Terrain mode enabled: left-click a tile to repaint it with the selected brush; right-click or Esc to exit.'
+            : 'Paint Terrain mode disabled: pan/select normally.'));
+        this.syncControls();
+    }
+
+    private static paintTileAt(tile: any): boolean {
+        const runtime = this.runtime;
+        if (!runtime) {
+            return false;
+        }
+        const swatch = runtime.paintSwatches.find((candidate) => candidate.key === this.state.paintTileKey);
+        if (!swatch) {
+            this.setStatus('Select a terrain brush first.');
+            return false;
+        }
+        // Look the brush's art up by the reference tile it came from, not by
+        // re-deriving (tileNum, subTile) -> drawable ourselves: a tileset
+        // entry can have several visually-different art variants for the
+        // same (tileNum, subTile) (TileSetEntry.files), and which one ended
+        // up in the atlas for any given occurrence was picked randomly at
+        // load time (TileSets.getTileImage's randomIndexSelector). Reusing
+        // the exact Tile object this swatch was harvested from sidesteps
+        // that entirely - MapTileLayer.getDrawableForTile is keyed by Tile
+        // identity, not by re-deriving art identity.
+        const drawable = runtime.tileLayer.getDrawableForTile(swatch.referenceTile);
+        if (!drawable) {
+            this.setStatus(`Cannot paint: art for tile ${swatch.tileNum}:${swatch.subTile} isn't loaded in the atlas.`);
+            return false;
+        }
+        const painted = runtime.tileLayer.repaintTile(tile, drawable);
+        if (!painted) {
+            this.setStatus(`Cannot paint tile (${tile.rx}, ${tile.ry}): not a renderable map tile.`);
+            return false;
+        }
+        // Logical layer second, and only after the renderable repaint
+        // succeeds: TileCollection.repaintTile mutates tile.terrainType/
+        // rampType/landType in place, which is what gets serialized on
+        // Save - it must reflect exactly the art actually now on screen.
+        runtime.game.map.tiles.repaintTile(tile.rx, tile.ry, swatch.tileNum, swatch.subTile, getRandomInt);
+        this.state.paintedCount += 1;
+        this.setStatus(`Painted tile ${swatch.tileNum}:${swatch.subTile} @ ${tile.rx},${tile.ry}.`);
         this.syncControls();
         return true;
     }
@@ -860,7 +1006,7 @@ export class MapEditorTester {
             '';
     }
 
-    private static buildControlPanel(host: HTMLElement, catalog: Record<CatalogKind, string[]>, ownerNames: string[], mapName: string): HTMLDivElement {
+    private static buildControlPanel(host: HTMLElement, catalog: Record<CatalogKind, string[]>, ownerNames: string[], paintSwatches: TileSwatch[], mapName: string): HTMLDivElement {
         const panel = document.createElement('div');
         panel.dataset.testid = 'map-editor-panel';
         panel.style.cssText = `
@@ -976,6 +1122,39 @@ export class MapEditorTester {
         deleteButton.style.marginTop = '4px';
         body.appendChild(deleteButton);
 
+        const paintSelect = document.createElement('select');
+        paintSelect.dataset.testid = 'mapeditor-paint-tile';
+        paintSelect.style.width = '100%';
+        let currentGroup: HTMLOptGroupElement | undefined;
+        let currentTerrainLabel: string | undefined;
+        for (const swatch of paintSwatches) {
+            if (swatch.terrainLabel !== currentTerrainLabel) {
+                currentGroup = document.createElement('optgroup');
+                currentGroup.label = swatch.terrainLabel;
+                paintSelect.appendChild(currentGroup);
+                currentTerrainLabel = swatch.terrainLabel;
+            }
+            const option = document.createElement('option');
+            option.value = swatch.key;
+            option.textContent = `Tile ${swatch.tileNum}:${swatch.subTile}`;
+            currentGroup!.appendChild(option);
+        }
+        paintSelect.value = this.state.paintTileKey;
+        paintSelect.onchange = () => {
+            this.state.paintTileKey = paintSelect.value;
+            paintSelect.blur();
+        };
+        row('Terrain Brush (art already used on this map)', paintSelect);
+
+        const paintButton = this.createButton('Paint Terrain Mode', () => this.setPaintActive(!this.state.paintActive));
+        paintButton.dataset.testid = 'mapeditor-paint';
+        paintButton.style.marginTop = '4px';
+        body.appendChild(paintButton);
+        if (paintSwatches.length === 0) {
+            paintButton.disabled = true;
+            paintSelect.disabled = true;
+        }
+
         const nameInput = document.createElement('input');
         nameInput.dataset.testid = 'mapeditor-name';
         nameInput.type = 'text';
@@ -1053,6 +1232,10 @@ export class MapEditorTester {
         runtime.ownerSelect.value = this.state.ownerName;
         runtime.placeButton.textContent = this.state.placementActive ? 'Exit Placement Mode (Esc)' : 'Enter Placement Mode';
         runtime.deleteButton.textContent = this.state.deleteActive ? 'Exit Delete Mode (Esc)' : 'Delete Object Mode';
+        runtime.paintButton.textContent = this.state.paintActive ? 'Exit Paint Mode (Esc)' : 'Paint Terrain Mode';
+        if (runtime.paintSelect.value !== this.state.paintTileKey) {
+            runtime.paintSelect.value = this.state.paintTileKey;
+        }
         if (runtime.nameInput.value !== this.state.mapFileName) {
             runtime.nameInput.value = this.state.mapFileName;
         }
@@ -1064,7 +1247,7 @@ export class MapEditorTester {
         if (!runtime) {
             return;
         }
-        runtime.statusEl.textContent = `${this.state.lastMessage}\nPlaced this session: ${this.state.placedCount}`;
+        runtime.statusEl.textContent = `${this.state.lastMessage}\nPlaced this session: ${this.state.placedCount} | Painted this session: ${this.state.paintedCount}`;
     }
 
     private static setStatus(message: string): void {
@@ -1107,6 +1290,8 @@ export class MapEditorTester {
         this.renderer = undefined;
         this.runtime = undefined;
         this.state.placementActive = false;
+        this.state.deleteActive = false;
+        this.state.paintActive = false;
         this.disposables.dispose();
     }
 }

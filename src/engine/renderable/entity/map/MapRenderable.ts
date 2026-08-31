@@ -61,6 +61,9 @@ export class MapRenderable {
     getGameObject() {
         return this.gameObj;
     }
+    getTileLayer(): MapTileLayer {
+        return this.tileLayer;
+    }
     init() {
         const gameObject = this.getGameObject();
         this.tileLayer = new MapTileLayer(gameObject, this.theater, this.art, this.imageFinder, this.camera, this.debugWireframe, this.gameSpeed, this.worldSound, this.lighting, this.useSpriteBatching);

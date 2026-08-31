@@ -546,15 +546,14 @@ built.
       `toString()` with zero edits → diff against original bytes) — only
       verified against synthetic test fixtures so far (§5, still open)
 
-**Phase 2 — Terrain & overlay painting: in progress (6/8 steps shipped).**
+**Phase 2 — Terrain & overlay painting: in progress (7/8 steps shipped).**
 
 - [x] Step 1: `Format5.encode`
 - [x] Step 2: expose `mapRenderable` from `WorldView.init()`
 - [x] Step 3: `TileCollection.repaintTile()`
-- [x] Step 4: `MapTileLayer` persistent `uv`/drawable state +
-      `repaintTile()` (Tier 1: art already in atlas) — not yet verified
-      live in a real WebGL scene, no paint-mode UI exists yet to drive it
-      through (that's step 7)
+- [x] Step 4: `MapTileLayer` persistent `uv`/drawable state + `repaintTile()`
+      (Tier 1: art already in atlas) — now verified live in a real WebGL
+      scene via step 7's paint-mode UI
 - [x] Step 5: `MapFile.writeTiles()` (`[IsoMapPack5]`) — implemented and
       round-trip tested against a real map; still unconfirmed against the
       real editor's `EncodeIsoMapPack5` or real gameplay (§3.4, §5) — treat
@@ -564,8 +563,18 @@ built.
       remove an overlay cell, verified only that cell changes); same trust
       caveat as step 5 — unconfirmed against the real editor's own encoder
       or real gameplay (§3.4, §5)
-- [ ] Step 7: paint-mode UI in `MapEditorTester` (tile-art picker + mode
-      toggle)
+- [x] Step 7: paint-mode UI in `MapEditorTester` — a "Terrain Brush"
+      dropdown (grouped by `TerrainType`, one option per distinct
+      `(tileNum, subTile)` pair already used on the loaded map) + a third
+      mutually-exclusive "Paint Terrain Mode" toggle alongside Placement/
+      Delete. Verified live at `/mapeditor` against a real map
+      (`mp18s3.map`): painted a Water(129:20) swatch onto a Clear-terrain
+      snow tile, and the result was pixel-identical to that same tileNum/
+      subTile occurring naturally elsewhere on the map (panned the camera
+      there and compared directly) — confirms `MapTileLayer.repaintTile()`
+      (step 4) actually paints correct, matching art, not a placeholder.
+      Multi-tile brush radius and new-art-not-in-atlas (Tier 2) are still
+      out of scope, per design.
 - [ ] Step 8: wire `buildMapIniString()` to call the new writers
 - [ ] Tier 2 (new art not yet in atlas, full repack) — deliberately deferred
       past v1 (§4 design decision 2)
@@ -864,17 +873,59 @@ Phase 1's step discipline):
    round-trip guarantee) with zero edits; edits one overlay cell's id/value
    in place and confirms only that cell changes; removes one overlay cell
    and confirms it disappears without touching any other cell.
-7. **Paint-mode UI in `MapEditorTester`**: a tile-art picker (grouped by
-   terrain type, reusing whatever tileset browsing this repo's theater
-   loading already exposes) + a "Paint Terrain Mode" toggle button,
-   following the exact mutual-exclusivity pattern `placementActive`/
-   `deleteActive` already established in Phase 1 (`setPlacementActive`/
-   `setDeleteActive` both reset each other) — add `paintActive` as a third
-   mutually-exclusive mode. Click handler calls `TileCollection.
-   repaintTile()` then `MapTileLayer.repaintTile()` (falling back to a
-   "not in atlas yet" status message, not Tier 2, in this step) at the
-   clicked tile. Single-tile only in this step; multi-tile brush radius
-   is a follow-up, not required to prove the mechanism end-to-end.
+7. **Shipped.** Paint-mode UI in `MapEditorTester`: a "Terrain Brush"
+   `<select>` grouped by `TerrainType` (via `optgroup`, labeled with the
+   enum name - `TerrainType` is a numeric enum, so the first cut of this
+   sort/group crashed with `a.terrainType.localeCompare is not a
+   function` until fixed to sort/group by a derived `terrainLabel` string
+   instead) + a "Paint Terrain Mode" toggle button, following the exact
+   mutual-exclusivity pattern `placementActive`/`deleteActive` already
+   established in Phase 1 (`setPlacementActive`/`setDeleteActive` both
+   reset each other) - `paintActive` is a third mutually-exclusive mode,
+   all three resetting each other on entry.
+
+   The brush list (`buildPaintSwatches()`) is deliberately sourced from the
+   loaded map's own tiles (`game.map.tiles.getAll()`, deduplicated by
+   `(tileNum, subTile)`), not the theater's full tile catalog - Tier 1
+   repaint can only paint with art already resident in the atlas, which is
+   built once from exactly the art the map's own tiles use, so offering
+   anything else would be a brush guaranteed to fail on click. This also
+   matches design decision 2's stated primary use case ("most real brush
+   strokes repaint using art already present in the loaded map's own
+   theater tileset").
+
+   Each swatch also carries the specific `Tile` object it was harvested
+   from. This matters because a `TileSetEntry` can back one `(tileNum,
+   subTile)` with several different art variant files
+   (`TileSetEntry.files`), and which variant ended up in the atlas for any
+   given map tile was chosen randomly at load time
+   (`TileSets.getTileImage`'s `randomIndexSelector`) - so `paintTileAt()`
+   looks the brush's drawable up via `MapTileLayer.getDrawableForTile
+   (swatch.referenceTile)` (a new accessor over the `tileDrawableMap` step
+   4 already built), keyed by that exact `Tile` object's identity, rather
+   than re-deriving art identity from `(tileNum, subTile)` and risking a
+   different, not-yet-packed variant. `MapRenderable` also gained a
+   `getTileLayer()` accessor so `MapEditorTester` can reach it at all.
+   Click handler: `MapTileLayer.repaintTile()` first (renderable layer),
+   then - only if that succeeds - `TileCollection.repaintTile()` (logical
+   layer, what gets serialized on Save), so the two can never disagree
+   about which tile actually got painted. Falls back to a "not in atlas
+   yet" status message (Tier 2 not implemented) if the lookup fails, which
+   given the sourcing above should only happen for a genuinely missing/
+   fallback-substituted tile. Single-tile only; multi-tile brush radius is
+   a follow-up, not required to prove the mechanism end-to-end.
+
+   *Verified live* at `/mapeditor` against a real map (`mp18s3.map`,
+   arctic theater): selected a Water(129:20) swatch, entered Paint Terrain
+   Mode, clicked a Clear-terrain snow tile - repainted correctly with no
+   console errors, status/counters updated. Then panned the camera
+   (`MapPanningHelper.computeCameraPanFromTile`) to an unrelated tile
+   elsewhere on the map that already naturally uses tileNum 129/subTile 20
+   and confirmed the painted tile's art is pixel-identical to it - proof
+   the repaint pipeline paints genuinely correct, matching art rather than
+   some placeholder that merely didn't error. Also verified Esc exits
+   Paint Mode, and that entering Placement Mode while Paint Mode is active
+   correctly exits Paint Mode (mutual exclusivity).
 8. **Wire `buildMapIniString()` to also call the new writers**: currently
    (`src/tools/MapEditorTester.ts`) it only calls the four object writers;
    add `writeTiles()`/`writeOverlays()` calls so Download/Save-to-Server
