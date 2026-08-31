@@ -546,7 +546,7 @@ built.
       `toString()` with zero edits → diff against original bytes) — only
       verified against synthetic test fixtures so far (§5, still open)
 
-**Phase 2 — Terrain & overlay painting: in progress (5/8 steps shipped).**
+**Phase 2 — Terrain & overlay painting: in progress (6/8 steps shipped).**
 
 - [x] Step 1: `Format5.encode`
 - [x] Step 2: expose `mapRenderable` from `WorldView.init()`
@@ -559,7 +559,11 @@ built.
       round-trip tested against a real map; still unconfirmed against the
       real editor's `EncodeIsoMapPack5` or real gameplay (§3.4, §5) — treat
       a save through this path as provisionally trustworthy, not proven
-- [ ] Step 6: `MapFile.writeOverlays()` (`[OverlayPack]`/`[OverlayDataPack]`)
+- [x] Step 6: `MapFile.writeOverlays()` (`[OverlayPack]`/`[OverlayDataPack]`)
+      — implemented and round-trip tested against a real map (add/edit/
+      remove an overlay cell, verified only that cell changes); same trust
+      caveat as step 5 — unconfirmed against the real editor's own encoder
+      or real gameplay (§3.4, §5)
 - [ ] Step 7: paint-mode UI in `MapEditorTester` (tile-art picker + mode
       toggle)
 - [ ] Step 8: wire `buildMapIniString()` to call the new writers
@@ -838,11 +842,28 @@ Phase 1's step discipline):
    full `writeTiles → toString() → re-parse` cycle; confirms a non-zero
    `iceGrowth` value survives the same round-trip instead of being
    zeroed.
-6. **`MapFile.writeOverlays()`**: same pattern, `[OverlayPack]`/
-   `[OverlayDataPack]` via `Format80.encode` — not subject to the
-   `EncodeIsoMapPack5` open question (§3.4 already confirms overlay uses
-   the generic LCW path, `EncodeF80`, at the real editor's
-   `MapData.cpp:1163,1203`), so no blocker analogous to step 5's.
+6. **Shipped.** `MapFile.writeOverlays(overlays: Overlay[])`: same pattern
+   as step 5 — takes the overlay list as a parameter, mirrors
+   `readOverlays()`'s own indexing exactly (packed offset `rx + 512*ry`
+   into a 512x512/`1<<18`-byte grid, matching the buffer size
+   `readOverlays()` already decodes into) rather than re-deriving it, since
+   `readOverlays()`'s own index math is the only confirmed ground truth for
+   this layout. Builds two parallel `Uint8Array(1<<18)` grids — overlay ids
+   (filled with `255` first, the "no overlay" sentinel `readOverlays()`
+   checks for) and overlay values — writes each cell an `Overlay` occupies,
+   then `Format5.encode(..., 80)`s each into `[OverlayPack]`/
+   `[OverlayDataPack]` via the same `writeBase64Section()` helper step 5
+   introduced. Not subject to the `EncodeIsoMapPack5` open question (§3.4
+   already confirms overlay uses the generic LCW path, `EncodeF80`, at the
+   real editor's `MapData.cpp:1163,1203`), so no blocker analogous to step
+   5's raw compression format — the same real-map-vs-real-editor trust
+   caveat still applies (§3.4, §5).
+   *Test* (`src/test/MapFileWriteOverlays.test.ts`): loads the real map
+   fixture, round-trips `[OverlayPack]`/`[OverlayDataPack]` byte-for-byte
+   (by cell id/value, not raw bytes, since overlay iteration order isn't a
+   round-trip guarantee) with zero edits; edits one overlay cell's id/value
+   in place and confirms only that cell changes; removes one overlay cell
+   and confirms it disappears without touching any other cell.
 7. **Paint-mode UI in `MapEditorTester`**: a tile-art picker (grouped by
    terrain type, reusing whatever tileset browsing this repo's theater
    loading already exposes) + a "Paint Terrain Mode" toggle button,

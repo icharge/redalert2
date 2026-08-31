@@ -500,6 +500,31 @@ export class MapFile extends IniFile {
         const encoded = Format5.encode(new Uint8Array(stream.buffer), 5);
         this.writeBase64Section("IsoMapPack5", encoded);
     }
+    // [OverlayPack]/[OverlayDataPack]: mirrors readOverlays()'s own indexing
+    // exactly - a 512x512 grid (1<<18 bytes, the same bound readOverlays
+    // decodes into) of per-cell overlay ids (255 = no overlay) plus a
+    // parallel grid of per-cell overlay "value" bytes (frame/data), each
+    // cell addressed by the same packed offset readOverlays computes
+    // (rx + 512*ry), Format5-encoded (format 80/LCW) and base64-chunked the
+    // same way a real .map file stores it.
+    //
+    // Trust caveat (docs/map-editor-feasibility-and-design.md §3.4/§5): like
+    // writeTiles(), this has only been round-trip tested against this
+    // repo's own decoder and a real map's actual overlay bytes, not against
+    // the real editor's own encoder or verified inside actual gameplay -
+    // treat a save through this path as unconfirmed until that's checked.
+    writeOverlays(overlays: mapObjects.Overlay[]) {
+        const GRID_SIZE = 1 << 18; // 512 * 512, matches readOverlays()'s decode buffer size
+        const overlayIds = new Uint8Array(GRID_SIZE).fill(255);
+        const overlayValues = new Uint8Array(GRID_SIZE);
+        for (const overlay of overlays) {
+            const index = overlay.rx + 512 * overlay.ry;
+            overlayIds[index] = overlay.id;
+            overlayValues[index] = overlay.value;
+        }
+        this.writeBase64Section("OverlayPack", Format5.encode(overlayIds, 80));
+        this.writeBase64Section("OverlayDataPack", Format5.encode(overlayValues, 80));
+    }
     // Chunks a byte blob into the same base64-line-per-numbered-key layout
     // real .map files use for binary INI data (confirmed against a real
     // map's [IsoMapPack5]/[OverlayPack]/[OverlayDataPack]: sequential
