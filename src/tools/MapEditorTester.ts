@@ -8,6 +8,7 @@ import { WorldView } from '@/gui/screen/game/WorldView';
 import { Minimap } from '@/gui/screen/game/component/Minimap';
 import { WorldInteractionFactory } from '@/gui/screen/game/worldInteraction/WorldInteractionFactory';
 import { PlacementGrid } from '@/gui/screen/game/worldInteraction/placementMode/PlacementGrid';
+import { TileHoverCornerLines } from '@/tools/shared/TileHoverCornerLines';
 import { Engine, EngineType } from '@/engine/Engine';
 import { IsoCoords } from '@/engine/IsoCoords';
 import { Renderer } from '@/engine/gfx/Renderer';
@@ -297,6 +298,15 @@ export class MapEditorTester {
         worldScene.add(hoverCursor);
         this.disposables.add(() => worldScene.remove(hoverCursor));
         this.disposables.add(() => hoverCursor.dispose());
+        // Corner drop-lines: dashed lines from each of the hovered tile's 4
+        // corners down to that same corner at height 0 - the classic Final
+        // Alert cue for how far above the ground plane an elevated/ramped
+        // tile actually sits, which the flat diamond overlay alone doesn't
+        // convey.
+        const hoverCornerLines = new TileHoverCornerLines(worldScene.camera, 0xffd84a);
+        worldScene.add(hoverCornerLines);
+        this.disposables.add(() => worldScene.remove(hoverCornerLines));
+        this.disposables.add(() => hoverCornerLines.dispose());
         let lastHoverTile: any;
         const updateHoverCursor = (): void => {
             const tile = worldInteraction.mapHoverHandler.getCurrentHover()?.tile;
@@ -306,6 +316,7 @@ export class MapEditorTester {
             lastHoverTile = tile;
             hoverCursorModel.tiles = tile ? [{ rx: tile.rx, ry: tile.ry, buildable: true }] : [];
             hoverCursorModel.visible = !!tile;
+            hoverCornerLines.setTile(tile);
         };
         renderer.onFrame.subscribe(updateHoverCursor);
         this.disposables.add(() => renderer.onFrame.unsubscribe(updateHoverCursor));
