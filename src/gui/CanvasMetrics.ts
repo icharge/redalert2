@@ -24,10 +24,24 @@ export class CanvasMetrics {
             const rect = this.canvas.getBoundingClientRect();
             this.x = rect.left + this.window.scrollX;
             this.y = rect.top + this.window.scrollY;
-            this.width = this.canvas.width;
-            this.height = this.canvas.height;
-            this.displayWidth = rect.width || this.canvas.clientWidth || this.width;
-            this.displayHeight = rect.height || this.canvas.clientHeight || this.height;
+            // width/height feed scaleDisplayPosition() below and the pointer-
+            // clamp bounds in Pointer.ts/PointerEvents.ts - both need to land
+            // in the same CSS-pixel space every other screen-space consumer
+            // uses (WorldScene/UiScene camera frustums are sized directly
+            // from the CSS-pixel viewport, see getCameraParams/createCamera),
+            // not canvas.width/height (the internal drawing-buffer
+            // resolution). Those two were numerically identical as long as
+            // nothing ever called setPixelRatio() - true everywhere in this
+            // codebase until it was finally wired up, at which point canvas
+            // .width became devicePixelRatio times bigger than the CSS box,
+            // and every click/hover started resolving to the wrong world
+            // position (worse the higher the DPR) because pointer math was
+            // silently scaling into buffer-pixel space while everything it
+            // gets compared against stayed in CSS-pixel space.
+            this.displayWidth = rect.width || this.canvas.clientWidth || this.canvas.width;
+            this.displayHeight = rect.height || this.canvas.clientHeight || this.canvas.height;
+            this.width = this.displayWidth;
+            this.height = this.displayHeight;
         };
     }
     init(): void {
