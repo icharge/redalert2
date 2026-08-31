@@ -546,7 +546,7 @@ built.
       `toString()` with zero edits → diff against original bytes) — only
       verified against synthetic test fixtures so far (§5, still open)
 
-**Phase 2 — Terrain & overlay painting: in progress (7/8 steps shipped).**
+**Phase 2 — Terrain & overlay painting: all 8 steps shipped.**
 
 - [x] Step 1: `Format5.encode`
 - [x] Step 2: expose `mapRenderable` from `WorldView.init()`
@@ -575,7 +575,28 @@ built.
       (step 4) actually paints correct, matching art, not a placeholder.
       Multi-tile brush radius and new-art-not-in-atlas (Tier 2) are still
       out of scope, per design.
-- [ ] Step 8: wire `buildMapIniString()` to call the new writers
+- [x] Step 8: wire `buildMapIniString()` to call the new writers — a paint
+      edit made through step 7's UI now actually survives Download/Save;
+      before this step, `writeTiles()`/`writeOverlays()` were never called
+      at all, so `[IsoMapPack5]`/`[OverlayPack]`/`[OverlayDataPack]`
+      silently passed through byte-identical to the loaded file on every
+      save, discarding any paint edit without error. `mergeLiveTileEdits()`
+      merges live `tileNum`/`subTile` from `game.map.tiles` (the
+      `TileCollection` paint mutates) onto the original per-cell
+      `mapFile.tiles` records (keyed by rx/ry, not array index) rather than
+      serializing `TileCollection.Tile` directly, since `TileCollection`
+      doesn't model the per-cell `iceGrowth` byte `MapFile.MapTile` does -
+      serializing it directly would have silently zeroed `iceGrowth` on
+      every tile, painted or not, on every save. No overlay-painting UI
+      exists yet, so `writeOverlays()` is called with the original parsed
+      `mapFile.overlays` unchanged, preserving them exactly as loaded.
+      Verified live (not just unit-tested) at `/mapeditor` against a real
+      map: painted a tile, ran the same extract → merge → write →
+      `toString()` pipeline `buildMapIniString()` runs, re-parsed the
+      result with a fresh `MapFile` and confirmed the painted tile's new
+      `(tileNum, subTile)` survived with its original `iceGrowth` intact,
+      all 15,075 other tiles were byte-for-byte unchanged, and all 671
+      overlays passed through unchanged.
 - [ ] Tier 2 (new art not yet in atlas, full repack) — deliberately deferred
       past v1 (§4 design decision 2)
 - [ ] Height/`z` painting — deliberately excluded from v1 (§4 design

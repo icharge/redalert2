@@ -935,7 +935,32 @@ export class MapEditorTester {
         runtime.mapFile.writeVehicles(extracted.vehicles);
         runtime.mapFile.writeInfantries(extracted.infantries);
         runtime.mapFile.writeAircrafts(extracted.aircrafts);
+        runtime.mapFile.writeTiles(this.mergeLiveTileEdits(runtime));
+        // No overlay-painting UI exists yet (only terrain/tile-art painting,
+        // step 7) - pass the original parsed overlays straight through so a
+        // save preserves them unchanged, same as every section this tool
+        // doesn't yet offer editing for.
+        runtime.mapFile.writeOverlays(runtime.mapFile.overlays);
         return runtime.mapFile.toString();
+    }
+
+    // mapFile.tiles (writeTiles()'s input shape, MapFile.ts's own MapTile
+    // type) carries a per-cell iceGrowth byte that TileCollection.Tile
+    // doesn't model (see MapTile's doc comment) - it's frozen at map load
+    // time and never touched again. Live terrain-paint edits (step 7)
+    // mutate game.map.tiles (the TileCollection) in place instead, the only
+    // edit surface that exists. Merge the live tileNum/subTile onto the
+    // original per-cell records - keyed by rx/ry, not array index, since
+    // mapFile.tiles' order is whatever readTiles() produced - rather than
+    // serializing TileCollection.Tile directly, so a save doesn't silently
+    // zero iceGrowth on every tile, painted or not.
+    private static mergeLiveTileEdits(runtime: EditorRuntime): any[] {
+        return runtime.mapFile.tiles.map((originalTile: any) => {
+            const liveTile = runtime.game.map.tiles.getByMapCoords(originalTile.rx, originalTile.ry);
+            return liveTile
+                ? { ...originalTile, tileNum: liveTile.tileNum, subTile: liveTile.subTile }
+                : originalTile;
+        });
     }
 
     /**
