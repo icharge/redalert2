@@ -104,6 +104,15 @@ export class Renderer {
         catch (error) {
             throw new RendererError('Failed to initialize WebGL renderer');
         }
+        // Never set anywhere in this codebase before, so on any HiDPI/Retina
+        // display the canvas's internal drawing buffer was rendering at 1x
+        // (CSS pixel count) while the browser stretched it to fill the real,
+        // higher-density physical pixels - every hairline artifact (e.g. the
+        // tile-boundary alpha-cutout seam) got blurred across ~2-3 real
+        // pixels by that upscale, on top of just being blurrier overall.
+        // Capped at 2 (standard practice) so a 3x display doesn't quadruple+
+        // fragment work for a diminishing visual return.
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
         renderer.setSize(this.width, this.height);
         renderer.autoClear = false;
         renderer.autoClearDepth = false;
