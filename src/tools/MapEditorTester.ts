@@ -178,6 +178,18 @@ export class MapEditorTester {
     private static paintPreviewTile: any;
     private static paintPreviewOriginalDrawable: any;
     private static paintPreviewSwatchKey: string | undefined;
+    // Placement Mode's live hover preview: a real, temporarily-spawned
+    // GameObject at the hovered tile showing exactly what a click would
+    // place there - reuses game.spawnObject()/unspawnObject() (the same
+    // primitive placeObjectAt()/deleteObjectAt() already use for the real
+    // thing) rather than any bespoke ghost-rendering path, since none
+    // exists in this codebase (confirmed: even real gameplay's own
+    // PlacementMode.ts only ever shows PlacementGrid's footprint diamond,
+    // never an actual object preview). See updateObjectPreview()/
+    // clearObjectPreview().
+    private static objectPreview: any;
+    private static objectPreviewTile: any;
+    private static objectPreviewKey: string | undefined;
     private static state: EditorState = {
         kind: 'vehicle',
         objectName: '',
@@ -368,10 +380,11 @@ export class MapEditorTester {
                 hoverOutline.setTile(tile);
                 hoverCornerLines.setTile(tile);
             }
-            // Not gated behind the tile-changed check above: the brush
-            // selection can change while the mouse sits still over the same
-            // tile, and the preview needs to follow that too.
+            // Not gated behind the tile-changed check above: the brush/
+            // object selection can change while the mouse sits still over
+            // the same tile, and both previews need to follow that too.
             this.updatePaintPreview(tile);
+            this.updateObjectPreview(tile);
         };
         renderer.onFrame.subscribe(updateHoverCursor);
         this.disposables.add(() => renderer.onFrame.unsubscribe(updateHoverCursor));
@@ -768,6 +781,14 @@ export class MapEditorTester {
             this.setStatus(`Cannot place: unknown owner house "${this.state.ownerName}".`);
             return false;
         }
+        // The tile now being committed may be exactly what the hover
+        // preview is already showing (see updateObjectPreview()) - remove
+        // that preview object first so the real object created below isn't
+        // sharing a tile with a leftover ghost, and so a save triggered
+        // right after this click was never at risk of the preview leaking
+        // in (see buildMapIniString()'s own clearObjectPreview() call for
+        // the general case).
+        this.clearObjectPreview();
         const objectType = this.objectTypeForKind(this.state.kind);
         let obj: any;
         try {
@@ -1017,8 +1038,79 @@ export class MapEditorTester {
         this.paintPreviewSwatchKey = undefined;
     }
 
+    /**
+     * Placement Mode's counterpart to updatePaintPreview(): spawns a real,
+     * fully-functional GameObject at the hovered tile using the exact same
+     * create -> applySpawnLayer -> changeObjectOwner -> spawnObject sequence
+     * placeObjectAt() commits with, so it renders with correct art, VXL/SHP
+     * model, and owner-color tinting automatically via RenderableManager -
+     * no separate ghost-rendering code needed. Re-spawns whenever the
+     * hovered tile OR the selected kind/object/owner changes (tracked via a
+     * combined key, same pattern updatePaintPreview() uses for brush
+     * changes), so switching object type mid-hover updates the preview too.
+     */
+    private static updateObjectPreview(hoverTile: any): void {
+        const runtime = this.runtime;
+        const desiredTile = this.state.placementActive ? hoverTile : undefined;
+        const key = `${this.state.kind}:${this.state.objectName}:${this.state.ownerName}`;
+        if (desiredTile === this.objectPreviewTile && key === this.objectPreviewKey) {
+            return;
+        }
+        this.clearObjectPreview();
+        if (!desiredTile || !runtime || !this.state.objectName) {
+            return;
+        }
+        const owner = runtime.housePlayers.get(this.state.ownerName);
+        if (!owner) {
+            return;
+        }
+        const objectType = this.objectTypeForKind(this.state.kind);
+        let obj: any;
+        try {
+            obj = runtime.game.objectFactory.create(objectType, this.state.objectName, runtime.game.rules, runtime.game.art);
+        }
+        catch {
+            // A bad selection surfaces its real error on an actual placement
+            // click (placeObjectAt's own try/catch) - the preview just stays
+            // hidden for it rather than duplicating that status message.
+            return;
+        }
+        if (objectType !== ObjectType.Building) {
+            this.applySpawnLayer(obj, desiredTile);
+        }
+        runtime.game.changeObjectOwner(obj, owner);
+        runtime.game.spawnObject(obj, desiredTile);
+        this.objectPreview = obj;
+        this.objectPreviewTile = desiredTile;
+        this.objectPreviewKey = key;
+    }
+
+    private static clearObjectPreview(): void {
+        if (this.objectPreview) {
+            try {
+                this.runtime?.game.unspawnObject(this.objectPreview);
+                this.objectPreview.dispose?.();
+            }
+            catch {
+                // Best-effort cleanup - a failure here shouldn't block
+                // whatever triggered the clear (mode exit, a real
+                // placement, or a save).
+            }
+        }
+        this.objectPreview = undefined;
+        this.objectPreviewTile = undefined;
+        this.objectPreviewKey = undefined;
+    }
+
     /** Runs the extract -> write pipeline and returns the serialized .map INI text. Shared by download and server-save. */
     private static buildMapIniString(runtime: EditorRuntime): string {
+        // Required, not just tidy: extractMapObjects() below walks every
+        // spawned object in the world, and Placement Mode's hover preview
+        // (updateObjectPreview()) is a real, fully-spawned GameObject - if
+        // one happened to be live when Save/Download is clicked (entirely
+        // possible; nothing else guarantees it was cleared first), it would
+        // get serialized into the map as if actually placed.
+        this.clearObjectPreview();
         const extracted = extractMapObjects(runtime.game.world.getAllObjects());
         runtime.mapFile.writeStructures(extracted.structures);
         runtime.mapFile.writeVehicles(extracted.vehicles);
@@ -1425,12 +1517,16 @@ export class MapEditorTester {
         this.state.placementActive = false;
         this.state.deleteActive = false;
         this.state.paintActive = false;
-        // Not clearPaintPreview()'d - that would repaint a tile belonging
-        // to the scene disposables.dispose() below is about to tear down
-        // anyway. Just drop the (now-stale, next-load-invalid) references.
+        // Not clearPaintPreview()/clearObjectPreview()'d - both would try
+        // to mutate/unspawn against a game and scene disposables.dispose()
+        // below is about to tear down anyway. Just drop the (now-stale,
+        // next-load-invalid) references.
         this.paintPreviewTile = undefined;
         this.paintPreviewOriginalDrawable = undefined;
         this.paintPreviewSwatchKey = undefined;
+        this.objectPreview = undefined;
+        this.objectPreviewTile = undefined;
+        this.objectPreviewKey = undefined;
         this.disposables.dispose();
     }
 }

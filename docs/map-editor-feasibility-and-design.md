@@ -538,8 +538,26 @@ built.
       included, reusing the game's single canonical neutral `Player`
       rather than creating a second one, and pinned first as the default
       selection; a hint line under the dropdown states the caveat directly
-- [ ] Placement-preview/ghost object before commit (§3.1) — not built,
-      click-to-commit only
+- [x] Bonus: Final Alert-style live placement preview - hovering a tile in
+      Placement Mode now shows the actually-selected object (building/
+      vehicle/naval/infantry/aircraft, any kind) rendered at real scale
+      with correct owner-color tinting, before a click commits it,
+      mirroring Paint Terrain Mode's own brush preview
+      (`MapEditorTester.updateObjectPreview()`/`clearObjectPreview()`).
+      No bespoke ghost-rendering path exists in this codebase to reuse -
+      confirmed even real gameplay's own `PlacementMode.ts` only ever
+      shows `PlacementGrid`'s footprint diamond, never an actual object
+      preview - so this spawns a real, temporary `GameObject` via the
+      exact same `game.spawnObject()`/`unspawnObject()` primitive
+      `placeObjectAt()`/`deleteObjectAt()` already use for the committed
+      thing, letting `RenderableManager` render it correctly for free
+      (art, VXL/SHP model, owner tinting, any object type) with no new
+      rendering code. Re-spawns on tile change **or** kind/object/owner
+      selection change while hovering the same tile. Because the preview
+      is a real spawned object, `buildMapIniString()` now clears it before
+      calling `extractMapObjects()` - otherwise a Save/Download triggered
+      while a preview was live would have serialized it into the map as
+      if actually placed.
 - [ ] Selection + move/re-edit for an already-placed object (§3.1) — not
       built, add/delete only. Scoped (not yet implemented): **select** by
       reusing `deleteObjectAt()`'s tile-lookup plus
