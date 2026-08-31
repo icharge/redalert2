@@ -483,11 +483,38 @@ built.
       (`MapTileIntersectHelper.ts`) — was firing every frame on any
       off-map hit-test, a routine condition, not an error; was also
       polluting plain `bun test` output
-- [x] Bonus: Final Alert-style tile hover cursor — elevation-aware diamond
-      outline (`PlacementGrid.ts`, reused from real building placement) plus
-      dashed corner-to-base drop-lines on sloped tiles
-      (`src/tools/shared/TileHoverCornerLines.ts`), relative to each tile's
-      own base height so flat ground at a nonzero map baseline stays quiet
+- [x] Bonus: Final Alert-style tile hover cursor — elevation-aware outline
+      of the hovered tile's top face plus dashed corner-to-base drop-lines
+      on sloped tiles (`src/tools/shared/TileHoverCornerLines.ts`), relative
+      to each tile's own base height so flat ground at a nonzero map
+      baseline stays quiet
+- [x] Bonus fix: hover cursor switched from a solid semi-opaque colored
+      fill (`PlacementGrid.ts`, reused from real building placement purely
+      for its baked ramp-height diamond shape) to a bold, transparent
+      outline-only line loop (new `src/tools/shared/TileHoverOutline.ts`,
+      same ramp-aware corner-height math as the drop-lines) — the fill
+      tinted/obscured whatever was under the cursor, which matters once
+      Paint Terrain Mode needs the brush preview's actual tile art visible
+      underneath (see the next bullet), not a yellow haze over it.
+      Deliberately a standalone class rather than modifying `PlacementGrid`
+      itself, since that class's baked texture is also used by real
+      building placement - this only touches the map editor's own hover
+      cursor
+- [x] Bonus: Final Alert-style live brush preview in Paint Terrain Mode —
+      hovering a tile temporarily repaints it with the selected brush's
+      actual art (`MapEditorTester.updatePaintPreview()`/
+      `clearPaintPreview()`, using the same `MapTileLayer.repaintTile()`
+      Tier-1 pipeline step 7 already built), reverting when the hover
+      moves off or the brush/mode changes, so a click always paints
+      exactly what was already on screen
+- [x] Bonus: terrain-brush picker replaced with visual thumbnails instead
+      of a "Tile 129:20" text label the user had no way to recognize art
+      by - `buildPaintSwatches()` renders each swatch's already-loaded
+      `IndexedBitmap` (the same one the paint pipeline itself uses) via
+      `CanvasUtils.canvasFromIndexedImageData()`, the same palette-
+      application utility the map-preview lobby thumbnail
+      (`MapPreviewRenderer.ts`) already uses - no new rendering path
+      needed, just reusing what both step 7 and the lobby already built
 - [x] Verified (no fix needed): Delete Object Mode already stays active
       across repeated deletions — left-click keeps deleting until Esc/
       right-click/toggling the button again; confirmed live across two
@@ -599,8 +626,10 @@ built.
       overlays passed through unchanged.
 - [ ] Tier 2 (new art not yet in atlas, full repack) — deliberately deferred
       past v1 (§4 design decision 2)
-- [ ] Height/`z` painting — deliberately excluded from v1 (§4 design
-      decision 1)
+- [ ] Height/`z` painting for cliffs/ramps (step 9, discovered via live use
+      of step 7 — a Cliff brush paints the right art but never elevates the
+      tile) — not built; scoped in detail right after the step list below,
+      including a correction to design decision 1's original reasoning
 
 **Phase 3 — Trigger/tag/AI scripting UI: sketched only, not planned to
 step level.**
@@ -947,10 +976,33 @@ Phase 1's step discipline):
    some placeholder that merely didn't error. Also verified Esc exits
    Paint Mode, and that entering Placement Mode while Paint Mode is active
    correctly exits Paint Mode (mutual exclusivity).
-8. **Wire `buildMapIniString()` to also call the new writers**: currently
-   (`src/tools/MapEditorTester.ts`) it only calls the four object writers;
-   add `writeTiles()`/`writeOverlays()` calls so Download/Save-to-Server
-   actually persist terrain edits, not just object placement.
+8. **Shipped.** `buildMapIniString()` now also calls `writeTiles()`/
+   `writeOverlays()` (it previously called only the four object writers),
+   so Download/Save-to-Server actually persist terrain edits made through
+   step 7's UI, not just object placement - before this, those two
+   sections silently passed through byte-identical to the loaded file on
+   every save (`IniSection` only rewrites sections a `write*` call
+   actually touches), discarding any paint edit with no error.
+   `mergeLiveTileEdits()` merges live `tileNum`/`subTile` from
+   `game.map.tiles` (the `TileCollection` paint mutates) onto the
+   original per-cell `mapFile.tiles` records, keyed by rx/ry rather than
+   array index - `TileCollection.Tile` doesn't model the per-cell
+   `iceGrowth` byte `MapFile.MapTile` does, so serializing
+   `TileCollection.Tile` directly would have silently zeroed it on every
+   tile, painted or not. No overlay-painting UI exists, so
+   `writeOverlays()` is called with the original parsed
+   `mapFile.overlays` unchanged.
+   *Verified live* (not just unit-tested) at `/mapeditor` against a real
+   map: painted a tile, ran the exact pipeline `buildMapIniString()` runs
+   (extract → merge → write → `toString()`), re-parsed the result with a
+   fresh `MapFile`, and confirmed the painted tile's new `(tileNum,
+   subTile)` survived with its original `iceGrowth` intact, all 15,075
+   other tiles were byte-for-byte unchanged, and all 671 overlays passed
+   through unchanged.
+9. **Not built - scoped below.** Height (`z`) painting for cliffs/ramps -
+   design decision 1 excluded this from v1 for good reason at the time,
+   but turns out narrower in practice than that decision's text implies;
+   see the dedicated scope right after this list.
 
 *Verification (Phase 2, end-to-end)*, mirroring Phase 1's:
 
@@ -967,6 +1019,105 @@ Phase 1's step discipline):
    decoder): validate encoded output against the actual game or CNCMaps
    Renderer, per §5's existing LZO/Format80 risk bullet — still unclosed,
    inherited unchanged from before this phase started.
+
+### Step 9 (not built): height (`z`) painting, for cliffs/ramps
+
+Surfaced immediately by real use of step 7's paint UI: a `TerrainType.Cliff`
+brush paints the correct art but never elevates the tile, so the result is a
+cliff-face picture sitting flush with its flat neighbors instead of an actual
+step in the ground — visually broken, not just "not as pretty as a real
+cliff." Design decision 1 (§4) excluded height painting from v1 and gave real
+reasons (`computeAllPassabilityGraphs()`, world position, min/max/cutoff
+height, `computeLandBehindCliffTiles`) — worth re-examining now that step 7
+exists and those reasons can be checked against how this specific tool
+actually behaves, rather than how a general-purpose height editor would need
+to.
+
+**The key simplification: a brush's `z` doesn't need to be a free user
+choice.** Every paint swatch (`buildPaintSwatches()`, step 7) already carries
+`referenceTile` — a real `Tile` from *this* map that already uses that exact
+`(tileNum, subTile)`. That tile's own `z` is the height the map's original
+author actually placed that art at. So "height painting" here isn't a
+separate elevation tool with its own value picker (what design decision 1's
+text seems to have assumed) — it's `paintTileAt()` also copying
+`swatch.referenceTile.z` onto the target tile, the same way it already
+copies `tileNum`/`subTile`. No new "what height?" UI needed for a first cut.
+
+**Re-examining design decision 1's four concerns, for this specific case:**
+
+- `computeAllPassabilityGraphs()` and `computeLandBehindCliffTiles()`: both
+  are called once — the former at `Game.ts:219` (`game.init()`), the latter
+  once inside `TileCollection`'s own constructor. **Neither runs during an
+  editor session** (`MapEditorTester`'s whole design is "no simulation
+  ticking" — see the class doc — so nothing ever calls
+  `computeAllPassabilityGraphs()` again, and pathfinding never runs to
+  consume a stale graph in the first place). Both get fully, correctly
+  recomputed from scratch the next time the *saved* map is loaded into a
+  real game, as long as the saved `z`/`tileNum`/`subTile` are correct —
+  which step 8's `mergeLiveTileEdits()` already guarantees for `tileNum`/
+  `subTile` and would need one more merged field (`z`) to guarantee for
+  height too. So this concern is real for a *general* mutable-height API,
+  but a **non-issue specifically for this editor's session-local, save-and-
+  reload usage pattern** — worth correcting in the historical design
+  decision text, not just working around silently.
+- World position (`Coords.tile3dToWorld`, confirmed by reading
+  `src/game/Coords.ts:30-34`): height feeds `only` the world **Y**
+  coordinate (`tileHeightToWorld(height)`); X/Z come purely from `(rx, ry)`.
+  So a height change never needs to touch a tile's ground-plane position,
+  only shift its already-existing rendered vertices vertically — a real,
+  contained new capability (`MapTileLayer` has no such method today), not a
+  ripple into unrelated systems.
+- Min/max/cutoff tile height (`TileCollection.getMinTileHeight()`/
+  `getMaxTileHeight()`/`getCutoffTileHeight()`): cheap running comparisons
+  to update incrementally alongside a height mutation (`minTileHeight =
+  Math.min(minTileHeight, newZ)` etc.) — not investigated further what
+  consumes these (likely camera/lighting bounds); flag as a real "verify
+  before trusting" item for whoever picks this up, not a blocker.
+
+**What's still a genuinely separate, harder problem, not solved by any of
+the above**: a single repainted-with-height tile still has no matching
+neighbor pieces. RA2 cliffs are drawn as sets of pre-authored edge/corner/
+transition art meant to be placed *together* in the right arrangement — the
+same "smart" auto-tiling problem `TileSets.isLAT()`/`isCLAT()`/`getLAT()`/
+`getCLATSet()`/`canConnectTiles()` already exist for elsewhere in this
+codebase (worth reading before assuming this needs to be invented from
+scratch) but aren't wired into anything paint-UI-facing today. Real FA2
+splits this into its own dedicated cliff/raise-land tooling, separate from
+its ordinary terrain brush, for the same reason. A first cut of height
+painting (copy `swatch.referenceTile.z`) makes it *possible* to build a
+correct cliff by hand, one matching piece at a time — it does not make a
+single click produce a connected wall.
+
+**Shape of a first cut, if picked up:**
+1. `TileCollection`: extend `repaintTile()` (or add a sibling method) to
+   also accept/set `z`, updating `minTileHeight`/`maxTileHeight`/
+   `cutoffTileHeight` incrementally. Explicitly do not re-run
+   `computeAllPassabilityGraphs()`/`computeLandBehindCliffTiles()` — per the
+   analysis above, session-local and self-healing on save+reload.
+2. `MapTileLayer`: new method (mirroring `repaintTile()`'s UV-patch shape
+   exactly, but on the `position` attribute instead of `uv`) that shifts a
+   tile's 8 vertices' Y by `Coords.tileHeightToWorld(newZ) -
+   Coords.tileHeightToWorld(oldZ)`, then calls its own already-existing
+   `updateLighting([tile])` (lighting depends on `tile.z` per
+   `Lighting.compute()`) so the moved tile's shading stays correct.
+3. `MapEditorTester.paintTileAt()`: call both of the above alongside the
+   existing tileNum/subTile repaint, using `swatch.referenceTile.z` as the
+   target height.
+4. `mergeLiveTileEdits()`: merge live `z` too, not just `tileNum`/
+   `subTile`, or a height edit renders correctly in-session but silently
+   reverts to the original height on Save (the same class of bug step 8
+   fixed for tileNum/subTile).
+5. *Verification*: live browser check painting a cliff-edge swatch next to
+   flat ground — confirm the tile visibly steps up/down and its shading
+   looks correct, not just that the art changed. Then Download/re-parse and
+   confirm `z` (not just `tileNum`/`subTile`) survived, the same round-trip
+   discipline steps 5/6/8 already used.
+
+Not attempted this session — the above is a scope, not an implementation.
+Multi-tile connected cliff placement (the harder problem above) needs its
+own dedicated design pass, informed by whatever `isLAT`/`isCLAT`/
+`canConnectTiles` and the real editor's own cliff tool actually do, before
+it's implemented.
 
 **Phase 3 — Trigger/tag/AI scripting UI.** The largest, most RA2-specific
 surface (event/action pairing, tag linking, cell tags, variables, base/AI

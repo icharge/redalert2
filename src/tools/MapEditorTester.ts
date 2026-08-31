@@ -7,8 +7,8 @@ import { GeneralOptions } from '@/gui/screen/options/GeneralOptions';
 import { WorldView } from '@/gui/screen/game/WorldView';
 import { Minimap } from '@/gui/screen/game/component/Minimap';
 import { WorldInteractionFactory } from '@/gui/screen/game/worldInteraction/WorldInteractionFactory';
-import { PlacementGrid } from '@/gui/screen/game/worldInteraction/placementMode/PlacementGrid';
 import { TileHoverCornerLines } from '@/tools/shared/TileHoverCornerLines';
+import { TileHoverOutline } from '@/tools/shared/TileHoverOutline';
 import { Engine, EngineType } from '@/engine/Engine';
 import { IsoCoords } from '@/engine/IsoCoords';
 import { Renderer } from '@/engine/gfx/Renderer';
@@ -34,6 +34,7 @@ import { ObjectCatalog, type CatalogKind, type StringsLike } from '@/tools/share
 import { extractMapObjects } from '@/tools/mapEditor/GameObjectMapSerializer';
 import { getRandomInt } from '@/util/math';
 import { TerrainType } from '@/engine/type/TerrainType';
+import { CanvasUtils } from '@/engine/gfx/CanvasUtils';
 
 type MapEditorOptions = {
     mapName?: string;
@@ -53,6 +54,13 @@ type TileSwatch = {
     terrainType: TerrainType;
     terrainLabel: string;
     referenceTile: any;
+    // Rendered once in buildPaintSwatches() via CanvasUtils.
+    // canvasFromIndexedImageData - the same IndexedBitmap
+    // getDrawableForTile() hands the paint pipeline, palette-applied for
+    // display. Undefined only if the reference tile has no atlas-resident
+    // drawable (see buildPaintSwatches' comment) - the picker falls back to
+    // a plain text label in that case.
+    thumbnail?: HTMLCanvasElement;
 };
 
 // Local-testing convenience only: pre-fills the Session Token field so Save
@@ -64,6 +72,15 @@ type TileSwatch = {
 // SqliteStorage.insertSession(token, username, Date.now()) directly against
 // server/data/ra2web.sqlite - see chat history for the exact one-off script.
 const DEV_DEFAULT_SESSION_TOKEN = 'dev-map-editor-test-token';
+// Matches the hover outline's accent color (HOVER_OUTLINE_COLOR, defined
+// locally inside main() where the hover cursor is built) - shared here so
+// the paint-brush picker's "selected" highlight reads as the same accent.
+const SELECTED_SWATCH_BORDER_COLOR = '#ffd84a';
+// Terrain-brush picker sizing - tune here, nowhere else. Thumbnails are
+// palette-applied but not upscaled beyond CSS size (image-rendering:
+// pixelated keeps them crisp rather than blurry at this size).
+const PAINT_SWATCH_SIZE_PX = 44;
+const PAINT_GRID_MAX_HEIGHT_PX = 260;
 function isLocalDevHost(): boolean {
     const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
     return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
@@ -104,7 +121,7 @@ type EditorRuntime = {
     ownerSelect: HTMLSelectElement;
     placeButton: HTMLButtonElement;
     deleteButton: HTMLButtonElement;
-    paintSelect: HTMLSelectElement;
+    paintSwatchButtons: Map<string, HTMLButtonElement>;
     paintButton: HTMLButtonElement;
     nameInput: HTMLInputElement;
     statusEl: HTMLDivElement;
@@ -154,6 +171,13 @@ export class MapEditorTester {
     private static renderer?: Renderer;
     private static uiAnimationLoop?: UiAnimationLoop;
     private static runtime?: EditorRuntime;
+    // Paint Terrain Mode's live hover preview (Final Alert-style): the tile
+    // currently showing the selected brush's art ahead of an actual click,
+    // and what to restore there if the hover moves off before a click
+    // commits it. See updatePaintPreview()/clearPaintPreview().
+    private static paintPreviewTile: any;
+    private static paintPreviewOriginalDrawable: any;
+    private static paintPreviewSwatchKey: string | undefined;
     private static state: EditorState = {
         kind: 'vehicle',
         objectName: '',
@@ -309,28 +333,24 @@ export class MapEditorTester {
         this.disposables.add(worldInteraction);
 
         // Hover cursor colors/width - tune here, nowhere else.
-        const HOVER_DIAMOND_COLOR = 0xffd84a;
+        const HOVER_OUTLINE_COLOR = 0xffd84a;
+        const HOVER_OUTLINE_WIDTH = 3;
         const HOVER_CORNER_LINE_COLOR = 0x000000;
         const HOVER_CORNER_LINE_WIDTH = 1;
 
-        // Final Alert-style hover cursor: reuses PlacementGrid (the real
-        // game's building-placement footprint renderer) purely for its
-        // ramp-height-aware diamond geometry - it already bakes a per-
-        // rampType outline texture so the highlight correctly follows a
-        // tile's slope on ramps/cliffs instead of floating flat over it.
-        // hoverColor overrides its buildable/busy green-yellow-red tinting
-        // (which has no meaning here - this isn't validating a placement)
-        // with the editor's own accent color.
-        const hoverCursorModel: {
-            tiles: Array<{ rx: number; ry: number; buildable: boolean }>;
-            visible: boolean;
-            showBusy: boolean;
-            hoverColor: number;
-        } = { tiles: [], visible: false, showBusy: false, hoverColor: HOVER_DIAMOND_COLOR };
-        const hoverCursor = new PlacementGrid(hoverCursorModel, worldScene.camera, game.map.tiles);
-        worldScene.add(hoverCursor);
-        this.disposables.add(() => worldScene.remove(hoverCursor));
-        this.disposables.add(() => hoverCursor.dispose());
+        // Final Alert-style hover cursor: a bold, transparent (no-fill)
+        // outline of the hovered tile's top face, ramp/cliff-aware so it
+        // hugs a sloped tile instead of floating flat over it. A solid
+        // colored fill (this used to reuse PlacementGrid, the real
+        // building-placement footprint renderer, purely for its baked
+        // ramp-height diamond shape) tints/obscures whatever's under the
+        // cursor - which matters once Paint Terrain Mode's brush preview
+        // (see updatePaintPreview()) needs the actual tile art visible
+        // underneath, not a yellow-tinted haze over it.
+        const hoverOutline = new TileHoverOutline(worldScene.camera, HOVER_OUTLINE_COLOR, HOVER_OUTLINE_WIDTH);
+        worldScene.add(hoverOutline);
+        this.disposables.add(() => worldScene.remove(hoverOutline));
+        this.disposables.add(() => hoverOutline.dispose());
         // Corner drop-lines: dashed lines from each of the hovered tile's 4
         // corners down to that same corner at height 0 - the classic Final
         // Alert cue for how far above the ground plane an elevated/ramped
@@ -343,13 +363,15 @@ export class MapEditorTester {
         let lastHoverTile: any;
         const updateHoverCursor = (): void => {
             const tile = worldInteraction.mapHoverHandler.getCurrentHover()?.tile;
-            if (tile === lastHoverTile) {
-                return;
+            if (tile !== lastHoverTile) {
+                lastHoverTile = tile;
+                hoverOutline.setTile(tile);
+                hoverCornerLines.setTile(tile);
             }
-            lastHoverTile = tile;
-            hoverCursorModel.tiles = tile ? [{ rx: tile.rx, ry: tile.ry, buildable: true }] : [];
-            hoverCursorModel.visible = !!tile;
-            hoverCornerLines.setTile(tile);
+            // Not gated behind the tile-changed check above: the brush
+            // selection can change while the mouse sits still over the same
+            // tile, and the preview needs to follow that too.
+            this.updatePaintPreview(tile);
         };
         renderer.onFrame.subscribe(updateHoverCursor);
         this.disposables.add(() => renderer.onFrame.unsubscribe(updateHoverCursor));
@@ -361,7 +383,7 @@ export class MapEditorTester {
 
         const catalog = ObjectCatalog.build(game.rules, game.art, strings);
         const ownerNames = this.buildOwnerNameList(housePlayers);
-        const paintSwatches = this.buildPaintSwatches(game);
+        const paintSwatches = this.buildPaintSwatches(game, worldViewInit.mapRenderable.getTileLayer(), theater.isoPalette);
         this.state = {
             ...this.state,
             kind: 'vehicle',
@@ -433,7 +455,10 @@ export class MapEditorTester {
             ownerSelect: panel.querySelector('[data-testid="mapeditor-owner"]') as HTMLSelectElement,
             placeButton: panel.querySelector('[data-testid="mapeditor-place"]') as HTMLButtonElement,
             deleteButton: panel.querySelector('[data-testid="mapeditor-delete"]') as HTMLButtonElement,
-            paintSelect: panel.querySelector('[data-testid="mapeditor-paint-tile"]') as HTMLSelectElement,
+            paintSwatchButtons: new Map(
+                [...panel.querySelectorAll<HTMLButtonElement>('[data-testid^="mapeditor-paint-swatch-"]')]
+                    .map((button) => [button.dataset.testid!.replace('mapeditor-paint-swatch-', ''), button]),
+            ),
             paintButton: panel.querySelector('[data-testid="mapeditor-paint"]') as HTMLButtonElement,
             nameInput: panel.querySelector('[data-testid="mapeditor-name"]') as HTMLInputElement,
             statusEl: panel.querySelector('[data-testid="mapeditor-status"]') as HTMLDivElement,
@@ -854,13 +879,24 @@ export class MapEditorTester {
      * also the primary real-world case per §4's Phase 2 write-up: "most
      * real brush strokes repaint using art already present in the loaded
      * map's own theater tileset."
+     *
+     * Each swatch also gets a thumbnail canvas so the picker can show what
+     * a tile actually looks like instead of a bare "Tile 129:20" label the
+     * user would otherwise have to guess at. `getDrawableForTile()` (built
+     * for the paint pipeline itself) already hands back the exact
+     * `IndexedBitmap` MapTileLayer packed into the atlas for that tile -
+     * palette-applying it with the theater's own isoPalette via the same
+     * `CanvasUtils.canvasFromIndexedImageData()` the map-preview thumbnail
+     * (`MapPreviewRenderer`) uses is the only new work; no separate
+     * rendering path needed.
      */
-    private static buildPaintSwatches(game: any): TileSwatch[] {
+    private static buildPaintSwatches(game: any, tileLayer: any, palette: any): TileSwatch[] {
         const swatches = new Map<string, TileSwatch>();
         for (const tile of game.map.tiles.getAll()) {
             const key = `${tile.tileNum}:${tile.subTile}`;
             if (!swatches.has(key)) {
                 const terrainType: TerrainType = tile.terrainType;
+                const bitmap = tileLayer.getDrawableForTile(tile);
                 swatches.set(key, {
                     key,
                     tileNum: tile.tileNum,
@@ -868,6 +904,7 @@ export class MapEditorTester {
                     terrainType,
                     terrainLabel: TerrainType[terrainType] ?? String(terrainType),
                     referenceTile: tile,
+                    thumbnail: bitmap ? CanvasUtils.canvasFromIndexedImageData(bitmap.data, bitmap.width, bitmap.height, palette) : undefined,
                 });
             }
         }
@@ -917,6 +954,15 @@ export class MapEditorTester {
             this.setStatus(`Cannot paint tile (${tile.rx}, ${tile.ry}): not a renderable map tile.`);
             return false;
         }
+        if (tile === this.paintPreviewTile) {
+            // The hover preview already painted this exact art onto this
+            // exact tile - nothing to revert. Clear the tracking (not the
+            // art) so a later mouse-out doesn't restore the pre-paint
+            // drawable over top of the edit we're about to commit below.
+            this.paintPreviewTile = undefined;
+            this.paintPreviewOriginalDrawable = undefined;
+            this.paintPreviewSwatchKey = undefined;
+        }
         // Logical layer second, and only after the renderable repaint
         // succeeds: TileCollection.repaintTile mutates tile.terrainType/
         // rampType/landType in place, which is what gets serialized on
@@ -926,6 +972,49 @@ export class MapEditorTester {
         this.setStatus(`Painted tile ${swatch.tileNum}:${swatch.subTile} @ ${tile.rx},${tile.ry}.`);
         this.syncControls();
         return true;
+    }
+
+    /**
+     * Final Alert-style brush preview: while Paint Terrain Mode is active
+     * and a brush is selected, the hovered tile temporarily shows that
+     * brush's actual art (not just the generic hover diamond), so a click
+     * always paints exactly what's already on screen. Reverts the previous
+     * preview tile first whenever the hovered tile OR the selected brush
+     * changes, including going in/out of Paint Terrain Mode (`hoverTile`
+     * arrives `undefined` from the mode check that call site does).
+     */
+    private static updatePaintPreview(hoverTile: any): void {
+        const runtime = this.runtime;
+        const swatch = this.state.paintActive
+            ? runtime?.paintSwatches.find((candidate) => candidate.key === this.state.paintTileKey)
+            : undefined;
+        const desiredTile = swatch ? hoverTile : undefined;
+        if (desiredTile === this.paintPreviewTile && swatch?.key === this.paintPreviewSwatchKey) {
+            return;
+        }
+        this.clearPaintPreview();
+        if (!desiredTile || !swatch || !runtime) {
+            return;
+        }
+        const brushDrawable = runtime.tileLayer.getDrawableForTile(swatch.referenceTile);
+        const originalDrawable = runtime.tileLayer.getDrawableForTile(desiredTile);
+        if (!brushDrawable || !originalDrawable) {
+            return;
+        }
+        if (runtime.tileLayer.repaintTile(desiredTile, brushDrawable)) {
+            this.paintPreviewTile = desiredTile;
+            this.paintPreviewOriginalDrawable = originalDrawable;
+            this.paintPreviewSwatchKey = swatch.key;
+        }
+    }
+
+    private static clearPaintPreview(): void {
+        if (this.paintPreviewTile && this.paintPreviewOriginalDrawable) {
+            this.runtime?.tileLayer.repaintTile(this.paintPreviewTile, this.paintPreviewOriginalDrawable);
+        }
+        this.paintPreviewTile = undefined;
+        this.paintPreviewOriginalDrawable = undefined;
+        this.paintPreviewSwatchKey = undefined;
     }
 
     /** Runs the extract -> write pipeline and returns the serialized .map INI text. Shared by download and server-save. */
@@ -1147,29 +1236,49 @@ export class MapEditorTester {
         deleteButton.style.marginTop = '4px';
         body.appendChild(deleteButton);
 
-        const paintSelect = document.createElement('select');
-        paintSelect.dataset.testid = 'mapeditor-paint-tile';
-        paintSelect.style.width = '100%';
-        let currentGroup: HTMLOptGroupElement | undefined;
+        // Thumbnail grid, not a text dropdown: a bare "Tile 129:20" label
+        // gives the user nothing to recognize the art by. Each button's
+        // thumbnail canvas comes straight from buildPaintSwatches() (already
+        // palette-applied there), grouped under a terrain-type heading the
+        // same way the picker's first cut grouped optgroups.
+        const paintGrid = document.createElement('div');
+        paintGrid.dataset.testid = 'mapeditor-paint-grid';
+        paintGrid.style.cssText = `max-height: ${PAINT_GRID_MAX_HEIGHT_PX}px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.25); padding: 4px; margin-bottom: 4px; box-sizing: border-box;`;
         let currentTerrainLabel: string | undefined;
+        let currentRow: HTMLDivElement | undefined;
         for (const swatch of paintSwatches) {
             if (swatch.terrainLabel !== currentTerrainLabel) {
-                currentGroup = document.createElement('optgroup');
-                currentGroup.label = swatch.terrainLabel;
-                paintSelect.appendChild(currentGroup);
                 currentTerrainLabel = swatch.terrainLabel;
+                const groupLabel = document.createElement('div');
+                groupLabel.textContent = swatch.terrainLabel;
+                groupLabel.style.cssText = 'font-size: 11px; opacity: 0.8; margin: 4px 0 2px;';
+                paintGrid.appendChild(groupLabel);
+                currentRow = document.createElement('div');
+                currentRow.style.cssText = 'display: flex; flex-wrap: wrap; gap: 2px;';
+                paintGrid.appendChild(currentRow);
             }
-            const option = document.createElement('option');
-            option.value = swatch.key;
-            option.textContent = `Tile ${swatch.tileNum}:${swatch.subTile}`;
-            currentGroup!.appendChild(option);
+            const swatchButton = document.createElement('button');
+            swatchButton.type = 'button';
+            swatchButton.title = `Tile ${swatch.tileNum}:${swatch.subTile}`;
+            swatchButton.dataset.testid = `mapeditor-paint-swatch-${swatch.key}`;
+            swatchButton.style.cssText = `width: ${PAINT_SWATCH_SIZE_PX}px; height: ${PAINT_SWATCH_SIZE_PX}px; padding: 0; box-sizing: border-box;
+                border: 2px solid ${swatch.key === this.state.paintTileKey ? SELECTED_SWATCH_BORDER_COLOR : 'transparent'};
+                background: rgba(0, 0, 0, 0.35); cursor: pointer; display: flex; align-items: center;
+                justify-content: center; overflow: hidden;`;
+            if (swatch.thumbnail) {
+                swatch.thumbnail.style.cssText = 'width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated;';
+                swatchButton.appendChild(swatch.thumbnail);
+            }
+            else {
+                swatchButton.textContent = '?';
+            }
+            swatchButton.onclick = () => {
+                this.state.paintTileKey = swatch.key;
+                this.syncControls();
+            };
+            currentRow!.appendChild(swatchButton);
         }
-        paintSelect.value = this.state.paintTileKey;
-        paintSelect.onchange = () => {
-            this.state.paintTileKey = paintSelect.value;
-            paintSelect.blur();
-        };
-        row('Terrain Brush (art already used on this map)', paintSelect);
+        row('Terrain Brush (art already used on this map)', paintGrid);
 
         const paintButton = this.createButton('Paint Terrain Mode', () => this.setPaintActive(!this.state.paintActive));
         paintButton.dataset.testid = 'mapeditor-paint';
@@ -1177,7 +1286,6 @@ export class MapEditorTester {
         body.appendChild(paintButton);
         if (paintSwatches.length === 0) {
             paintButton.disabled = true;
-            paintSelect.disabled = true;
         }
 
         const nameInput = document.createElement('input');
@@ -1258,8 +1366,8 @@ export class MapEditorTester {
         runtime.placeButton.textContent = this.state.placementActive ? 'Exit Placement Mode (Esc)' : 'Enter Placement Mode';
         runtime.deleteButton.textContent = this.state.deleteActive ? 'Exit Delete Mode (Esc)' : 'Delete Object Mode';
         runtime.paintButton.textContent = this.state.paintActive ? 'Exit Paint Mode (Esc)' : 'Paint Terrain Mode';
-        if (runtime.paintSelect.value !== this.state.paintTileKey) {
-            runtime.paintSelect.value = this.state.paintTileKey;
+        for (const [key, button] of runtime.paintSwatchButtons) {
+            button.style.borderColor = key === this.state.paintTileKey ? SELECTED_SWATCH_BORDER_COLOR : 'transparent';
         }
         if (runtime.nameInput.value !== this.state.mapFileName) {
             runtime.nameInput.value = this.state.mapFileName;
@@ -1317,6 +1425,12 @@ export class MapEditorTester {
         this.state.placementActive = false;
         this.state.deleteActive = false;
         this.state.paintActive = false;
+        // Not clearPaintPreview()'d - that would repaint a tile belonging
+        // to the scene disposables.dispose() below is about to tear down
+        // anyway. Just drop the (now-stale, next-load-invalid) references.
+        this.paintPreviewTile = undefined;
+        this.paintPreviewOriginalDrawable = undefined;
+        this.paintPreviewSwatchKey = undefined;
         this.disposables.dispose();
     }
 }
