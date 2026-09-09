@@ -33,7 +33,7 @@ export class MixFile {
     }
     private parseRaHeader(): number {
         const e = this.stream;
-        var t: any = e.readUint8Array(80), i: any = new BlowfishKey().decryptKey(t), r: any = e.readUint32Array(2);
+        var t: Uint8Array | number = e.readUint8Array(80), i: Uint8Array | number = new BlowfishKey().decryptKey(t), r: Uint32Array = e.readUint32Array(2);
         const s = new Blowfish(i);
         let a = new DataStream(s.decrypt(r));
         t = a.readUint16();

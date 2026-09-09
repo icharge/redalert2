@@ -11,7 +11,9 @@ export class RadBeamFx {
     private durationSeconds: number;
     private width: number;
     private amplitude: number = 0;
-    private container?: any;
+    private container?: {
+        remove(item: unknown): void;
+    };
     private lineMesh?: THREE.Mesh;
     private firstUpdateMillis?: number;
     private timeLeft: number = 1;
@@ -23,7 +25,9 @@ export class RadBeamFx {
         this.durationSeconds = durationSeconds;
         this.width = width;
     }
-    setContainer(container: any): void {
+    setContainer(container: {
+        remove(item: unknown): void;
+    }): void {
         this.container = container;
     }
     get3DObject(): THREE.Mesh | undefined {
@@ -85,7 +89,7 @@ export class RadBeamFx {
     dispose(): void {
         if (this.lineMesh) {
             this.lineMesh.geometry.dispose();
-            (this.lineMesh.material as any).dispose();
+            (this.lineMesh.material as THREE.Material).dispose();
         }
     }
 }

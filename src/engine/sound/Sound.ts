@@ -3,13 +3,14 @@ import { SoundKey } from "./SoundKey";
 import { SoundSpecs, SoundControl } from "./SoundSpecs";
 import { getRandomInt } from "../../util/math";
 import { isNotNullOrUndefined } from "../../util/typeGuard";
+import type { AudioFile } from "./AudioSystem";
 interface AudioVisualRules {
     ini: {
         getString(key: string): string | undefined;
     };
 }
 interface AudioFiles {
-    get(filename: string): any;
+    get(filename: string): AudioFile | undefined;
 }
 interface SoundSpec {
     name: string;
@@ -32,12 +33,12 @@ interface SoundSpec {
 interface AudioSystem {
     initialize(): void;
     dispose(): void;
-    playWavFile(file: any, channel: ChannelType, volume?: number, pan?: number, delay?: number, rate?: number, loop?: boolean): any;
-    playWavSequence(files: any[], channel: ChannelType, volume?: number, pan?: number, delay?: number, rate?: number): any;
-    playWavLoop(files: any[], channel: ChannelType, volume?: number, pan?: number, delayMs?: {
+    playWavFile(file: AudioFile, channel: ChannelType, volume?: number, pan?: number, delay?: number, rate?: number, loop?: boolean): PlaybackHandle;
+    playWavSequence(files: AudioFile[], channel: ChannelType, volume?: number, pan?: number, delay?: number, rate?: number): PlaybackHandle;
+    playWavLoop(files: AudioFile[], channel: ChannelType, volume?: number, pan?: number, delayMs?: {
         min: number;
         max: number;
-    }, rate?: number, attack?: boolean, decay?: boolean, loops?: number): any;
+    }, rate?: number, attack?: boolean, decay?: boolean, loops?: number): PlaybackHandle;
 }
 interface PlaybackHandle {
     isPlaying(): boolean;
@@ -57,12 +58,12 @@ export class Sound {
         this.audioVisualRules = audioVisualRules;
         this.document = document;
     }
-    private handleClick = (event: Event): void => {
+    private handleMouseDown = (event: Event): void => {
         const target = event.target as Element;
         if (target.matches("button, .menu-button:not(.disabled)")) {
             this.play(SoundKey.GUIMainButtonSound, ChannelType.Ui);
         }
-        else if (target.matches(".list-item")) {
+        else if (target.matches(".list-item") || target.parentElement.matches('.list-item')) {
             this.play(SoundKey.GenericClick, ChannelType.Ui);
         }
         else if (target instanceof HTMLInputElement &&
@@ -77,16 +78,16 @@ export class Sound {
     };
     initialize(): void {
         this.audioSystem.initialize();
-        this.document.addEventListener("click", this.handleClick);
+        this.document.addEventListener("mousedown", this.handleMouseDown);
     }
     dispose(): void {
         this.audioSystem.dispose();
-        this.document.removeEventListener("click", this.handleClick);
+        this.document.removeEventListener("mousedown", this.handleMouseDown);
     }
     private getSoundKey(key: SoundKey | string): string | undefined {
         let soundKey: string | undefined;
         if (typeof SoundKey[key as keyof typeof SoundKey] === "string") {
-            soundKey = this.audioVisualRules.ini.getString(SoundKey[key as keyof typeof SoundKey] as any);
+            soundKey = this.audioVisualRules.ini.getString(SoundKey[key as keyof typeof SoundKey] as unknown as string);
             if (!soundKey)
                 return;
         }
@@ -195,7 +196,7 @@ export class Sound {
         }
         return sequence;
     }
-    private getWavFile(soundName: string): any {
+    private getWavFile(soundName: string): AudioFile | undefined {
         const filename = soundName + ".wav";
         const file = this.audioFiles.get(filename);
         if (file)

@@ -118,6 +118,10 @@ export class Config {
         const url = this.generalData.getString("mapsBaseUrl");
         return url === "" ? undefined : url;
     }
+    get mapsPktUrl(): string | undefined {
+        const url = this.generalData.getString("mapsPktUrl");
+        return url === "" ? undefined : url;
+    }
     get modsBaseUrl(): string | undefined {
         const url = this.generalData.getString("modsBaseUrl");
         return url === "" ? undefined : url;

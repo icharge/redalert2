@@ -5,6 +5,7 @@ import { Camera } from '@/engine/gfx/Camera';
 import { RenderableFactory } from '@/engine/renderable/entity/RenderableFactory';
 import { GameObject } from '@/game/gameobject/GameObject';
 import { Renderable } from '@/engine/renderable/Renderable';
+import type { Renderable as RenderableContainerRenderable } from '@/engine/gfx/RenderableContainer';
 export class RenderableManager {
     private world: World;
     private worldScene: WorldScene;
@@ -12,8 +13,8 @@ export class RenderableManager {
     private renderableFactory: RenderableFactory;
     private container: OctreeContainer;
     private renderablesByGameObject: Map<GameObject, Renderable>;
-    private renderablesById: Map<string, Renderable>;
-    private positionListeners: Map<GameObject, Function>;
+    private renderablesById: Map<number, Renderable>;
+    private positionListeners: Map<GameObject, (event: { tileChanged: boolean }) => void>;
     private onCameraUpdate: () => void;
     private onWorldObjectSpawned: (gameObject: GameObject) => void;
     private onWorldObjectRemoved: (gameObject: GameObject) => void;
@@ -46,7 +47,7 @@ export class RenderableManager {
                 return;
             }
             if (renderable.onRemove) {
-                const result = renderable.onRemove(this);
+                const result = renderable.onRemove(this) as Promise<unknown> | undefined;
                 if (result) {
                     result
                         .then(() => this.removeAndDisposeRenderable(renderable, gameObject))
@@ -62,7 +63,7 @@ export class RenderableManager {
         };
     }
     init(): void {
-        this.container = OctreeContainer.factory(this.camera as any);
+        this.container = OctreeContainer.factory(this.camera as unknown as import('three').Camera);
         this.container.autoCull = false;
         this.worldScene.add(this.container);
         this.worldScene.onCameraUpdate.subscribe(this.onCameraUpdate);
@@ -70,7 +71,7 @@ export class RenderableManager {
         this.world.onObjectSpawned.subscribe(this.onWorldObjectSpawned);
         this.world.onObjectRemoved.subscribe(this.onWorldObjectRemoved);
     }
-    getRenderableById(id: string): Renderable {
+    getRenderableById(id: number): Renderable {
         return this.renderablesById.get(id);
     }
     getRenderableByGameObject(gameObject: GameObject): Renderable {
@@ -81,41 +82,41 @@ export class RenderableManager {
     }
     onObjectPositionChanged(gameObject: GameObject, tileChanged: boolean): void {
         const renderable = this.renderablesByGameObject.get(gameObject);
-        renderable.setPosition(gameObject.position.worldPosition);
+        renderable.setPosition?.(gameObject.position.worldPosition);
         if (!(gameObject.isTechno() && gameObject.rules.isLightpost)) {
-            this.container.updateChild(renderable as any as import('./gfx/RenderableContainer').Renderable);
+            this.container.updateChild(renderable as unknown as import('./gfx/RenderableContainer').Renderable);
         }
     }
     removeAndDisposeRenderable(renderable: Renderable, gameObject: GameObject): void {
         const container = gameObject.isTechno() && gameObject.rules.isLightpost
             ? this.worldScene
             : this.container;
-        container.remove(renderable as any);
+        container.remove(renderable as unknown as RenderableContainerRenderable);
         renderable.dispose?.();
         this.renderablesByGameObject.delete(gameObject);
-        this.renderablesById.delete(gameObject.id as any);
+        this.renderablesById.delete(gameObject.id);
     }
-    createTransientAnim(anim: any, callback?: (renderable: Renderable) => void): Renderable {
+    createTransientAnim(anim: string, callback?: (renderable: Renderable) => void): Renderable {
         const renderable = this.renderableFactory.createTransientAnim(anim, this.container);
         if (callback) {
             callback(renderable);
         }
-        this.container.add(renderable);
+        this.container.add(renderable as unknown as RenderableContainerRenderable);
         return renderable;
     }
-    createAnim(anim: any, callback?: (renderable: Renderable) => void, skipAdd: boolean = false): Renderable {
+    createAnim(anim: string, callback?: (renderable: Renderable) => void, skipAdd: boolean = false): Renderable {
         const renderable = this.renderableFactory.createAnim(anim);
         if (callback) {
             callback(renderable);
         }
         if (!skipAdd) {
-            this.container.add(renderable);
+            this.container.add(renderable as unknown as RenderableContainerRenderable);
         }
         return renderable;
     }
-    addEffect(effect: any): void {
+    addEffect(effect: { setContainer(container: unknown): void }): void {
         effect.setContainer(this.worldScene);
-        this.worldScene.add(effect);
+        this.worldScene.add(effect as unknown as RenderableContainerRenderable);
     }
     dispose(): void {
         this.worldScene.remove(this.container);
@@ -131,17 +132,17 @@ export class RenderableManager {
         this.positionListeners.clear();
         this.renderablesById.forEach(renderable => renderable.dispose?.());
     }
-    createRenderable(gameObject: GameObject, container: any): Renderable {
-        const renderable = this.renderableFactory.create(gameObject as any);
-        (renderable as any).setPosition(gameObject.position.worldPosition);
-        container.add(renderable);
+    createRenderable(gameObject: GameObject, container: import('./gfx/RenderableContainer').RenderableContainer): Renderable {
+        const renderable = this.renderableFactory.create(gameObject as unknown as Parameters<RenderableFactory['create']>[0]) as unknown as Renderable;
+        (renderable as unknown as { setPosition: (position: { x: number; y: number; z: number }) => void }).setPosition(gameObject.position.worldPosition);
+        container.add(renderable as unknown as RenderableContainerRenderable);
         this.renderablesByGameObject.set(gameObject, renderable);
-        this.renderablesById.set(gameObject.id as any, renderable);
+        this.renderablesById.set(gameObject.id, renderable);
         return renderable;
     }
     updateLighting(): void {
         for (const renderable of this.renderablesById.values()) {
-            renderable.updateLighting();
+            renderable.updateLighting?.();
         }
     }
 }

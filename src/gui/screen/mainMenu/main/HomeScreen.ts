@@ -160,13 +160,15 @@ export class HomeScreen implements Screen {
             this.controller.setSidebarButtons(buttons);
             this.controller.showSidebarButtons();
             this.controller.toggleMainVideo(true);
+            // Version string is visible on every main-menu screen (see MainMenuRootScreen.createViewAndController);
+            // Home just makes it fully opaque instead of dimmed.
             this.controller.showVersion(this.appVersion);
         }
     }
     async onLeave(): Promise<void> {
         console.log('[HomeScreen] Leaving home screen');
         if (this.controller) {
-            this.controller.hideVersion();
+            this.controller.dimVersion();
             await this.controller.hideSidebarButtons();
         }
     }

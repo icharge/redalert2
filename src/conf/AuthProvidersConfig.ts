@@ -1,3 +1,6 @@
+import type { IniSection } from '@/data/IniSection';
+import type { GatewayConfig } from '@/conf/GatewayConfig';
+
 export interface AuthProvider {
     id: string;
     loginUrl: string;
@@ -6,7 +9,7 @@ export interface AuthProvider {
 export class AuthProvidersConfig {
     private providers: AuthProvider[] = [];
 
-    load(section: any, gatewayConfig: any): void {
+    load(section: IniSection | undefined, gatewayConfig: GatewayConfig): void {
         this.providers = [];
         if (!section) {
             return;

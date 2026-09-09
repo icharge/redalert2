@@ -74,7 +74,7 @@ export class BufferGeometrySerializer {
             }
         }
         else {
-            throw new Error(`Unsupported array type "${(array as any).constructor.name}"`);
+            throw new Error(`Unsupported array type "${(array as { constructor: { name: string } }).constructor.name}"`);
         }
     }
     readTypedArray(stream: DataStream): Float32Array | Uint32Array | Uint16Array {

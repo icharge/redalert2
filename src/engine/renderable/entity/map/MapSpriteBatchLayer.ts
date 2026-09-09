@@ -5,39 +5,81 @@ import { ShpAggregator } from "@/engine/renderable/builder/ShpAggregator";
 import { MapSpriteTranslation } from "@/engine/renderable/MapSpriteTranslation";
 import { ShadowRenderable } from "@/engine/renderable/ShadowRenderable";
 import { isNotNullOrUndefined } from "@/util/typeGuard";
+import type { ShpFile } from "@/data/ShpFile";
+import type { Palette } from "@/data/Palette";
+import type { ShpTextureAtlas } from "@/engine/renderable/builder/ShpTextureAtlas";
 import * as THREE from "three";
 interface BatchShpSpec {
-    shpFile: any;
+    [key: string]: unknown;
+    shpFile: ShpFile;
     frameNo: number;
-    depth: number;
+    depth: boolean;
     flat: boolean;
     position: THREE.Vector3;
     offset: THREE.Vector2;
-    lightMult?: THREE.Color;
+    lightMult?: THREE.Vector3;
 }
 interface ObjectSpecs {
     main: BatchShpSpec;
     shadow?: BatchShpSpec;
 }
+interface Lighting {
+    compute(type: string, tile: unknown): THREE.Vector3;
+}
+interface BatchObjectArt {
+    imageName: string;
+    useTheaterExtension: boolean;
+    paletteType: string;
+    customPaletteName?: string;
+    lightingType: string;
+    flat: boolean;
+    hasShadow: boolean;
+    getDrawOffset(): THREE.Vector2;
+}
+interface BatchObject {
+    art: BatchObjectArt;
+    rules: unknown;
+    name: string;
+    tile: unknown;
+    position: {
+        worldPosition: THREE.Vector3;
+    };
+    getFoundation(): {
+        width: number;
+        height: number;
+    };
+}
+interface AggregatedShpData {
+    file: ShpFile;
+    imageIndexes: Map<ShpFile, number>;
+}
 export class MapSpriteBatchLayer {
     private label: string;
-    private spriteUseDepth: (obj: any) => number;
-    private theater: any;
-    private art: any;
+    private spriteUseDepth: (obj: BatchObject) => number;
+    private theater: {
+        getPalette(paletteType: string, customPaletteName?: string): unknown;
+    };
+    private art: {
+        getObject(name: string, type: unknown): BatchObjectArt;
+    };
     private imageFinder: ImageFinder;
-    private camera: any;
-    private lighting: any;
+    private camera: THREE.Camera;
+    private lighting: Lighting;
     private shpAggregator: ShpAggregator;
-    private textureCache: Map<string, any>;
-    private batchShpSpecsByObject: Map<any, ObjectSpecs>;
+    private textureCache: Map<ShpFile, ShpTextureAtlas>;
+    private batchShpSpecsByObject: Map<unknown, ObjectSpecs>;
     private batchShpBuilders: Map<string, BatchShpBuilder[]>;
     private shadowBatchShpBuilders: BatchShpBuilder[];
-    private batchedObjectRules: Set<any>;
-    private aggregatedImageData: any;
+    private batchedObjectRules: Set<unknown>;
+    private aggregatedImageData: AggregatedShpData;
     private target?: THREE.Object3D;
     public meshRenderOrder: number = 0;
     public meshNoDepth: boolean = false;
-    constructor(label: string, batchedObjectRules: any[], spriteUseDepth: (obj: any) => number, theater: any, art: any, imageFinder: ImageFinder, camera: any, lighting: any, shpAggregator: ShpAggregator) {
+    constructor(label: string, batchedObjectRules: unknown[], spriteUseDepth: (obj: BatchObject) => number, theater: {
+        getPalette(paletteType: string, customPaletteName?: string): unknown;
+    }, art: {
+        getObject(name: string, type: unknown): BatchObjectArt;
+    }, imageFinder: ImageFinder, camera: THREE.Camera, lighting: Lighting, shpAggregator: ShpAggregator) {
         this.label = label;
         this.spriteUseDepth = spriteUseDepth;
         this.theater = theater;
@@ -65,10 +107,10 @@ export class MapSpriteBatchLayer {
             this.target = obj;
         }
     }
-    private createAggregatedShpFile(filename: string): any {
+    private createAggregatedShpFile(filename: string): AggregatedShpData {
         const shpFrameInfos = [...this.batchedObjectRules.values()]
             .map((rule) => {
-            const objectArt = this.art.getObject(rule.name, rule.type);
+            const objectArt = this.art.getObject((rule as { name: string }).name, (rule as { type: unknown }).type);
             let imageData;
             try {
                 imageData = this.imageFinder.findByObjectArt(objectArt);
@@ -78,7 +120,7 @@ export class MapSpriteBatchLayer {
                     return;
                 throw error;
             }
-            return ShpAggregator.getShpFrameInfo(imageData, objectArt.hasShadow);
+            return ShpAggregator.getShpFrameInfo(imageData as ShpFile, objectArt.hasShadow);
         })
             .filter(isNotNullOrUndefined);
         return this.shpAggregator.aggregate(shpFrameInfos, filename);
@@ -86,19 +128,19 @@ export class MapSpriteBatchLayer {
     update(deltaTime: number): void { }
     updateLighting(): void {
         this.batchShpSpecsByObject.forEach((specs, obj) => {
-            specs.main.lightMult?.copy(this.lighting.compute(obj.art.lightingType, obj.tile));
+            specs.main.lightMult?.copy(this.lighting.compute((obj as BatchObject).art.lightingType, (obj as BatchObject).tile));
         });
         [...this.batchShpBuilders.values()]
             .flat()
             .forEach((builder) => builder.updateLighting());
     }
-    shouldBeBatched(obj: any): boolean {
+    shouldBeBatched(obj: BatchObject): boolean {
         return this.batchedObjectRules.has(obj.rules);
     }
-    private getBatchKey(obj: any): string {
+    private getBatchKey(obj: BatchObject): string {
         return obj.art.paletteType + "_" + obj.art.customPaletteName;
     }
-    addObject(obj: any): void {
+    addObject(obj: BatchObject): void {
         const batchKey = this.getBatchKey(obj);
         let builders = this.batchShpBuilders.get(batchKey);
         if (!builders) {
@@ -110,7 +152,7 @@ export class MapSpriteBatchLayer {
             if (!this.get3DObject())
                 throw new Error("Not implemented");
             const palette = this.theater.getPalette(obj.art.paletteType, obj.art.customPaletteName);
-            const newBuilder = new BatchShpBuilder(this.aggregatedImageData.file, palette, this.camera, this.textureCache, undefined, undefined, undefined, Coords.ISO_WORLD_SCALE);
+            const newBuilder = new BatchShpBuilder(this.aggregatedImageData.file, palette as Palette, this.camera, this.textureCache, undefined, undefined, undefined, Coords.ISO_WORLD_SCALE);
             builders.push(newBuilder);
             const mesh = newBuilder.build();
             mesh.renderOrder = this.meshRenderOrder;
@@ -123,7 +165,7 @@ export class MapSpriteBatchLayer {
             availableBuilder = newBuilder;
         }
         const mainSpec = this.buildBatchShpSpec(obj, this.aggregatedImageData);
-        availableBuilder.add(mainSpec as any);
+        availableBuilder.add(mainSpec);
         let shadowSpec: BatchShpSpec | undefined;
         if (obj.art.hasShadow) {
             let shadowBuilder = this.shadowBatchShpBuilders.find((builder) => !builder.isFull());
@@ -143,11 +185,11 @@ export class MapSpriteBatchLayer {
                 shadowBuilder = newShadowBuilder;
             }
             shadowSpec = this.buildShadowBatchShpSpec(mainSpec, this.aggregatedImageData);
-            shadowBuilder.add(shadowSpec as any);
+            shadowBuilder.add(shadowSpec);
         }
         this.batchShpSpecsByObject.set(obj, { main: mainSpec, shadow: shadowSpec });
     }
-    private buildBatchShpSpec(obj: any, aggregatedData: any): BatchShpSpec {
+    private buildBatchShpSpec(obj: BatchObject, aggregatedData: AggregatedShpData): BatchShpSpec {
         const foundation = obj.getFoundation();
         const spriteTranslation = new MapSpriteTranslation(foundation.width, foundation.height);
         const worldPosition = obj.position.worldPosition.clone();
@@ -155,21 +197,21 @@ export class MapSpriteBatchLayer {
         worldPosition.x += anchorPointWorld.x;
         worldPosition.z += anchorPointWorld.y;
         const imageData = this.imageFinder.findByObjectArt(obj.art);
-        const imageIndex = aggregatedData.imageIndexes.get(imageData);
+        const imageIndex = aggregatedData.imageIndexes.get(imageData as ShpFile);
         if (imageIndex === undefined) {
             throw new Error("SHP file not found in aggregated image data");
         }
         return {
-            shpFile: imageData,
+            shpFile: imageData as ShpFile,
             frameNo: imageIndex,
-            depth: this.spriteUseDepth(obj),
+            depth: this.spriteUseDepth(obj) !== 0,
             flat: obj.art.flat,
             position: worldPosition,
             offset: spriteOffset.clone().add(obj.art.getDrawOffset()),
             lightMult: this.lighting.compute(obj.art.lightingType, obj.tile),
         };
     }
-    private buildShadowBatchShpSpec(mainSpec: BatchShpSpec, aggregatedData: any): BatchShpSpec {
+    private buildShadowBatchShpSpec(mainSpec: BatchShpSpec, aggregatedData: AggregatedShpData): BatchShpSpec {
         const imageIndex = aggregatedData.imageIndexes.get(mainSpec.shpFile);
         if (imageIndex === undefined) {
             throw new Error("SHP file not found in aggregated image data");
@@ -182,23 +224,23 @@ export class MapSpriteBatchLayer {
             lightMult: undefined,
         };
     }
-    removeObject(obj: any): void {
+    removeObject(obj: BatchObject): void {
         const specs = this.batchShpSpecsByObject.get(obj);
         if (!specs)
             return;
         const batchKey = this.getBatchKey(obj);
         const builders = this.batchShpBuilders.get(batchKey);
-        const mainBuilder = builders?.find((builder) => builder.has(specs.main as any));
+        const mainBuilder = builders?.find((builder) => builder.has(specs.main));
         if (mainBuilder) {
-            mainBuilder.remove(specs.main as any);
+            mainBuilder.remove(specs.main);
             if (mainBuilder.isEmpty() && builders!.length > 1) {
                 this.get3DObject()?.remove(mainBuilder.build());
                 mainBuilder.dispose();
                 builders?.splice(builders.indexOf(mainBuilder), 1);
             }
             if (specs.shadow) {
-                const shadowBuilder = this.shadowBatchShpBuilders.find((builder) => builder.has(specs.shadow as any));
-                shadowBuilder?.remove(specs.shadow as any);
+                const shadowBuilder = this.shadowBatchShpBuilders.find((builder) => builder.has(specs.shadow));
+                shadowBuilder?.remove(specs.shadow);
                 if (shadowBuilder?.isEmpty() && this.shadowBatchShpBuilders.length > 1) {
                     this.get3DObject()?.remove(shadowBuilder.build());
                     shadowBuilder.dispose();
@@ -208,17 +250,17 @@ export class MapSpriteBatchLayer {
             this.batchShpSpecsByObject.delete(obj);
         }
     }
-    hasObject(obj: any): boolean {
+    hasObject(obj: BatchObject): boolean {
         return this.batchShpSpecsByObject.has(obj);
     }
-    getObjectFrameCount(obj: any): number {
+    getObjectFrameCount(obj: BatchObject): number {
         const specs = this.batchShpSpecsByObject.get(obj);
         if (!specs) {
             throw new Error(`Batch SHP spec for object "${obj.name}" not found`);
         }
         return specs.main.shpFile.numImages * (specs.shadow ? 0.5 : 1);
     }
-    setObjectFrame(obj: any, frameIndex: number): void {
+    setObjectFrame(obj: BatchObject, frameIndex: number): void {
         const specs = this.batchShpSpecsByObject.get(obj);
         if (!specs) {
             throw new Error(`Batch SHP spec for object "${obj.name}" not found`);
@@ -234,11 +276,11 @@ export class MapSpriteBatchLayer {
         const batchKey = this.getBatchKey(obj);
         const mainBuilder = this.batchShpBuilders
             .get(batchKey)
-            ?.find((builder) => builder.has(specs.main as any));
-        mainBuilder?.update(specs.main as any);
+            ?.find((builder) => builder.has(specs.main));
+        mainBuilder?.update(specs.main);
         if (specs.shadow) {
-            const shadowBuilder = this.shadowBatchShpBuilders.find((builder) => builder.has(specs.shadow as any));
-            shadowBuilder?.update(specs.shadow as any);
+            const shadowBuilder = this.shadowBatchShpBuilders.find((builder) => builder.has(specs.shadow));
+            shadowBuilder?.update(specs.shadow);
         }
     }
     dispose(): void {

@@ -1,4 +1,7 @@
-declare var Buffer: any;
+interface BufferConstructor {
+    from(data: string, encoding: string): { toString(encoding: string): string };
+}
+declare var Buffer: BufferConstructor;
 export class Base64 {
     static encode(str: string): string {
         if (typeof globalThis.btoa === 'function') {

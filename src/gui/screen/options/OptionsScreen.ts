@@ -46,7 +46,7 @@ export class OptionsScreen {
     private controller!: ScreenController;
     private initialOptionsStr: string = "";
     public title: string;
-    constructor(private strings: Strings, private jsxRenderer: JsxRenderer, private options: GeneralOptions, private localPrefs: LocalPrefs, private fullScreen: FullScreen, private inGame: boolean, private storageOptsEnabled: boolean) {
+    constructor(private strings: Strings, private jsxRenderer: JsxRenderer, private options: GeneralOptions, private localPrefs: LocalPrefs, private fullScreen: FullScreen, private inGame: boolean) {
         this.title = this.strings.get("GUI:Options");
     }
     setController(controller: ScreenController): void {
@@ -81,14 +81,6 @@ export class OptionsScreen {
                 },
             },
         ];
-        if (this.controller instanceof MainMenuController && this.storageOptsEnabled) {
-            buttons.push({
-                label: this.strings.get("GUI:Storage"),
-                onClick: () => {
-                    (this.controller as MainMenuController).pushScreen(MainMenuScreenType.OptionsStorage, {});
-                },
-            });
-        }
         if (this.controller instanceof MainMenuController) {
             buttons.push({
                 label: this.strings.get("GUI:ManageGame"),

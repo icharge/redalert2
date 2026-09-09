@@ -10,7 +10,7 @@ export class HvaFile {
             this.fromVirtualFile(source as VirtualFile);
         }
         else if (typeof (source as DataStream).readInt32 === 'function') {
-            this.parseHvaData(source as DataStream, (source as any).filename || 'unknown.hva');
+            this.parseHvaData(source as DataStream, (source as unknown as { filename?: string }).filename || 'unknown.hva');
         }
         else {
             throw new Error('Unsupported source type for HvaFile');

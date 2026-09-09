@@ -32,6 +32,8 @@ export class TestEntryScreen implements Screen {
         this.renderButtons();
         if (this.controller) {
             this.controller.toggleMainVideo(false);
+            // Version string is visible on every main-menu screen (see MainMenuRootScreen.createViewAndController);
+            // Test Entry just makes it fully opaque instead of dimmed.
             this.controller.showVersion(this.appVersion);
         }
     }
@@ -58,6 +60,16 @@ export class TestEntryScreen implements Screen {
             onClick: () => {
                 console.log(`[TestEntryScreen] ${label} clicked`);
                 window.location.hash = route;
+            }
+        };
+    }
+    private createPushScreenButton(label: string, tooltip: string, screenType: MainMenuScreenType): SidebarButton {
+        return {
+            label,
+            tooltip,
+            onClick: () => {
+                console.log(`[TestEntryScreen] ${label} clicked`);
+                this.controller?.pushScreen(screenType);
             }
         };
     }
@@ -112,7 +124,9 @@ export class TestEntryScreen implements Screen {
             this.createBackToMenuButton()
         ];
         const sceneButtons: SidebarButton[] = [
+            this.createPushScreenButton('Map Selection Prototype', 'Preview the redesigned "Select Engagement" content frame (tabs, ratings, tags) with the original sidebar untouched', MainMenuScreenType.MapSelectionPrototype),
             this.createRouteButton('Lobby Test', 'Open the lobby test tool', '/lobbytest'),
+            this.createRouteButton('Connection Info Test', 'Simulate disconnects, rejoin progress and kick/wait votes on the Connection Info screen', '/coninfotest'),
             this.createRouteButton('World Test', 'Open the world scene test tool', '/worldscenetest'),
             this.createRouteButton('Movement Test', 'Open the unit movement test tool', '/unitmovementtest'),
             this.createRouteButton('Scene Sandbox', 'Open the map sandbox where units can be placed manually', '/scenesandbox'),
@@ -138,7 +152,7 @@ export class TestEntryScreen implements Screen {
         if (this.controller) {
             await this.controller.hideSidebarButtons();
             this.controller.setSidebarTitle('');
-            this.controller.hideVersion();
+            this.controller.dimVersion();
         }
     }
     async onStack(): Promise<void> {

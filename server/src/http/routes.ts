@@ -9,12 +9,16 @@ import { FixedWindowLimiter } from "../util/rateLimit";
 import { LadderError, LadderService } from "../ladder/LadderService";
 import { isLadderType, WolGameReportResult } from "../ladder/LadderService";
 import { decodeGameRes, GameResDecodeError, GameResType } from "../ladder/gameResCodec";
+import { validateErrorReport, ErrorReportValidationError } from "../diagnostics/errorReportCodec";
+import { extractReportJson, appendReplayEntry, ErrorReportArchiveError } from "../diagnostics/errorReportArchive";
 import { GservManager } from "../gserv/GservManager";
 import { WolServer } from "../server/WolServer";
 import { numeric, WOL_SERVER_NAME } from "../protocol/replies";
 import * as Code from "../protocol/wolCodes";
 import { handleAdmin } from "./adminRoutes";
+import { handleMapTransfer, handleMaps } from "./mapRoutes";
 import { corsHeaders, withCors } from "./cors";
+import { MapStore } from "../mapstore/MapStore";
 
 function json(body: unknown, status = 200): Response {
     return new Response(JSON.stringify(body), {
@@ -72,14 +76,18 @@ function remoteOf(req: Request): string {
 
 // Limiters are stateful, so keep one pair per config object (config is fixed
 // per process; tests pass their own config objects and get fresh limiters).
-const limitersByConfig = new WeakMap<ServerConfig, { login: FixedWindowLimiter; register: FixedWindowLimiter }>();
+const limitersByConfig = new WeakMap<ServerConfig, { login: FixedWindowLimiter; register: FixedWindowLimiter; errorReport: FixedWindowLimiter }>();
 
-function limitersFor(config: ServerConfig): { login: FixedWindowLimiter; register: FixedWindowLimiter } {
+function limitersFor(config: ServerConfig): { login: FixedWindowLimiter; register: FixedWindowLimiter; errorReport: FixedWindowLimiter } {
     let entry = limitersByConfig.get(config);
     if (!entry) {
         entry = {
             login: new FixedWindowLimiter(config.loginMaxPerMin, 60_000),
             register: new FixedWindowLimiter(config.registerMaxPerHour, 3_600_000),
+            // No mandatory auth on /errorreport (single-player/LAN must be able to
+            // submit without a WOL session), so this is keyed by IP rather than
+            // account — the only defense against a flood is per-IP.
+            errorReport: new FixedWindowLimiter(config.errorReportMaxPerMin, 60_000),
         };
         limitersByConfig.set(config, entry);
     }
@@ -99,6 +107,17 @@ export interface HttpDeps {
     ladder: LadderService;
     gservs: GservManager;
     wol: WolServer;
+    // Live-instance replay lookup for handleErrorReport (see GservServer.
+    // getReplaySnapshot) -- optional because GservManager alone (what tests
+    // construct HttpDeps with today) has no notion of a live WS instance to
+    // ask; a report submitted with no live instance to query, or in a test
+    // that doesn't wire this up, just never gets a replay attached.
+    replaySnapshot?: (gameId: string) => string | undefined;
+    // Map service (content-addressed map store + live maps.pkt + game-time
+    // map transfer). Absent when the feature is disabled; the /maps* and
+    // /maptransfer* routes then 404 and /servers.ini stops advertising
+    // mapTransferUrl.
+    maps?: MapStore;
 }
 
 export async function handleHttp(req: Request, deps: HttpDeps, config: ServerConfig, log: Logger = makeLogger("error", "http")): Promise<Response> {
@@ -170,6 +189,9 @@ export async function handleHttp(req: Request, deps: HttpDeps, config: ServerCon
         const externalUrl = externalUrlFor(req, config);
         const baseUrl = httpUrlOf(externalUrl);
         const wsUrl = wolExternalUrlFor(req, config) + config.wolUrlPath;
+        const mapTransferLine = config.mapServiceEnabled && deps.maps
+            ? `mapTransferUrl="${baseUrl}/maptransfer"\n`
+            : "";
         const ini = `[local]
 label="Local Dev"
 available=yes
@@ -179,7 +201,8 @@ apiLoginUrl="${baseUrl}/login"
 apiRegUrl="${baseUrl}/register"
 wladderUrl="${baseUrl}/ladder"
 wgameresUrl="${baseUrl}/wgameres"
-`;
+errorReportUrl="${baseUrl}/errorreport"
+${mapTransferLine}`;
         return withCors(new Response(ini, { headers: { "Content-Type": "text/plain" } }), config, req);
     }
 
@@ -191,7 +214,17 @@ wgameresUrl="${baseUrl}/wgameres"
             accounts: deps.accounts,
             wol: deps.wol,
             replaysDir: config.replaysDir,
+            maps: deps.maps,
         }, config, pathParts, log);
+    }
+    // Map service (see mapRoutes.ts). deps.maps is absent when MAP_SERVICE=
+    // disabled, so these namespaces 404 without touching any other routing.
+    if (deps.maps && (pathParts[0] === "maps" || url.pathname === "/maps.pkt")) {
+        const mapParts = url.pathname === "/maps.pkt" ? ["maps", "pkt"] : pathParts;
+        return handleMaps(req, { sessions: deps.sessions, maps: deps.maps }, config, mapParts, log);
+    }
+    if (deps.maps && pathParts[0] === "maptransfer") {
+        return handleMapTransfer(req, { sessions: deps.sessions, maps: deps.maps }, config, pathParts, log);
     }
     // GET /replays/{gameId} — public .rpl download powering the in-game
     // replay deeplink (#/replay/...). Replays are game recordings, not
@@ -217,6 +250,10 @@ wgameresUrl="${baseUrl}/wgameres"
     }
     if (req.method === "POST" && pathParts[0] === "wgameres") {
         return handleWgameres(req, deps, config, pathParts, log);
+    }
+
+    if (req.method === "POST" && pathParts[0] === "errorreport") {
+        return handleErrorReport(req, deps, config, pathParts, log);
     }
 
     if (req.method === "GET" && url.pathname === "/auth/session") {
@@ -457,6 +494,122 @@ function completionToResult(status: number): WolGameReportResult | undefined {
         default:
             return undefined;
     }
+}
+
+/**
+ * POST /errorreport/{sku} — an auto-submitted crash/desync diagnostic report
+ * (src/network/ErrorReportService.ts), player-consented on the client side
+ * before it's ever sent. See ERROR_REPORTING_PLAN.md.
+ *
+ * Unlike the original JSON-with-embedded-base64-debugBundle design, the
+ * whole POST body is a single 7z archive: a required "report.json" entry
+ * (decodes to the shape validateErrorReport() checks) plus an optional
+ * opaque "desync-debug.json" entry this server never parses. One upload
+ * instead of two, and no base64 inflation of an already-compressed blob.
+ *
+ * Deliberately unlike handleWgameres in two ways:
+ *   - No mandatory Bearer token: single-player/LAN sessions (no WOL session
+ *     relationship required) must be able to submit too. A valid token, when
+ *     present, upgrades the report to `authenticated: true` with the trusted
+ *     session username; otherwise the client-supplied `nick` is used as-is,
+ *     informational only.
+ *   - No requirement that gameId resolve to a known ranked gserv instance —
+ *     accepted and persisted regardless of mode.
+ * Since auth can't be the abuse gate here, validity is enforced by a per-IP
+ * rate limiter plus strict schema/size validation instead.
+ */
+async function handleErrorReport(req: Request, deps: HttpDeps, config: ServerConfig, parts: string[], log: Logger): Promise<Response> {
+    const sku = Number(parts[1]);
+    if (!Number.isInteger(sku)) {
+        return withCors(json({ error: "Invalid sku", errorCode: "invalid_request" }, 400), config, req);
+    }
+    const ip = remoteOf(req);
+    if (!limitersFor(config).errorReport.allow(ip)) {
+        log.warn(`errorreport: rate limited for ${ip}`);
+        return withCors(json({ error: "Too many reports, try again later", errorCode: "rate_limited" }, 429), config, req);
+    }
+
+    const contentLength = Number(req.headers.get("content-length") ?? "0");
+    if (contentLength > config.maxErrorReportBytes) {
+        log.warn(`errorreport: oversized report (${contentLength} bytes) from ${ip}`);
+        return withCors(json({ error: "Report too large", errorCode: "too_large" }, 413), config, req);
+    }
+
+    let archiveBytes: Uint8Array;
+    try {
+        archiveBytes = new Uint8Array(await req.arrayBuffer());
+    }
+    catch {
+        return withCors(json({ error: "Invalid request body", errorCode: "invalid_request" }, 400), config, req);
+    }
+    if (archiveBytes.byteLength === 0 || archiveBytes.byteLength > config.maxErrorReportBytes) {
+        log.warn(`errorreport: oversized or empty report (${archiveBytes.byteLength} bytes) from ${ip}`);
+        return withCors(json({ error: "Report too large", errorCode: "too_large" }, 413), config, req);
+    }
+
+    let reportJsonBytes: Uint8Array;
+    try {
+        reportJsonBytes = await extractReportJson(archiveBytes);
+    }
+    catch (error) {
+        if (error instanceof ErrorReportArchiveError) {
+            log.warn(`errorreport: ${error.message} from ${ip}`);
+            return withCors(json({ error: "Invalid report archive", errorCode: "invalid_request" }, 400), config, req);
+        }
+        throw error;
+    }
+
+    let parsedBody: unknown;
+    try {
+        parsedBody = JSON.parse(new TextDecoder().decode(reportJsonBytes));
+    }
+    catch {
+        return withCors(json({ error: "Invalid request body", errorCode: "invalid_request" }, 400), config, req);
+    }
+
+    let report: ReturnType<typeof validateErrorReport>;
+    try {
+        report = validateErrorReport(parsedBody);
+    }
+    catch (error) {
+        if (error instanceof ErrorReportValidationError) {
+            log.warn(`errorreport: ${error.message} from ${ip}`);
+            return withCors(json({ error: "Invalid report", errorCode: "invalid_report" }, 400), config, req);
+        }
+        throw error;
+    }
+
+    const authorization = req.headers.get("authorization") ?? "";
+    const token = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
+    const session = token ? deps.sessions.validate(token) : undefined;
+    const authenticated = session !== undefined;
+    const nick = authenticated ? session!.username : report.nick;
+
+    // Fold a live in-progress replay of this match into the same archive,
+    // if one is available (see GservServer.getReplaySnapshot -- this is
+    // normally the case for a desync report: the instance is still alive,
+    // just paused in its rejoin window, well before its own end-of-game
+    // replay file gets written to disk). Best-effort end to end, including
+    // the lookup itself: a report must never be lost just because the
+    // replay attach failed for some reason.
+    try {
+        const replayText = deps.replaySnapshot?.(report.gameId);
+        if (replayText !== undefined) {
+            archiveBytes = await appendReplayEntry(archiveBytes, replayText);
+        }
+    }
+    catch (error) {
+        log.warn(`errorreport: failed to attach live replay for ${report.gameId}: ${String((error as Error).message)}`);
+    }
+
+    deps.gservs.recordErrorReport(
+        { ...report, nick },
+        archiveBytes,
+        { errorReportsDir: config.errorReportsDir, desyncReportTimeoutMillis: config.desyncReportTimeoutMillis },
+        log,
+    );
+    log.info(`errorreport: accepted ${report.errorType} for ${report.gameId} from "${nick}" (authenticated=${authenticated}) sku=${sku}`);
+    return withCors(json({ accepted: true, authenticated }), config, req);
 }
 
 function samePlayers(instancePlayers: string[], reportPlayers: string[]): boolean {

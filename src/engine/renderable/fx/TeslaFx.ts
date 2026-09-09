@@ -9,7 +9,9 @@ export class TeslaFx {
     private durationSeconds: number;
     private bolts: LightningStrike[];
     private boltMeshes: THREE.Mesh[];
-    private container?: any;
+    private container?: {
+        remove(item: unknown): void;
+    };
     private target?: THREE.Object3D;
     private firstUpdateMillis?: number;
     private timeLeft: number = 1;
@@ -22,7 +24,9 @@ export class TeslaFx {
         this.bolts = [];
         this.boltMeshes = [];
     }
-    setContainer(container: any): void {
+    setContainer(container: {
+        remove(item: unknown): void;
+    }): void {
         this.container = container;
     }
     get3DObject(): THREE.Object3D | undefined {
@@ -82,7 +86,7 @@ export class TeslaFx {
             ramification: 0,
             roughness: 0.85,
             straightness: 0.7,
-        } as any);
+        });
         const material = new THREE.MeshBasicMaterial({ color });
         return { mesh: new THREE.Mesh(strike, material), bolt: strike };
     }

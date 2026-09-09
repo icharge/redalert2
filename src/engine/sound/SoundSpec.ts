@@ -1,9 +1,10 @@
 import { SoundControl, SoundPriority, SoundType } from "./SoundSpecs";
+import type { IniSection } from "../../data/IniSection";
 interface MinMaxPair {
     min: number;
     max: number;
 }
-interface SoundDefaults {
+export interface SoundDefaults {
     minVolume: number;
     range: number;
     volume: number;
@@ -27,7 +28,7 @@ export class SoundSpec {
     vShift?: MinMaxPair;
     attack?: number;
     decay?: number;
-    read(section: any, defaults: SoundDefaults): SoundSpec {
+    read(section: IniSection, defaults: SoundDefaults): SoundSpec {
         let range = section.getNumber("Range", defaults.range);
         if (range === -2) {
             range = Number.POSITIVE_INFINITY;

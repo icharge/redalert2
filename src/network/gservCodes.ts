@@ -33,6 +33,13 @@ export const RPL_GAME_PAUSE_COUNTDOWN = 809;
 export const RPL_GAME_PAUSED = 810;
 export const RPL_GAME_RESUME_COUNTDOWN = 811;
 export const RPL_GAME_RESUMED = 812;
+// Kick/wait vote on a mid-game departure. A session opens automatically when a
+// required player drops in a game with enough remaining players to vote (see
+// GservServer's voteMinRequiredPlayers), and closes when the vote resolves, the
+// player reconnects, or their grace window expires.
+export const RPL_VOTE_SESSION_OPENED = 813;
+export const RPL_VOTE_UPDATE = 814;
+export const RPL_VOTE_SESSION_CLOSED = 815;
 export const RPL_BIN_PREFIX = 2;
 export const RPL_BIN_GAME_ACTIONS = 1;
 export const RPL_BIN_RESYNC = 2;

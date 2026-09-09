@@ -170,7 +170,7 @@ export class WorldScene extends RenderableContainer {
             this.scene.add(this.camera);
             this.meshBatchManager = new MeshBatchManager(this);
             this.add(this.meshBatchManager);
-            (this.scene as any).autoUpdate = false;
+            (this.scene as unknown as { autoUpdate: boolean }).autoUpdate = false;
         }
     }
     updateShadowQuality(light: THREE.DirectionalLight, quality: ShadowQuality): void {
@@ -208,6 +208,12 @@ export class WorldScene extends RenderableContainer {
         this.ambientLight.intensity = ambientIntensity * AMBIENT_LIGHT_INTENSITY;
         this.directionalLight.intensity = ambientIntensity;
     }
+    getScene(): THREE.Scene {
+        return this.scene;
+    }
+    getCamera(): THREE.Camera {
+        return this.camera;
+    }
     update(deltaTime: number, time?: number): void {
         super.update(deltaTime, time);
         this._onBeforeCameraUpdate.dispatch(this, deltaTime);
@@ -227,7 +233,7 @@ export class WorldScene extends RenderableContainer {
             this.shadowQuality.onChange.unsubscribe(this.shadowQualityListener);
             this.shadowQualityListener = undefined;
         }
-        (this.directionalLight.shadow.map as any)?.dispose();
+        this.directionalLight.shadow.map?.dispose();
         if (this.meshBatchManager) {
             this.meshBatchManager.dispose();
             this.remove(this.meshBatchManager);

@@ -1,7 +1,7 @@
 import { ReplayEvent } from "@/network/gamestate/replay/ReplayEvent";
 import { ReplayEventType } from "@/network/gamestate/replay/ReplayEventType";
 
-export class TauntReplayEvent extends ReplayEvent {
+export class TauntReplayEvent extends ReplayEvent<{ playerId: number; tauntNo: number }> {
     constructor(tickNo: number) {
         super(ReplayEventType.Taunt, tickNo);
     }

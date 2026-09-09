@@ -24,7 +24,7 @@ export class MapSpriteTranslation {
         }
         return {
             spriteOffset,
-            anchorPointWorld: worldPos as any
+            anchorPointWorld: worldPos as unknown as THREE.Vector3
         };
     }
 }

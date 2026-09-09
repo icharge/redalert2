@@ -16,8 +16,7 @@ export class IronCurtainExecutor extends TriggerExecutor {
         }
         const ironCurtainRule = [...game.rules.superWeaponRules.values()].find((rule) => rule.type === SuperWeaponType.IronCurtain);
         if (ironCurtainRule) {
-            game.traits
-                .get(SuperWeaponsTrait)
+            (game.traits.get(SuperWeaponsTrait) as unknown as SuperWeaponsTrait)
                 .activateEffect(ironCurtainRule, player, game, tile, undefined, true);
         }
     }

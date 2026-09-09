@@ -1,10 +1,11 @@
 import { IniSection } from './IniSection';
+import type { IniSectionJson } from './IniSection';
 import { IniParser } from './IniParser';
 import { VirtualFile } from './vfs/VirtualFile';
 export { IniSection } from './IniSection';
 export class IniFile {
     public sections: Map<string, IniSection>;
-    constructor(source?: VirtualFile | Record<string, any> | string) {
+    constructor(source?: VirtualFile | Record<string, IniSection | IniSectionJson> | string) {
         this.sections = new Map();
         if (source instanceof VirtualFile) {
             this.fromVirtualFile(source);
@@ -29,7 +30,7 @@ export class IniFile {
         const parsedSectionsObject = parser.parse(iniString);
         return this.fromJson(parsedSectionsObject);
     }
-    public fromJson(sectionsObject: Record<string, any>): this {
+    public fromJson(sectionsObject: Record<string, IniSection | IniSectionJson>): this {
         this.sections.clear();
         for (const sectionName in sectionsObject) {
             if (sectionsObject.hasOwnProperty(sectionName)) {

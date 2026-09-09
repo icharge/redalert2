@@ -37,7 +37,7 @@ export class AudioVisualRules {
     private warpOut: string = '';
     private warpAway: string = '';
     private weaponNullifyAnim: string = '';
-    private weatherConClouds: string[] = [];
+    public weatherConClouds: string[] = [];
     private weatherConBoltExplosion: string = '';
     private weatherConBolts: string[] = [];
     readIni(ini: any): AudioVisualRules {

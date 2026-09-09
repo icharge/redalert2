@@ -4,7 +4,7 @@ export interface ApiGameListEntry {
     players: number;
     maxPlayers: number;
     startedAt: number;
-    [key: string]: any;
+    [key: string]: unknown;
 }
 export interface ApiGameListResponse {
     games: ApiGameListEntry[];

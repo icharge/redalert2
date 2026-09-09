@@ -1,5 +1,6 @@
 import { VirtualFile } from '@/data/vfs/VirtualFile';
 import { Section } from '@/data/vxl/Section';
+import type { PlainSection } from '@/data/vxl/Section';
 import { VxlHeader } from '@/data/vxl/VxlHeader';
 import * as THREE from 'three';
 import { DataStream } from './DataStream';
@@ -20,8 +21,8 @@ interface SectionTailer {
     endingSpanOffset: number;
     dataSpanOffset: number;
 }
-interface PlainVxlFile {
-    sections: any[];
+export interface PlainVxlFile {
+    sections: PlainSection[];
     voxelCount: number;
 }
 export class VxlFile {

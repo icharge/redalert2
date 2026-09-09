@@ -64,6 +64,10 @@ export interface ServerConfig {
     pauseCountdownMillis: number;
     pauseCooldownMillis: number;
     rejoinResumeCountdownMillis: number;
+    voteMinRequiredPlayers: number;
+    voteExtensionsMax: number;
+    voteExtensionSeconds: number;
+    voteOpenDelayMillis: number;
     gservRateLimitEnabled: boolean;
     gservStatsIntervalSeconds: number;
     loginMaxPerMin: number;
@@ -85,6 +89,19 @@ export interface ServerConfig {
     adminUsernames: string[];
     /** Public origin of the game client (for admin console replay deeplinks). */
     clientUrl?: string;
+    // Auto-submitted crash/desync diagnostic reports (see ERROR_REPORTING_PLAN.md).
+    errorReportsDir: string;
+    desyncReportTimeoutMillis: number;
+    maxErrorReportBytes: number;
+    errorReportMaxPerMin: number;
+    // Map service (content-addressed map store + live maps.pkt + game-time
+    // map transfer). Blobs live on disk; metadata/stats/ratings in the DB.
+    mapServiceEnabled: boolean;
+    mapsDir: string;
+    /** Whether freshly uploaded maps are publicly visible without moderation. */
+    mapPublishDefault: boolean;
+    /** Upper bound for a single uploaded/transferred map blob. */
+    mapMaxUploadBytes: number;
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env as Record<string, string | undefined>): ServerConfig {
@@ -141,6 +158,29 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
         // Countdown between a rejoining player signalling ready and the relay
         // resuming, so everyone is ready to continue.
         rejoinResumeCountdownMillis: Number(env.GSERV_REJOIN_RESUME_COUNTDOWN_MILLIS ?? 3000),
+        // Kick/wait voting on a mid-game departure. Only offered when at least
+        // this many players are still required by the relay at the moment
+        // someone drops -- below it (i.e. a 1v1) a "majority" would be a single
+        // player unilaterally deciding another's fate, so the plain grace timer
+        // decides instead.
+        voteMinRequiredPlayers: Number(env.GSERV_VOTE_MIN_REQUIRED_PLAYERS ?? 3),
+        // A "wait" vote vetoes a kick, but only while extensions remain: each
+        // one pushes the departed player's deadline out by
+        // voteExtensionSeconds. Once the pool is spent, wait votes are advisory
+        // and a kick majority carries -- so one holdout cannot stall a match
+        // indefinitely, but the group can still buy a reconnecting player a
+        // bounded amount of extra time.
+        voteExtensionsMax: Number(env.GSERV_VOTE_EXTENSIONS_MAX ?? 2),
+        voteExtensionSeconds: Number(env.GSERV_VOTE_EXTENSION_SECONDS ?? 30),
+        // A drop is very often just a brief network blip that resolves itself
+        // in a few seconds -- the connection-info screen can already open off
+        // a much shorter lag heuristic client-side (LAG_STATE_THRESH_MILLIS,
+        // ~1s) or the moment the socket actually closes, well before anyone
+        // should be asked to weigh in on kicking someone. The vote itself only
+        // becomes available after this much longer delay, and only if the
+        // player is still away when it elapses -- a reconnect within the
+        // window cancels it outright, never opening at all.
+        voteOpenDelayMillis: Number(env.GSERV_VOTE_OPEN_DELAY_MILLIS ?? 10_000),
         // Disable per-connection flood limiting on the match relay (testing
         // only): set GSERV_RATE_LIMIT=disabled to turn it off.
         gservRateLimitEnabled: env.GSERV_RATE_LIMIT !== "disabled",
@@ -186,5 +226,28 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
             ? env.ADMIN_USERNAMES.split(",").map(name => name.trim().toLowerCase()).filter(Boolean)
             : [],
         clientUrl: env.CLIENT_URL?.trim() || undefined,
+        // Auto-submitted crash/desync diagnostic reports (see ERROR_REPORTING_PLAN.md).
+        // Reports collect per-gameId, mirroring replaysDir's directory-per-artifact layout.
+        errorReportsDir: env.ERROR_REPORTS_DIR ?? path.join(import.meta.dir, "..", "error-reports"),
+        // How long the server waits after a desync_error report arrives before
+        // giving up on a second peer's report to diff against, and persisting
+        // whatever it has. Non-desync errorTypes never wait (nothing to correlate).
+        desyncReportTimeoutMillis: Number(env.GSERV_DESYNC_REPORT_TIMEOUT_MILLIS ?? 5000),
+        // Upper bound on a report's raw JSON body size, checked before JSON.parse
+        // (same early-reject-on-size principle as maxSnapshotBytes). A getObjectHashList()
+        // payload runs roughly 15-40 bytes/object, well under this.
+        maxErrorReportBytes: Number(env.GSERV_MAX_ERROR_REPORT_BYTES ?? 4 * 1024 * 1024),
+        // Per-IP limiter (no mandatory auth on this endpoint, so no account to key by).
+        errorReportMaxPerMin: Number(env.GSERV_ERROR_REPORT_MAX_PER_MIN ?? 20),
+        // Map service: set MAP_SERVICE=disabled to turn the whole feature off
+        // (routes 404 and /servers.ini stops advertising mapTransferUrl).
+        mapServiceEnabled: env.MAP_SERVICE !== "disabled",
+        mapsDir: env.MAPS_DIR ?? path.join(import.meta.dir, "..", "data", "maps"),
+        // Moderation is opt-in: publish immediately unless MAP_PUBLISH_DEFAULT=false.
+        mapPublishDefault: env.MAP_PUBLISH_DEFAULT !== "false",
+        // The client's lobby only offers transfer for maps up to
+        // MAX_MAP_TRANSFER_BYTES (2 MiB); 4 MiB headroom keeps the store
+        // useful for direct uploads/browsing beyond the lobby path.
+        mapMaxUploadBytes: Number(env.MAP_MAX_UPLOAD_BYTES ?? 4 * 1024 * 1024),
     };
 }

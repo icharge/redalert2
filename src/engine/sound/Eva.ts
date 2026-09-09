@@ -1,4 +1,5 @@
 import { ChannelType } from "./ChannelType";
+import type { AudioFile } from "./AudioSystem";
 interface EvaSpec {
     sound: string;
     priority: number;
@@ -7,10 +8,14 @@ interface EvaSpec {
 interface EvaSpecs {
     getSpec(name: string): EvaSpec | undefined;
 }
+interface PlaybackHandle {
+    isPlaying(): boolean;
+    stop(): void;
+}
 interface Sound {
-    getWavFile(name: string): any;
+    getWavFile(name: string): AudioFile | undefined;
     audioSystem: {
-        playWavFile(file: any, channel: ChannelType): any;
+        playWavFile(file: AudioFile, channel: ChannelType): PlaybackHandle;
     };
 }
 interface Renderer {
@@ -25,7 +30,7 @@ export class Eva {
     private renderer: Renderer;
     private evaWaitingList: EvaSpec[] = [];
     private lastEvaEventByName = new Map<string, number>();
-    private currentEvaPlaying?: any;
+    private currentEvaPlaying?: PlaybackHandle;
     constructor(evaSpecs: EvaSpecs, sound: Sound, renderer: Renderer) {
         this.evaSpecs = evaSpecs;
         this.sound = sound;

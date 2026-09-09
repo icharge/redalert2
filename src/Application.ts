@@ -43,6 +43,7 @@ function isEditableElementFocused(): boolean {
 const optionalDevModuleImporters: Record<string, () => Promise<any>> = {
     './tools/VxlTester': () => import('./tools/VxlTester'),
     './tools/LobbyFormTester': () => import('./tools/LobbyFormTester'),
+    './tools/ConInfoFormTester': () => import('./tools/ConInfoFormTester'),
     './tools/SoundTester': () => import('./tools/SoundTester'),
     './tools/BuildingTester': () => import('./tools/BuildingTester'),
     './tools/InfantryTester': () => import('./tools/InfantryTester'),
@@ -929,16 +930,14 @@ export class Application {
             showError(String(error instanceof Error ? error.message : error));
             return;
         }
-        const engineVersion = Engine.getVersion();
-        const engineModHash = Engine.getActiveMod?.() ?? '';
-        if (replay.engineVersion !== engineVersion) {
-            showError(this.strings.get("GUI:ReplayVersionMismatch", replay.engineVersion));
-            return;
-        }
-        if (engineModHash && replay.modHash !== engineModHash) {
-            showError(this.strings.get("GUI:ReplayModMismatch"));
-            return;
-        }
+        // No version/modHash check here: ScreenType.Replay's own onEnter is the
+        // single authoritative compatibility gate (it runs for every entry
+        // point -- this deep link, the in-client replay list, and any future
+        // one) and, unlike this duplicate, actually offers a confirm dialog
+        // instead of a hard block. This used to also duplicate that gate, with
+        // its own copy of the getActiveMod()-instead-of-getModHash() bug (see
+        // Engine.getModHashString()'s doc comment) -- comparing a mod name to
+        // a CRC, which could never match.
         this.gui?.getRootController().goToScreen(ScreenType.Replay, { replay });
     }
 
@@ -976,6 +975,23 @@ export class Application {
             const { LobbyFormTester } = await this.importOptionalDevModule('./tools/LobbyFormTester');
             await LobbyFormTester.main(this.rootEl!, this.strings, this.createTestToolContext());
             this.currentRouteHandler = LobbyFormTester;
+        });
+        // The in-game Connection Info screen, driven by a simulated match: lets
+        // the pause/rejoin/kick-vote UI be inspected without three real clients
+        // and a real disconnect, which is otherwise the only way to see it.
+        this.routing.addRoute("/coninfotest", async () => {
+            if (!Engine.vfs) {
+                throw new Error("Original game files must be provided.");
+            }
+            console.log('[Application] Initializing ConInfoFormTester');
+            const { TestToolSupport } = await this.importOptionalDevModule('./tools/TestToolSupport');
+            // The screen lives in the in-game HUD, so a real Hud has to be
+            // stood up around it, and that needs a map — same shape as
+            // /shptest, which is the existing precedent for a standalone Hud.
+            const gameMap = await TestToolSupport.loadMap(this.createTestToolContext().mapResourceLoader!, "mp03t4.map");
+            const { ConInfoFormTester } = await this.importOptionalDevModule('./tools/ConInfoFormTester');
+            await ConInfoFormTester.main(gameMap, this.rootEl!, this.strings, this.createTestToolContext());
+            this.currentRouteHandler = ConInfoFormTester;
         });
         this.routing.addRoute("/soundtest", async () => {
             if (!Engine.vfs) {
@@ -1064,13 +1080,29 @@ export class Application {
             await PerformanceTester.main(this.rootEl!, this.strings, this.runtimeVars, this.generalOptions, this.createTestToolContext());
             this.currentRouteHandler = PerformanceTester;
         });
-        this.routing.addRoute("/scenesandbox", async () => {
+        this.routing.addRoute("/scenesandbox", async (params) => {
             if (!Engine.vfs) {
                 throw new Error("Original game files must be provided.");
             }
             console.log('[Application] Initializing SceneSandboxTester');
             const { TestToolSupport } = await this.importOptionalDevModule('./tools/TestToolSupport');
-            const mapCandidates = ["mp18s3.map", "mp03t4.map"];
+            // Optional #/scenesandbox/<map title or filename> — matched against
+            // Engine.getMapList() by filename or a case-insensitive title
+            // substring, so a map can be inspected without knowing its filename.
+            let mapCandidates = ["mp18s3.map", "mp03t4.map"];
+            const requestedMapQuery = params[0] ? decodeURIComponent(params[0]) : undefined;
+            if (requestedMapQuery) {
+                const query = requestedMapQuery.toLowerCase();
+                const match = Engine.getMapList().getAll().find((map: any) => map.fileName.toLowerCase() === query ||
+                    (map.getFullMapTitle(this.strings) as string).toLowerCase().includes(query));
+                if (match) {
+                    console.log(`[Application] Resolved scene sandbox map query "${requestedMapQuery}" -> ${match.fileName}`);
+                    mapCandidates = [match.fileName, ...mapCandidates];
+                }
+                else {
+                    console.warn(`[Application] No map found matching "${requestedMapQuery}"; falling back to defaults`);
+                }
+            }
             let loadedMap: any;
             let loadedMapName = "";
             for (const mapName of mapCandidates) {
@@ -1098,7 +1130,7 @@ export class Application {
             }
             console.log('[Application] Initializing LiveInteractionTester');
             const { TestToolSupport } = await this.importOptionalDevModule('./tools/TestToolSupport');
-            const gameMap = await TestToolSupport.loadMap(this.createTestToolContext().mapResourceLoader!, "2_reconcile.map");
+            const gameMap = await TestToolSupport.loadMap(this.createTestToolContext().mapResourceLoader!, "tn04mw.map");
             const { LiveInteractionTester } = await this.importOptionalDevModule('./tools/LiveInteractionTester');
             await LiveInteractionTester.main(Engine.vfs, gameMap, this.rootEl!, this.strings, this.createTestToolContext(), {
                 generalOptions: this.generalOptions,

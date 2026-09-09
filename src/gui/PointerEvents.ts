@@ -25,8 +25,8 @@ interface Renderer {
 }
 interface Scene {
     get3DObject(): THREE.Object3D;
-    scene: THREE.Scene;
-    camera: THREE.Camera;
+    getScene(): THREE.Scene;
+    getCamera(): THREE.Camera;
     viewport: {
         x: number;
         y: number;
@@ -372,10 +372,10 @@ export class PointerEvents {
         for (let i = scenes.length - 1; i >= 0; i--) {
             const raycaster = new THREE.Raycaster();
             const normalizedPointer = this.normalizePointer(pointerPos, scenes[i].viewport);
-            raycaster.setFromCamera(normalizedPointer, scenes[i].camera);
+            raycaster.setFromCamera(normalizedPointer, scenes[i].getCamera());
             raycaster.layers.enable(1);
             const sceneObjects = objectsByScene
-                .get(scenes[i].scene)!
+                .get(scenes[i].getScene())!
                 .filter((obj) => isVisibleInScene(obj, scenes[i].get3DObject()));
             const intersections = raycaster.intersectObjects(sceneObjects, true);
             if (intersections.length) {

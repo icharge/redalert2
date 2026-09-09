@@ -17,22 +17,22 @@ export class LocomotorFactory {
         const locomotorType = obj.rules.locomotor;
         switch (locomotorType) {
             case LocomotorType.Infantry:
-                return new FootLocomotor(this.game);
+                return new FootLocomotor(this.game as unknown as ConstructorParameters<typeof FootLocomotor>[0]);
             case LocomotorType.Jumpjet:
-                return new JumpjetLocomotor(this.game);
+                return new JumpjetLocomotor(this.game as unknown as ConstructorParameters<typeof JumpjetLocomotor>[0]);
             case LocomotorType.Vehicle:
             case LocomotorType.Ship:
-                return new DriveLocomotor(this.game);
+                return new DriveLocomotor(this.game as unknown as ConstructorParameters<typeof DriveLocomotor>[0]);
             case LocomotorType.Chrono:
                 return obj.isVehicle() && obj.harvesterTrait && obj.rules.teleporter
-                    ? new DriveLocomotor(this.game)
-                    : new ChronoLocomotor(this.game);
+                    ? new DriveLocomotor(this.game as unknown as ConstructorParameters<typeof DriveLocomotor>[0])
+                    : new ChronoLocomotor(this.game as unknown as ConstructorParameters<typeof ChronoLocomotor>[0]);
             case LocomotorType.Aircraft:
-                return new WingedLocomotor(this.game);
+                return new WingedLocomotor(this.game as unknown as ConstructorParameters<typeof WingedLocomotor>[0]);
             case LocomotorType.Missile:
-                return new MissileLocomotor(this.game, this.game.rules.general.getMissileRules(obj.name));
+                return new MissileLocomotor(this.game as unknown as ConstructorParameters<typeof MissileLocomotor>[0], this.game.rules.general.getMissileRules(obj.name) as unknown as ConstructorParameters<typeof MissileLocomotor>[1]);
             case LocomotorType.Hover:
-                return new HoverLocomotor(this.game.rules.general.hover);
+                return new HoverLocomotor(this.game.rules.general.hover as unknown as ConstructorParameters<typeof HoverLocomotor>[0]);
             default:
                 throw new Error(`Unhandled locomotor type ${locomotorType}`);
         }

@@ -16,7 +16,7 @@ export class Theater {
     public animPalette: Palette;
     public libPalette: Palette;
     public tileSets: TileSets;
-    static factory(type: TheaterType, theaterIni: IniFile, settings: TheaterSettings, tileDataCollection: any, palettesCollection: LazyResourceCollection<Palette>): Theater {
+    static factory(type: TheaterType, theaterIni: IniFile, settings: TheaterSettings, tileDataCollection: LazyResourceCollection<TmpFile>, palettesCollection: LazyResourceCollection<Palette>): Theater {
         const isoPalette = palettesCollection.get(settings.isoPaletteName);
         if (!isoPalette) {
             throw new Error(`Missing palette "${settings.isoPaletteName}"`);
@@ -38,7 +38,7 @@ export class Theater {
             throw new Error("Missing lib palette " + settings.libPaletteName);
         }
         const tileSetsInstance = new TileSets(theaterIni);
-        tileSetsInstance.loadTileData(tileDataCollection as FileSystem, settings.extension);
+        tileSetsInstance.loadTileData(tileDataCollection as unknown as FileSystem, settings.extension);
         return new Theater(type, settings, palettesCollection, isoPalette, overlayPalette, unitPalette, animPalette, libPalette, tileSetsInstance);
     }
     constructor(type: TheaterType, settings: TheaterSettings, palettes: LazyResourceCollection<Palette>, isoPalette: Palette, ovlPalette: Palette, unitPalette: Palette, animPalette: Palette, libPalette: Palette, tileSets: TileSets) {

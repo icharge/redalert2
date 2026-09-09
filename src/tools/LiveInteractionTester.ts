@@ -880,7 +880,7 @@ export class LiveInteractionTester {
         const gameMap = game.map as GameMap;
         const debugText = game.debugText as BoxedVar<string>;
 
-        const minimap = new Minimap(game, undefined, 0xffd84a, game.rules.general.radar);
+        const minimap = new Minimap(game, undefined, 0xffd84a, game.rules.general.radar as unknown as ConstructorParameters<typeof Minimap>[3]);
         minimap.setPointerEvents(pointer.pointerEvents);
         this.disposables.add(minimap);
         uiScene.add(minimap);
@@ -1891,7 +1891,7 @@ export class LiveInteractionTester {
             let infantrySpawnIndex = 0;
             for (let index = 0; index < spawnTiles.length; index += 1) {
                 const tile = spawnTiles[index];
-                const unit = battle.game.createUnitForPlayer(unitRules, sidePlayer);
+                const unit = battle.game.createUnitForPlayer(unitRules as unknown as Parameters<Game['createUnitForPlayer']>[0], sidePlayer);
                 if (unit.isInfantry?.()) {
                     unit.position.subCell = Infantry.SUB_CELLS[infantrySpawnIndex % Infantry.SUB_CELLS.length];
                     infantrySpawnIndex += 1;

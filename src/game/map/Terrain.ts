@@ -9,30 +9,31 @@ import { LandType, getLandType } from "@/game/type/LandType";
 import { OccupationBits } from "@/game/rules/TerrainRules";
 import { MapBounds } from "@/game/map/MapBounds";
 import { Rules } from "@/game/rules/Rules";
+import type { GameObject as RealGameObject } from "@/game/gameobject/GameObject";
 interface GameObject {
     tile: Tile;
     onBridge?: boolean;
     isTerrain(): boolean;
     isOverlay(): boolean;
-    isBridge(): boolean;
-    isTiberium(): boolean;
+    isBridge?(): boolean;
+    isTiberium?(): boolean;
     isBuilding(): boolean;
     isAircraft(): boolean;
     isInfantry(): boolean;
     isVehicle(): boolean;
     isSmudge(): boolean;
-    isHighBridge(): boolean;
-    isBridgePlaceholder(): boolean;
+    isHighBridge?(): boolean;
+    isBridgePlaceholder?(): boolean;
     isUnit(): boolean;
     isDestroyed: boolean;
     rules: any;
     art: any;
     position: any;
-    moveTrait: any;
+    moveTrait?: any;
 }
 interface Bridge {
     tileElevation?: number;
-    isHighBridge(): boolean;
+    isHighBridge?(): boolean;
 }
 interface PathNode {
     tile: Tile;
@@ -66,7 +67,7 @@ interface PathOptions {
     ignoredBlockers?: GameObject[];
 }
 interface Obstacle {
-    obj: GameObject;
+    obj: RealGameObject;
     static: boolean;
 }
 function calculateDistance(nodeA: GraphNode<NodeData>, nodeB: GraphNode<NodeData>): number {
@@ -117,7 +118,7 @@ export class Terrain {
                 speedType = SpeedType.Wheel;
                 isInfantry = false;
             }
-            return (object.isOverlay() && (object.isBridge() || object.isTiberium())) ||
+            return (object.isOverlay() && (object.isBridge?.() || object.isTiberium?.())) ||
                 this.isBlockerObject(object, tile, false, speedType, isInfantry) ||
                 this.isBlockerObject(object, tile, true, speedType, isInfantry) ||
                 (object.isBuilding() && object.rules.leaveRubble);
@@ -132,7 +133,7 @@ export class Terrain {
     private getGraphKey(speedType: SpeedType, onBridge: boolean): string {
         return speedType + "_" + Number(onBridge);
     }
-    private invalidateTiles(tiles: Tile[]): void {
+    invalidateTiles(tiles: Tile[]): void {
         if (!tiles.length)
             return;
         [...this.passabilityGraphs.keys()].forEach(graphKey => {
@@ -330,7 +331,7 @@ export class Terrain {
         const elevationDiff = Math.abs(tile.z + (bridge?.tileElevation ?? 0) -
             (neighborTile.z + (neighborBridge?.tileElevation ?? 0)));
         if (elevationDiff > maxElevationDiff) {
-            if ((!neighborBridge?.isHighBridge() && !bridge?.isHighBridge()) ||
+            if ((!neighborBridge?.isHighBridge?.() && !bridge?.isHighBridge?.()) ||
                 Math.abs(tile.z - neighborTile.z) !== 0 ||
                 !graph.hasNode(this.getNodeId(tile, false))) {
                 return;
@@ -375,7 +376,7 @@ export class Terrain {
             }
         }
     }
-    private getIslandIdMap(speedType: SpeedType, onBridge: boolean) {
+    getIslandIdMap(speedType: SpeedType, onBridge: boolean) {
         const graph = this.computePassabilityGraph(speedType, onBridge);
         return {
             get: (tile: Tile, onBridge: boolean): number | undefined => {
@@ -407,7 +408,7 @@ export class Terrain {
         }
         return speedModifier;
     }
-    private isBlockerObject(obj: GameObject, tile: Tile, bridgeLevel: boolean, speedType: SpeedType, isInfantry: boolean): boolean {
+    isBlockerObject(obj: GameObject, tile: Tile, bridgeLevel: boolean, speedType: SpeedType, isInfantry: boolean): boolean {
         if (obj.isTerrain() && isInfantry &&
             obj.rules.getOccupationBits(this.theaterType) !== OccupationBits.All) {
             return false;
@@ -439,11 +440,11 @@ export class Terrain {
             return false;
         }
         if (obj.isOverlay()) {
-            if ((bridgeLevel && obj.isBridge()) ||
-                (!bridgeLevel && obj.isHighBridge()) ||
-                obj.isTiberium() ||
+            if ((bridgeLevel && obj.isBridge?.()) ||
+                (!bridgeLevel && obj.isHighBridge?.()) ||
+                obj.isTiberium?.() ||
                 obj.rules.crate ||
-                obj.isBridgePlaceholder()) {
+                obj.isBridgePlaceholder?.()) {
                 return false;
             }
         }
@@ -466,7 +467,7 @@ export class Terrain {
             }
             else if (obj.isUnit()) {
                 const sameLocation = (obj.tile === pathNode.tile && obj.onBridge === !!pathNode.onBridge);
-                const inReservedPath = obj.moveTrait.reservedPathNodes.find((node: PathNode) => node.tile === pathNode.tile && !!node.onBridge === !!pathNode.onBridge);
+                const inReservedPath = obj.moveTrait?.reservedPathNodes.find((node: PathNode) => node.tile === pathNode.tile && !!node.onBridge === !!pathNode.onBridge);
                 if (sameLocation || inReservedPath) {
                     shouldInclude = true;
                 }
@@ -481,7 +482,7 @@ export class Terrain {
                 shouldInclude = true;
             }
             if (shouldInclude) {
-                const obstacle: Obstacle = { obj, static: isStaticBlocker };
+                const obstacle: Obstacle = { obj: obj as unknown as RealGameObject, static: isStaticBlocker };
                 if (obj.isInfantry() && isInfantry) {
                     if (obj.position.desiredSubCell === unit.position.desiredSubCell) {
                         obstacles.push(obstacle);

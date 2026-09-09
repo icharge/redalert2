@@ -11,12 +11,8 @@ import { ReplayStorageFileSystem } from '../../replay/ReplayStorageFileSystem';
 import { ModManager } from '../mainMenu/modSel/ModManager';
 import { LocalPrefs } from '../../../LocalPrefs';
 import { resetGameFiles, resetAllGameFilesAndSettings } from '../../../engine/gameRes/resetGameFiles';
-interface ReplayMeta {
-    id: string;
-    name: string;
-    timestamp: number;
-    keep?: boolean;
-}
+import { MainMenuScreenType } from '../ScreenType';
+import { ReplayMeta } from '../../replay/ReplayMeta';
 interface ReplayManager {
     loadList(includeTemp?: boolean): Promise<ReplayMeta[]>;
     deleteReplay(replay: ReplayMeta): Promise<void>;
@@ -244,6 +240,12 @@ export class ManageGameScreen extends MainMenuScreen {
     private updateSidebarButtons(): void {
         const hasSelection = this.selectedReplayIds.size > 0 || this.selectedMapNames.size > 0 || this.selectedModIds.size > 0;
         this.controller?.setSidebarButtons([
+            {
+                label: this.strings.get('GUI:Storage') || 'Storage',
+                onClick: () => {
+                    this.controller?.pushScreen(MainMenuScreenType.OptionsStorage, {});
+                },
+            },
             {
                 label: this.strings.get('GUI:DeleteSelected') || 'Delete Selected',
                 disabled: !hasSelection,

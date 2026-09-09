@@ -53,7 +53,7 @@ export class GapGeneratorTrait {
                     if (!nearbyGapGenerators) {
                         const rangeHelper = new RangeHelper(context.map.tileOccupation);
                         nearbyGapGenerators = players
-                            .map(p => [...p.buildings])
+                            .map(p => [...p.buildings] as unknown as Building[])
                             .flat()
                             .filter(b => b.gapGeneratorTrait &&
                             b !== building &&
@@ -91,7 +91,7 @@ export class GapGeneratorTrait {
                             }
                         }
                     }
-                    else if ([...combatant.buildings].some(b => b.rules.spySat)) {
+                    else if ([...(combatant.buildings as unknown as Building[])].some(b => b.rules.spySat)) {
                         shroud.revealAround(building.tile, this.radiusTiles);
                     }
                 }

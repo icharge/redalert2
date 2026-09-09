@@ -18,6 +18,7 @@ import { Crc32 } from '../data/Crc32';
 import { GameModes } from '../game/ini/GameModes';
 import * as stringUtils from '../util/string';
 import { MapList } from './MapList';
+import { ResourceLoader } from './ResourceLoader';
 import { HvaFile } from '../data/HvaFile';
 import { MixinRulesType } from '../game/ini/MixinRulesType';
 import { AppLogger } from '../util/logger';
@@ -219,6 +220,16 @@ export class Engine {
             throw new Error("Rules must be loaded first");
         }
         return this.modHash;
+    }
+    // Non-throwing counterpart to getModHash(), for callers that need "the
+    // current mod hash as a comparable string, or '' if rules aren't loaded
+    // yet" -- e.g. threading it into a screen constructed before a game
+    // starts. Several call sites used to call getActiveMod() here instead,
+    // which returns the *mod name* (e.g. "myMod"), not this CRC -- a
+    // same-named mistake that made every modHash comparison fed from those
+    // call sites compare a name against a hash and never usefully match.
+    static getModHashString(): string {
+        return this.modHash !== undefined ? String(this.modHash) : '';
     }
     static getActiveMod(): string | undefined {
         return this.activeMod;
@@ -472,11 +483,21 @@ export class Engine {
         const soundIni = this.getIni(this.getFileNameVariant("sound.ini"));
         return soundIni.clone().mergeWith(soundCdIni);
     }
-    static async loadMapList(): Promise<MapList> {
+    static async loadMapList(mapsPktUrl?: string): Promise<MapList> {
         if (!this.vfs)
             throw new Error("File system not initialized");
         const gameModes = this.getMpModes();
         const combinedMapList = new MapList(gameModes);
+        if (mapsPktUrl) {
+            try {
+                const resourceLoader = new ResourceLoader("");
+                const pktText = await resourceLoader.loadText(mapsPktUrl);
+                combinedMapList.addFromIni(new IniFile(pktText));
+            }
+            catch (error) {
+                console.warn(`Map list URL "${mapsPktUrl}" could not be loaded, skipping`, error);
+            }
+        }
         const missionsPktFileName = this.getFileNameVariant("missions.pkt");
         if (this.iniFiles.has(missionsPktFileName)) {
             combinedMapList.addFromIni(this.getIni(missionsPktFileName));

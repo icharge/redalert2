@@ -1,10 +1,11 @@
 import { EventDispatcher } from "@/util/event";
 import { DataStream } from "@/data/DataStream";
-import { IrcConnection } from "@/network/IrcConnection";
+import { IrcConnection, type ConnectOptions } from "@/network/IrcConnection";
 import * as GservCode from "@/network/gservCodes";
 import { GservError } from "@/network/GservError";
-import { API_VERSION, RECIPIENT_ALL, RECIPIENT_TEAM, GSERV_LOGIN_TIMEOUT_SECONDS } from "@/network/gservConfig";
+import { API_VERSION, RECIPIENT_ALL, RECIPIENT_TEAM, GSERV_LOGIN_TIMEOUT_SECONDS, DEFAULT_GAME_COUNTDOWN_MILLIS } from "@/network/gservConfig";
 import { ChatRecipientType, ChatMessage } from "@/network/chat/ChatMessage";
+import type { Logger } from "@/network/Logger";
 
 const gservErrorCodeMap: Map<number, GservError.Code> = new Map([
     [GservCode.RPL_BAD_LOGIN, GservError.Code.BadLogin],
@@ -16,6 +17,30 @@ const gservErrorCodeMap: Map<number, GservError.Code> = new Map([
     [GservCode.RPL_INSTANCE_ALREADY_STARTED, GservError.Code.InstanceAlreadyStarted],
     [GservCode.RPL_INSTANCE_VERS_MISMATCH, GservError.Code.InstanceVersMismatch],
 ]);
+
+export type VoteChoice = "kick" | "wait";
+
+/** A kick/wait vote has opened on a player who dropped mid-game. */
+export interface VoteSessionInfo {
+    /** The departed player being voted on. */
+    targetNick: string;
+    extensionsMax: number;
+    extensionSeconds: number;
+}
+
+/** Live tally of an open kick/wait vote, rebroadcast on every cast vote. */
+export interface VoteTally {
+    targetNick: string;
+    kickVotes: number;
+    waitVotes: number;
+    /** Remaining "wait" extensions; at zero, wait votes stop vetoing a kick. */
+    extensionsRemaining: number;
+    /** How many players may vote, and how many kick votes carry the motion. */
+    eligibleCount: number;
+    majorityThreshold: number;
+    /** Who has voted so far, and for what. */
+    votesByNick: Map<string, VoteChoice>;
+}
 
 export class GservConnection {
     private currentUser?: string;
@@ -31,10 +56,13 @@ export class GservConnection {
     private _onPlayerReconnecting = new EventDispatcher<GservConnection, string>();
     private _onPlayerReconnected = new EventDispatcher<GservConnection, string>();
     private _onPlayerGaveUp = new EventDispatcher<GservConnection, string>();
-    private _onPauseCountdown = new EventDispatcher<GservConnection>();
+    private _onPauseCountdown = new EventDispatcher<GservConnection, number>();
     private _onPaused = new EventDispatcher<GservConnection>();
-    private _onResumeCountdown = new EventDispatcher<GservConnection>();
+    private _onResumeCountdown = new EventDispatcher<GservConnection, number>();
     private _onResumed = new EventDispatcher<GservConnection>();
+    private _onVoteSessionOpened = new EventDispatcher<GservConnection, VoteSessionInfo>();
+    private _onVoteUpdate = new EventDispatcher<GservConnection, VoteTally>();
+    private _onVoteSessionClosed = new EventDispatcher<GservConnection, string>();
     private _onResyncLogComplete = new EventDispatcher<GservConnection>();
     private _onPrivMsgNotAllowed = new EventDispatcher<GservConnection>();
     private resyncTurnCount?: number;
@@ -94,8 +122,17 @@ export class GservConnection {
     get onPrivMsgNotAllowed() {
         return this._onPrivMsgNotAllowed.asEvent();
     }
+    get onVoteSessionOpened() {
+        return this._onVoteSessionOpened.asEvent();
+    }
+    get onVoteUpdate() {
+        return this._onVoteUpdate.asEvent();
+    }
+    get onVoteSessionClosed() {
+        return this._onVoteSessionClosed.asEvent();
+    }
 
-    static factory(logger: any): GservConnection {
+    static factory(logger: Logger): GservConnection {
         return new this(new IrcConnection({
             mode: "text",
             binaryRplPrefix: GservCode.RPL_BIN_PREFIX,
@@ -107,7 +144,7 @@ export class GservConnection {
     }
 
     constructor(private con: IrcConnection) {
-        this.handleMessage = (message: any) => {
+        this.handleMessage = (message: string | Uint8Array) => {
             if (typeof message === "string") {
                 const parts = message.split(" ");
                 if (parts[0]?.toLowerCase() === "ping") {
@@ -139,8 +176,13 @@ export class GservConnection {
                     });
                 }
                 else if (parts[1] === "" + GservCode.RPL_TAUNT) {
+                    // RPL_TAUNT is a server-authored numeric reply
+                    // (":<serverName> <code> <nick> :<tauntNo>"), not a
+                    // PRIVMSG — the taunting player's nick is the parameter
+                    // at parts[2], same as every other RPL_* code here.
+                    // parts[0] is the *server's* name prefix, not theirs.
                     this._onTaunt.dispatch(this, {
-                        from: parts[0].replace(/^:/, ""),
+                        from: parts[2],
                         tauntNo: Number(parts[3].replace(/^:/, "")),
                     });
                 }
@@ -157,16 +199,33 @@ export class GservConnection {
                     this._onPlayerGaveUp.dispatch(this, parts[3].replace(/^:/, ""));
                 }
                 else if (parts[1] === "" + GservCode.RPL_GAME_PAUSE_COUNTDOWN) {
-                    this._onPauseCountdown.dispatch(this);
+                    this._onPauseCountdown.dispatch(this, this.parseCountdownMillis(parts[3]));
                 }
                 else if (parts[1] === "" + GservCode.RPL_GAME_PAUSED) {
                     this._onPaused.dispatch(this);
                 }
                 else if (parts[1] === "" + GservCode.RPL_GAME_RESUME_COUNTDOWN) {
-                    this._onResumeCountdown.dispatch(this);
+                    this._onResumeCountdown.dispatch(this, this.parseCountdownMillis(parts[3]));
                 }
                 else if (parts[1] === "" + GservCode.RPL_GAME_RESUMED) {
                     this._onResumed.dispatch(this);
+                }
+                else if (parts[1] === "" + GservCode.RPL_VOTE_SESSION_OPENED) {
+                    const fields = (parts[3] ?? "").replace(/^:/, "").split(",");
+                    this._onVoteSessionOpened.dispatch(this, {
+                        targetNick: fields[0] ?? "",
+                        extensionsMax: Number(fields[1] ?? 0),
+                        extensionSeconds: Number(fields[2] ?? 0),
+                    });
+                }
+                else if (parts[1] === "" + GservCode.RPL_VOTE_UPDATE) {
+                    const tally = this.parseVoteUpdate(parts[3]);
+                    if (tally) {
+                        this._onVoteUpdate.dispatch(this, tally);
+                    }
+                }
+                else if (parts[1] === "" + GservCode.RPL_VOTE_SESSION_CLOSED) {
+                    this._onVoteSessionClosed.dispatch(this, parts[3].replace(/^:/, ""));
                 }
                 else if (parts[1] === "" + GservCode.RPL_RESYNC) {
                     this.resyncTurnCount = Number(parts[3]?.replace(/^:/, "") ?? -1);
@@ -186,7 +245,7 @@ export class GservConnection {
         this.con = con;
     }
 
-    private handleMessage: (message: any) => void;
+    private handleMessage: (message: string | Uint8Array) => void;
 
     getCurrentUser(): string | undefined {
         return this.currentUser;
@@ -196,7 +255,7 @@ export class GservConnection {
         return this.serverName;
     }
 
-    async connect(url: string, options?: any): Promise<void> {
+    async connect(url: string, options?: ConnectOptions): Promise<void> {
         this.con.onMessage.subscribe(this.handleMessage);
         await this.con.connect(url, options);
     }
@@ -242,6 +301,12 @@ export class GservConnection {
     }
 
     async joinGame(gameId: string, version: string, modHash: string): Promise<void> {
+        // Drop any resync log left over from a previous game instance on this
+        // connection. Without this, starting a fresh game right after
+        // rejoining an earlier one would see the stale log via
+        // getResyncLog() and incorrectly replay the old match's turns.
+        this.resyncTurnCount = undefined;
+        this.resyncFrames = new Map();
         const replies = await this.con.sendCommand(`join ${gameId} ${version} ${modHash}`, {
             replyCodes: [
                 GservCode.RPL_INSTANCE_CONNECTED,
@@ -309,6 +374,53 @@ export class GservConnection {
 
     private handleLoadInfo(loadInfo: string): void {
         this._onLoadInfo.dispatch(this, loadInfo.replace(/^:/, ""));
+    }
+
+    // RPL_VOTE_UPDATE's trailing param is
+    // ":<target>,<kick>,<wait>,<extLeft>,<eligible>,<threshold>,<nick>=<choice>;..."
+    // The ballot tail is empty until someone actually votes, which is the
+    // normal state for the opening broadcast.
+    private parseVoteUpdate(param: string | undefined): VoteTally | undefined {
+        const fields = (param ?? "").replace(/^:/, "").split(",");
+        if (fields.length < 6 || !fields[0]) {
+            return undefined;
+        }
+        const votesByNick = new Map<string, VoteChoice>();
+        for (const entry of (fields[6] ?? "").split(";")) {
+            if (!entry) {
+                continue;
+            }
+            const [nick, choice] = entry.split("=");
+            if (nick && (choice === "kick" || choice === "wait")) {
+                votesByNick.set(nick, choice);
+            }
+        }
+        return {
+            targetNick: fields[0],
+            kickVotes: Number(fields[1]),
+            waitVotes: Number(fields[2]),
+            extensionsRemaining: Number(fields[3]),
+            eligibleCount: Number(fields[4]),
+            majorityThreshold: Number(fields[5]),
+            votesByNick,
+        };
+    }
+
+    // Cast (or change) this player's vote on a departed player: "kick" ends
+    // their rejoin window now, "wait" buys them another extension. Fire and
+    // forget like pause/resume -- the resulting tally arrives asynchronously
+    // as RPL_VOTE_UPDATE.
+    sendVote(targetNick: string, choice: VoteChoice): void {
+        this.con.sendMessage(`vote ${targetNick} ${choice}`);
+    }
+
+    // RPL_GAME_PAUSE_COUNTDOWN/RPL_GAME_RESUME_COUNTDOWN's trailing param is
+    // ":<nick>,<countdownMillis>" — the server's actual configured countdown
+    // length, so the client renders a countdown that matches the real
+    // server-side timer instead of a hardcoded guess.
+    private parseCountdownMillis(param: string | undefined): number {
+        const millis = Number(param?.replace(/^:/, "").split(",")[1]);
+        return Number.isFinite(millis) && millis > 0 ? millis : DEFAULT_GAME_COUNTDOWN_MILLIS;
     }
 
     private handleGameStart(): void {

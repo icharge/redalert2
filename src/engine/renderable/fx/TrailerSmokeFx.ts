@@ -1,5 +1,8 @@
 import { AnimProps } from "@/engine/AnimProps";
 import { ImageUtils } from "@/engine/gfx/ImageUtils";
+import type { ShpFile } from "@/data/ShpFile";
+import type { Palette } from "@/data/Palette";
+import type { IniSection } from "@/data/IniSection";
 import * as THREE from "three";
 import SPELib from "./speRuntime";
 import { patchSpeGroup } from "./speCompat";
@@ -9,11 +12,6 @@ interface SmokeArt {
     };
     translucent: boolean;
     translucency: number;
-}
-interface ShpFile {
-    numImages: number;
-    height: number;
-    width: number;
 }
 interface GameSpeed {
     value: number;
@@ -81,7 +79,7 @@ export class TrailerSmokeFx {
     private spawnDelayFrames: number;
     private smokeArt: SmokeArt;
     private shpFile: ShpFile;
-    private palette: any;
+    private palette: Palette;
     private gameSpeed: GameSpeed;
     private lifetimeSeconds: number;
     private finishRequested: boolean;
@@ -97,7 +95,7 @@ export class TrailerSmokeFx {
         this.textureCache.forEach((texture) => texture.dispose());
         this.textureCache.clear();
     }
-    constructor(pos: THREE.Vector3, spawnDelayFrames: number, smokeArt: SmokeArt, shpFile: ShpFile, palette: any, gameSpeed: GameSpeed) {
+    constructor(pos: THREE.Vector3, spawnDelayFrames: number, smokeArt: SmokeArt, shpFile: ShpFile, palette: Palette, gameSpeed: GameSpeed) {
         this.pos = pos;
         this.spawnDelayFrames = spawnDelayFrames;
         this.smokeArt = smokeArt;
@@ -115,7 +113,7 @@ export class TrailerSmokeFx {
         if (!this.particleGroup) {
             let texture = TrailerSmokeFx.textureCache.get(this.shpFile);
             if (!texture) {
-                const canvas = ImageUtils.convertShpToCanvas(this.shpFile as any, this.palette, true);
+                const canvas = ImageUtils.convertShpToCanvas(this.shpFile, this.palette, true);
                 texture = new THREE.Texture(canvas);
                 texture.minFilter = THREE.NearestFilter;
                 texture.magFilter = THREE.NearestFilter;
@@ -139,7 +137,7 @@ export class TrailerSmokeFx {
             patchSpeGroup(this.particleGroup);
             this.particleGroup.mesh.name = "fx_trailer_smoke";
             this.particleGroup.mesh.frustumCulled = false;
-            const animProps = new AnimProps(this.smokeArt.art as any, this.shpFile as any);
+            const animProps = new AnimProps(this.smokeArt.art as unknown as IniSection, this.shpFile);
             const activeMultiplier = ((this.smokeArt.art.getBool("Normalized") ? 2 : 1) * animProps.rate) /
                 this.spawnDelayFrames;
             this.particleMaxAge = this.shpFile.numImages / animProps.rate;

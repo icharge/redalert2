@@ -3,7 +3,7 @@ import { utf16ToBinaryString, binaryStringToUtf16 } from "@/util/string";
 import { ReplayEvent } from "@/network/gamestate/replay/ReplayEvent";
 import { ReplayEventType } from "@/network/gamestate/replay/ReplayEventType";
 
-export class ChatMessageReplayEvent extends ReplayEvent {
+export class ChatMessageReplayEvent extends ReplayEvent<{ playerId: number; message: string }> {
     constructor(tickNo: number) {
         super(ReplayEventType.ChatMessage, tickNo);
     }

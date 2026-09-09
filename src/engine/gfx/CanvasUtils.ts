@@ -1,5 +1,5 @@
 import { Palette } from '../../data/Palette';
-interface DrawTextOptions {
+export interface DrawTextOptions {
     color?: string;
     backgroundColor?: string;
     outlineColor?: string;
@@ -65,7 +65,7 @@ export class CanvasUtils {
         ctx.putImageData(imageData, 0, 0);
         return canvas;
     }
-    static canvasFromIndexedImageData(data: Uint8Array, width: number, height: number, palette: any): HTMLCanvasElement {
+    static canvasFromIndexedImageData(data: Uint8Array, width: number, height: number, palette: Palette): HTMLCanvasElement {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         if (!ctx) {

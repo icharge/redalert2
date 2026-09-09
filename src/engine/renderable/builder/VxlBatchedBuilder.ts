@@ -6,6 +6,9 @@ import { VxlFile } from "@/data/VxlFile";
 import { HvaFile } from "@/data/HvaFile";
 import { Palette } from "@/data/Palette";
 import * as THREE from "three";
+interface VxlSectionGeometryPool {
+    get(section: unknown): THREE.BufferGeometry;
+}
 export class VxlBatchedBuilder extends VxlBuilder {
     private static materialCache = new Map<THREE.Texture, {
         material: PalettePhongMaterial;
@@ -15,13 +18,13 @@ export class VxlBatchedBuilder extends VxlBuilder {
     private hvaFile?: HvaFile;
     private palettes: Palette[];
     private palette: Palette;
-    private vxlGeometryPool: any;
+    private vxlGeometryPool: VxlSectionGeometryPool;
     private clippingPlanes: THREE.Plane[] = [];
     private opacity: number = 1;
     private castShadow: boolean = true;
     private materialCacheKey?: THREE.Texture;
-    private extraLight: any;
-    constructor(vxlFile: VxlFile, hvaFile: HvaFile | undefined, palettes: Palette[], palette: Palette, vxlGeometryPool: any, camera: any) {
+    private extraLight?: THREE.Vector3;
+    constructor(vxlFile: VxlFile, hvaFile: HvaFile | undefined, palettes: Palette[], palette: Palette, vxlGeometryPool: VxlSectionGeometryPool, camera: THREE.Camera) {
         super(camera);
         this.vxlFile = vxlFile;
         this.hvaFile = hvaFile;
@@ -36,13 +39,13 @@ export class VxlBatchedBuilder extends VxlBuilder {
         const paletteIndex = this.getPaletteIndex(this.palette);
         const sections = this.vxlFile.sections;
         const meshes = new Map<string, BatchedMesh>();
-        sections.forEach((section: any, index: number) => {
+        sections.forEach((section, index) => {
             const geometry = this.vxlGeometryPool.get(section);
             const mesh = new BatchedMesh(geometry, material);
-            let matrix = section.transfMatrix;
+            let matrix = section.transfMatrix as THREE.Matrix4;
             const hvaSection = this.hvaFile?.sections[index];
             if (hvaSection) {
-                matrix = section.scaleHvaMatrix(hvaSection.getMatrix(0));
+                matrix = section.scaleHvaMatrix(hvaSection.getMatrix(0)) as THREE.Matrix4;
             }
             mesh.applyMatrix4(matrix);
             meshes.set(section.name, mesh);
@@ -98,31 +101,31 @@ export class VxlBatchedBuilder extends VxlBuilder {
         this.palette = palette;
         if (this.object && this.sections) {
             const index = this.getPaletteIndex(palette);
-            this.sections.forEach((section: any) => section.setPaletteIndex(index));
+            this.sections.forEach((section) => (section as BatchedMesh).setPaletteIndex(index));
         }
     }
-    setExtraLight(light: any): void {
+    setExtraLight(light: THREE.Vector3): void {
         this.extraLight = light;
         if (this.object && this.sections) {
-            this.sections.forEach((section: any) => section.setExtraLight(light));
+            this.sections.forEach((section) => (section as BatchedMesh).setExtraLight(light));
         }
     }
     setShadow(castShadow: boolean): void {
         this.castShadow = castShadow;
-        this.sections?.forEach((section: any) => {
+        this.sections?.forEach((section) => {
             section.castShadow = castShadow;
         });
     }
-    setClippingPlanes(planes: any[]): void {
+    setClippingPlanes(planes: THREE.Plane[]): void {
         this.clippingPlanes = planes;
         if (this.object && this.sections) {
-            this.sections.forEach((section: any) => section.setClippingPlanes(planes));
+            this.sections.forEach((section) => (section as BatchedMesh).setClippingPlanes(planes));
         }
     }
     setOpacity(opacity: number): void {
         this.opacity = opacity;
         if (this.object && this.sections) {
-            this.sections.forEach((section: any) => section.setOpacity(opacity));
+            this.sections.forEach((section) => (section as BatchedMesh).setOpacity(opacity));
         }
     }
     dispose(): void {

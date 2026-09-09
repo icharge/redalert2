@@ -16,6 +16,7 @@ interface FetchOptions {
     onProgress?: (loadedDelta: number, totalLength?: number) => void;
     allowHtmlMimeType?: boolean;
 }
+export type { FetchOptions };
 interface FetchAndParseOptions {
     url: string;
     type: 'text' | 'binary' | 'json';
@@ -28,8 +29,8 @@ export class HttpRequest {
         const result = await this.fetchAndParse({ url, type: "binary" }, cancellationToken, options);
         return result as ArrayBuffer;
     }
-    async fetchJson(url: string, cancellationToken?: CancellationToken, options?: FetchOptions): Promise<any> {
-        return await this.fetchAndParse({ url, type: "json" }, cancellationToken, options);
+    async fetchJson<T>(url: string, cancellationToken?: CancellationToken, options?: FetchOptions): Promise<T> {
+        return await this.fetchAndParse({ url, type: "json" }, cancellationToken, options) as T;
     }
     async fetchHtml(url: string, cancellationToken?: CancellationToken, options?: FetchOptions): Promise<string> {
         return await this.fetchAndParse({ url, type: "text" }, cancellationToken, {
@@ -37,7 +38,7 @@ export class HttpRequest {
             allowHtmlMimeType: true,
         }) as string;
     }
-    private async fetchAndParse(request: FetchAndParseOptions, cancellationToken?: CancellationToken, options?: FetchOptions): Promise<ArrayBuffer | string | any> {
+    private async fetchAndParse(request: FetchAndParseOptions, cancellationToken?: CancellationToken, options?: FetchOptions): Promise<unknown> {
         const rawData = await this.fetchRaw(request.url, cancellationToken, options);
         return this.parseResult(request.type, rawData);
     }
@@ -56,7 +57,7 @@ export class HttpRequest {
                 credentials: options?.credentials,
             });
         }
-        catch (error: any) {
+        catch (error) {
             if (cancellationToken &&
                 (error.name === 'AbortError' ||
                     (error instanceof DOMException && error.code === DOMException.ABORT_ERR) ||
@@ -102,7 +103,7 @@ export class HttpRequest {
                 options?.onProgress?.(value!.length, contentLength);
             }
         }
-        catch (error: any) {
+        catch (error) {
             if (error.name === 'AbortError' || error instanceof OperationCanceledError) {
                 throw error;
             }
@@ -117,7 +118,7 @@ export class HttpRequest {
         }
         return completeBuffer.buffer;
     }
-    parseResult(type: 'text' | 'binary' | 'json', data: ArrayBuffer): ArrayBuffer | string | any {
+    parseResult(type: 'text' | 'binary' | 'json', data: ArrayBuffer): unknown {
         if (type === "binary") {
             return data;
         }
@@ -126,7 +127,7 @@ export class HttpRequest {
             try {
                 return JSON.parse(text);
             }
-            catch (e: any) {
+            catch (e) {
                 throw new Error(`Failed to parse JSON: ${e.message}. Content: ${text.substring(0, 100)}`);
             }
         }

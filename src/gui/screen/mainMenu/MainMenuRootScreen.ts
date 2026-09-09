@@ -47,8 +47,9 @@ export class MainMenuRootScreen extends RootScreen {
     private mainMenu?: MainMenu;
     private mainMenuCtrl?: MainMenuController;
     private onlineServices?: any;
-    constructor(subScreens: Map<MainMenuScreenType, any>, uiScene: UiScene, strings: Strings, images: LazyResourceCollection<ShpFile>, jsxRenderer: JsxRenderer, messageBoxApi: MessageBoxApi, appVersion: string, config: Config, videoSrc?: string | File, sound?: any, music?: any, generalOptions?: any, localPrefs?: any, fullScreen?: any, mixer?: any, keyBinds?: any, rootController?: any, appLocale?: string, cfTurnstile?: any) {
+    constructor(subScreens: Map<MainMenuScreenType, any>, uiScene: UiScene, strings: Strings, images: LazyResourceCollection<ShpFile>, jsxRenderer: JsxRenderer, messageBoxApi: MessageBoxApi, appVersion: string, config: Config, videoSrc?: string | File, sound?: any, music?: any, generalOptions?: any, localPrefs?: any, fullScreen?: any, mixer?: any, keyBinds?: any, rootController?: any, appLocale?: string, cfTurnstile?: any, cdnResourceLoader?: any) {
         super();
+        this.cdnResourceLoader = cdnResourceLoader;
         this.subScreens = subScreens;
         this.uiScene = uiScene;
         this.strings = strings;
@@ -71,6 +72,7 @@ export class MainMenuRootScreen extends RootScreen {
     }
     private appLocale: string;
     private cfTurnstile?: any;
+    private cdnResourceLoader?: any;
     createView(): void {
         console.log('[MainMenuRootScreen] Creating view');
         console.log('[MainMenuRootScreen] Using menuViewport:', this.uiScene.menuViewport);
@@ -81,6 +83,7 @@ export class MainMenuRootScreen extends RootScreen {
         console.log('[MainMenuRootScreen] Creating view and controller');
         this.createView();
         this.mainMenuCtrl = new MainMenuController(this.mainMenu, this.sound, this.music);
+        this.mainMenuCtrl.showVersion(this.appVersion);
         const debugRoot = ((window as any).__ra2debug ??= {});
         debugRoot.mainMenu = this.mainMenu;
         debugRoot.mainMenuController = this.mainMenuCtrl;
@@ -101,7 +104,7 @@ export class MainMenuRootScreen extends RootScreen {
             this.mainMenu.setViewport(this.uiScene.menuViewport);
         }
         if (this.mainMenuCtrl) {
-            this.mainMenuCtrl.rerenderCurrentScreen(true);
+            this.mainMenuCtrl.rerenderCurrentScreen();
         }
     }
     async onEnter(params?: any): Promise<void> {
@@ -143,6 +146,7 @@ export class MainMenuRootScreen extends RootScreen {
         const { GservConnection } = await import('../../../network/GservConnection.js');
         const { WLadderService } = await import('../../../network/ladder/WLadderService.js');
         const { WGameResService } = await import('../../../network/WGameResService.js');
+        const { ErrorReportService } = await import('../../../network/ErrorReportService.js');
         const { MapTransferService } = await import('../../../network/MapTransferService.js');
         const { HttpRequest } = await import('../../../network/HttpRequest.js');
         const { CfChallengeHttpRequest } = await import('../../../network/CfChallengeHttpRequest.js');
@@ -166,6 +170,7 @@ export class MainMenuRootScreen extends RootScreen {
         wolService.init();
         const wladderService = new WLadderService(wolConfig);
         const wgameresService = new WGameResService(wolService, wolConfig, httpRequest);
+        const errorReportService = new ErrorReportService(wolService, wolConfig, httpRequest);
         const mapTransferService = new MapTransferService(wolService, httpRequest);
         const serverRegions = new ServerRegions();
         let authService: any;
@@ -184,6 +189,7 @@ export class MainMenuRootScreen extends RootScreen {
             wolService,
             wladderService,
             wgameresService,
+            errorReportService,
             mapTransferService,
             serverRegions,
             authService,
@@ -197,6 +203,41 @@ export class MainMenuRootScreen extends RootScreen {
         return this.onlineServices;
     }
 
+    /** Shared dependency bundle for the map-selection family of screens (real + prototype). */
+    private async createMapSelectionDeps(): Promise<{
+        errorHandler: any;
+        mapFileLoader: any;
+        mapList: any;
+        gameModes: any;
+        mapDir: any;
+        fsAccessLib: any;
+        sentry: any;
+    }> {
+        const { ErrorHandler } = await import('../../../ErrorHandler.js');
+        const { MapFileLoader } = await import('../game/MapFileLoader.js');
+        const { Engine } = await import('../../../engine/Engine.js');
+        const { ResourceLoader } = await import('../../../engine/ResourceLoader.js');
+        const errorHandler = new ErrorHandler(this.messageBoxApi, this.strings);
+        const mapResourceLoader = new ResourceLoader(this.config.mapsBaseUrl ?? '');
+        const mapFileLoader = new MapFileLoader(mapResourceLoader, Engine.vfs);
+        const mapList = Engine.getMapList();
+        const gameModes = Engine.getMpModes();
+        let mapDir: any = undefined;
+        try {
+            const mapDirHandle = await Engine.getMapDir();
+            if (mapDirHandle) {
+                const { RealFileSystemDir } = await import('../../../data/vfs/RealFileSystemDir.js');
+                mapDir = new RealFileSystemDir(mapDirHandle);
+            }
+        }
+        catch (e) {
+            console.error("[MainMenuRootScreen] Couldn't get map dir", e);
+        }
+        const fsAccessLib = browserFileSystemAccess;
+        const sentry = undefined as any;
+        return { errorHandler, mapFileLoader, mapList, gameModes, mapDir, fsAccessLib, sentry };
+    }
+
     private async createScreen(screenType: MainMenuScreenType, screenClass: any, _controller: any): Promise<any> {
         let screen: any;
         if (screenType === MainMenuScreenType.InfoAndCredits) {
@@ -206,7 +247,7 @@ export class MainMenuRootScreen extends RootScreen {
             screen = new screenClass(this.strings, this.jsxRenderer);
         }
         else if (screenType === MainMenuScreenType.Options) {
-            screen = new screenClass(this.strings, this.jsxRenderer, this.generalOptions, this.localPrefs, this.fullScreen, false, true);
+            screen = new screenClass(this.strings, this.jsxRenderer, this.generalOptions, this.localPrefs, this.fullScreen, false);
         }
         else if (screenType === MainMenuScreenType.OptionsSound) {
             screen = new screenClass(this.strings, this.jsxRenderer, this.mixer, this.music, this.localPrefs);
@@ -231,29 +272,16 @@ export class MainMenuRootScreen extends RootScreen {
         }
         else if (screenType === MainMenuScreenType.MapSelection) {
             console.log('[MainMenuRootScreen] Creating MapSelScreen with real dependencies');
-            const { ErrorHandler } = await import('../../../ErrorHandler.js');
-            const { MapFileLoader } = await import('../game/MapFileLoader.js');
-            const { Engine } = await import('../../../engine/Engine.js');
-            const errorHandler = new ErrorHandler(this.messageBoxApi, this.strings);
-            const { ResourceLoader } = await import('../../../engine/ResourceLoader.js');
-            const mapResourceLoader = new ResourceLoader(this.config.mapsBaseUrl ?? '');
-            const mapFileLoader = new MapFileLoader(mapResourceLoader, Engine.vfs);
-            const mapList = Engine.getMapList();
-            const gameModes = Engine.getMpModes();
-            let mapDir: any = undefined;
-            try {
-                const mapDirHandle = await Engine.getMapDir();
-                if (mapDirHandle) {
-                    const { RealFileSystemDir } = await import('../../../data/vfs/RealFileSystemDir.js');
-                    mapDir = new RealFileSystemDir(mapDirHandle);
-                }
-            }
-            catch (e) {
-                console.error("[MainMenuRootScreen] Couldn't get map dir", e);
-            }
-            const fsAccessLib = browserFileSystemAccess;
-            const sentry = undefined as any;
+            const { errorHandler, mapFileLoader, mapList, gameModes, mapDir, fsAccessLib, sentry } = await this.createMapSelectionDeps();
             screen = new screenClass(this.strings, this.jsxRenderer, mapFileLoader, errorHandler, this.messageBoxApi, this.localPrefs, mapList, gameModes, mapDir, fsAccessLib, sentry);
+        }
+        else if (screenType === MainMenuScreenType.MapSelectionPrototype) {
+            console.log('[MainMenuRootScreen] Creating MapSelPrototypeScreen with real map/game-mode data');
+            const { errorHandler, mapFileLoader, mapList, gameModes, mapDir, fsAccessLib, sentry } = await this.createMapSelectionDeps();
+            const { MapCatalogService } = await import('../../../network/MapCatalogService.js');
+            const mapCatalogBaseUrl = (this.config.mapsBaseUrl ?? '/maps/').replace(/\/$/, '');
+            const mapCatalog = new MapCatalogService(mapCatalogBaseUrl);
+            screen = new screenClass(this.strings, this.jsxRenderer, mapFileLoader, errorHandler, this.messageBoxApi, mapList, gameModes, mapDir, fsAccessLib, sentry, mapCatalog, this.cdnResourceLoader);
         }
         else if (screenType === MainMenuScreenType.Score) {
             const services = await this.getOnlineServices();
@@ -288,6 +316,7 @@ export class MainMenuRootScreen extends RootScreen {
                         services.wolService,
                         services.wladderService,
                         services.wgameresService,
+                        services.errorReportService,
                         services.mapTransferService,
                         this.strings,
                         this.jsxRenderer,
@@ -345,6 +374,7 @@ export class MainMenuRootScreen extends RootScreen {
                         this.rootController,
                         services.wladderService,
                         services.wgameresService,
+                        services.errorReportService,
                         services.mapTransferService,
                         services.wolService,
                         services.realmService,
@@ -357,7 +387,7 @@ export class MainMenuRootScreen extends RootScreen {
                     screen = new screenClass(
                         this.config.unrankedQueueEnabled,
                         this.appVersion,
-                        Engine.getActiveMod?.() ?? '',
+                        Engine.getModHashString(),
                         this.appLocale,
                         rules,
                         services.wolService,
@@ -377,7 +407,7 @@ export class MainMenuRootScreen extends RootScreen {
                     screen = new screenClass(
                         this.config.botsEnabled,
                         this.appVersion,
-                        Engine.getActiveMod?.() ?? '',
+                        Engine.getModHashString(),
                         activeModMeta,
                         this.rootController,
                         errorHandler,
@@ -388,7 +418,6 @@ export class MainMenuRootScreen extends RootScreen {
                         services.wolService,
                         services.wladderService,
                         services.mapTransferService,
-                        services.gservCon,
                         rules,
                         new (await import('../../../network/gameopt/Parser.js')).Parser(),
                         new (await import('../../../network/gameopt/Serializer.js')).Serializer(),
@@ -402,7 +431,7 @@ export class MainMenuRootScreen extends RootScreen {
                     break;
                 case MainMenuScreenType.CustomGame:
                     screen = new screenClass(
-                        Engine.getActiveMod?.() ?? '',
+                        Engine.getModHashString(),
                         this.strings,
                         services.wolCon,
                         services.wolService,
@@ -435,7 +464,11 @@ export class MainMenuRootScreen extends RootScreen {
             const rules = new Rules(Engine.getRules());
             const replayManager = (this as any).replayManager;
             const engineVersion = this.appVersion;
-            const engineModHash = Engine.getActiveMod?.() ?? '';
+            // Engine.getModHashString() gives the CRC of the currently loaded rules,
+            // not Engine.getActiveMod() (the mod *name*) which this used to call --
+            // a same-named mistake that meant every modHash comparison fed from
+            // here compared a name string against a hash and never matched.
+            const engineModHash = Engine.getModHashString();
             screen = new screenClass(engineVersion, engineModHash, undefined, undefined, this.rootController, this.strings, this.jsxRenderer, errorHandler, this.messageBoxApi, replayManager, this.uiScene, rules);
         }
         else if (screenType === MainMenuScreenType.OptionsManageGame) {

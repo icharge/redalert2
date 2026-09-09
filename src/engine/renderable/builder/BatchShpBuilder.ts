@@ -4,8 +4,9 @@ import { SpriteUtils } from '../../gfx/SpriteUtils';
 import { TextureUtils } from '../../gfx/TextureUtils';
 import { PaletteBasicMaterial } from '../../gfx/material/PaletteBasicMaterial';
 import { ShpFile } from '../../../data/ShpFile';
+import type { Palette } from '../../../data/Palette';
 interface BatchItem {
-    [key: string]: any;
+    [key: string]: unknown;
     position: THREE.Vector3;
     shpFile: ShpFile;
     depth: boolean;
@@ -19,7 +20,7 @@ interface BatchItem {
 }
 export class BatchShpBuilder {
     private shpFile: ShpFile;
-    private palette: any;
+    private palette: Palette;
     private camera: THREE.Camera;
     private textureCache: Map<ShpFile, ShpTextureAtlas>;
     private opacity: number;
@@ -38,7 +39,7 @@ export class BatchShpBuilder {
     get trianglesPerSprite(): number {
         return SpriteUtils.TRIANGLES_PER_SPRITE;
     }
-    constructor(shpFile: ShpFile, palette: any, camera: THREE.Camera, textureCache: Map<any, any>, opacity: number = 1, transparent: boolean = false, batchSize: number = 10000, scale: number = 1) {
+    constructor(shpFile: ShpFile, palette: Palette, camera: THREE.Camera, textureCache: Map<ShpFile, ShpTextureAtlas>, opacity: number = 1, transparent: boolean = false, batchSize: number = 10000, scale: number = 1) {
         this.shpFile = shpFile;
         this.palette = palette;
         this.camera = camera;
@@ -76,7 +77,7 @@ export class BatchShpBuilder {
             scale: this.scale,
         };
     }
-    setPalette(palette: any): void {
+    setPalette(palette: Palette): void {
         this.palette = palette;
         if (this.mesh) {
             const paletteTexture = TextureUtils.textureFromPalette(palette);
@@ -188,7 +189,7 @@ export class BatchShpBuilder {
                 const base = spriteIndex * this.verticesPerSprite;
                 const offset = spriteIndex * spriteGeometry.index.count;
                 for (let i = 0; i < spriteGeometry.index.count; i++) {
-                    dstIndexArray[offset + i] = base + (srcIndexArray as any)[i];
+                    dstIndexArray[offset + i] = base + srcIndexArray[i];
                 }
                 dstIndex.needsUpdate = true;
             }

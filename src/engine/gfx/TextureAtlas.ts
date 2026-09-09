@@ -1,7 +1,14 @@
 import { IndexedBitmap } from '../../data/Bitmap';
 import * as THREE from 'three';
-import { GrowingPacker } from './GrowingPacker';
-function createAtlasBitmap(blocks: any[], width: number, height: number, imageRects?: Map<IndexedBitmap, any>): IndexedBitmap {
+import { GrowingPacker, type GrowingPackerBlock } from './GrowingPacker';
+interface AtlasImageRect {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}
+type AtlasBlock = GrowingPackerBlock & { image: IndexedBitmap };
+function createAtlasBitmap(blocks: AtlasBlock[], width: number, height: number, imageRects?: Map<IndexedBitmap, AtlasImageRect>): IndexedBitmap {
     const atlasBitmap = new IndexedBitmap(width, height);
     blocks.forEach(block => {
         if (!block.fit) {
@@ -29,7 +36,7 @@ function createAtlasRgbaData(bitmap: IndexedBitmap): Uint8Array {
 }
 export class TextureAtlas {
     private texture?: THREE.DataTexture;
-    private imageRects?: Map<IndexedBitmap, any>;
+    private imageRects?: Map<IndexedBitmap, AtlasImageRect>;
     private width: number = 0;
     private height: number = 0;
     getTexture(): THREE.DataTexture {
@@ -38,7 +45,7 @@ export class TextureAtlas {
         }
         return this.texture;
     }
-    getImageRect(image: IndexedBitmap): any {
+    getImageRect(image: IndexedBitmap): AtlasImageRect {
         if (!this.imageRects) {
             throw new Error('Texture atlas not initialized');
         }
@@ -49,7 +56,7 @@ export class TextureAtlas {
         return rect;
     }
     pack(images: IndexedBitmap[]): void {
-        const blocks: any[] = [];
+        const blocks: AtlasBlock[] = [];
         images.forEach(image => {
             blocks.push({
                 w: image.width + (image.width % 2),
@@ -62,7 +69,7 @@ export class TextureAtlas {
         packer.fit(blocks);
         const width = packer.root.w;
         const height = packer.root.h;
-        const imageRects = new Map<IndexedBitmap, any>();
+        const imageRects = new Map<IndexedBitmap, AtlasImageRect>();
         const atlasBitmap = createAtlasBitmap(blocks, width, height, imageRects);
         const rgbaData = createAtlasRgbaData(atlasBitmap);
         const texture = new THREE.DataTexture(rgbaData, width, height, THREE.RGBAFormat);

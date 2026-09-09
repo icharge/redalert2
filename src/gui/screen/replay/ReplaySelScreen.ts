@@ -316,6 +316,13 @@ export class ReplaySelScreen extends MainMenuScreen {
             this.errorHandler!.handle(error, this.strings!.get("GUI:ReplayError"), () => { });
             return;
         }
+        // Only the old-client-redirect convenience offer lives here now: if an
+        // exactly matching old build is available, offer to open the replay
+        // there instead. Otherwise this falls straight through to loading with
+        // the current client -- ScreenType.Replay's own onEnter is the single
+        // authoritative version/modHash gate (see its comment), and it already
+        // asks "load anyway?" on a mismatch, so this screen doesn't need a
+        // second copy of that same confirm.
         if (replayHeader.engineVersion !== this.engineVersion) {
             if (!this.clientVersions && this.oldClientsBaseUrl) {
                 this.messageBoxApi!.show(this.strings!.get("GUI:LoadingEx"));
@@ -340,16 +347,6 @@ export class ReplaySelScreen extends MainMenuScreen {
                     window.open(`${this.oldClientsBaseUrl}v${clientVersion}/${modQuery}#/replay/${replay.id}`, "_blank");
                     return;
                 }
-            }
-            const continueConfirmed = await this.messageBoxApi!.confirm(this.strings!.get("GUI:ReplayVersionMismatchConfirm", replayHeader.engineVersion), this.strings!.get("GUI:ModActionLoadAnyway"), this.strings!.get("GUI:Close"));
-            if (!continueConfirmed) {
-                return;
-            }
-        }
-        else if (this.engineModHash && replayHeader.modHash !== this.engineModHash) {
-            const continueConfirmed = await this.messageBoxApi!.confirm(this.strings!.get("GUI:ReplayModMismatchConfirm"), this.strings!.get("GUI:ModActionLoadAnyway"), this.strings!.get("GUI:Close"));
-            if (!continueConfirmed) {
-                return;
             }
         }
         let loadedReplay: any;

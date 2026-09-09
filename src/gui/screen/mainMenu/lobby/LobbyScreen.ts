@@ -76,13 +76,6 @@ interface MapTransferService {
     getUrl(): string | undefined;
 }
 
-interface GservConnection {
-    connect(url: string, options?: any): Promise<void>;
-    ping(timeoutSeconds: number): Promise<number>;
-    close(): void;
-    isOpen(): boolean;
-}
-
 interface RootController {
     createGame(gameId: string, timestamp: number, gameServer?: string, playerName?: string, ticket?: string, gameOpts?: any, singlePlayer?: boolean, tournament?: boolean, mapTransfer?: boolean, createPrivateGame?: boolean, returnTo?: any): void;
     joinGame(gameId: string, timestamp: number, gservUrl: string, playerName?: string, ticket?: string, tournament?: boolean, mapTransfer?: boolean, returnTo?: any): void;
@@ -192,7 +185,6 @@ export class LobbyScreen extends MainMenuScreen {
     private wolService: WolService;
     private wladderService: WladderService;
     private mapTransferService: MapTransferService;
-    private gservCon: GservConnection;
     private rules: Rules;
     private gameOptParser: Parser;
     private gameOptSerializer: Serializer;
@@ -233,10 +225,8 @@ export class LobbyScreen extends MainMenuScreen {
 
     private pingsUpdateTask?: Task<void>;
     private ranksUpdateTask?: Task<void>;
-    private gservPingUpdateTask?: Task<void>;
     private mapLoadTask?: Task<void>;
     private hostOptsIntervalId?: number;
-    private gservPingIntervalId?: number;
 
     private sendGameOpts: () => Promise<void> = createThrottledMethod(async () => {
         this.sendGameOptsNow();
@@ -244,9 +234,6 @@ export class LobbyScreen extends MainMenuScreen {
     private sendGameSlotInfo: () => Promise<void> = createThrottledMethod(async () => {
         this.sendGameSlotInfoNow();
     }, 350);
-    private updateGservPing: () => Promise<void> = createThrottledMethod(async () => {
-        this.updateGservPingNow();
-    }, 5000);
 
     constructor(
         botsEnabled: boolean,
@@ -262,7 +249,6 @@ export class LobbyScreen extends MainMenuScreen {
         wolService: WolService,
         wladderService: WladderService,
         mapTransferService: MapTransferService,
-        gservCon: GservConnection,
         rules: Rules,
         gameOptParser: Parser,
         gameOptSerializer: Serializer,
@@ -287,7 +273,6 @@ export class LobbyScreen extends MainMenuScreen {
         this.wolService = wolService;
         this.wladderService = wladderService;
         this.mapTransferService = mapTransferService;
-        this.gservCon = gservCon;
         this.rules = rules;
         this.gameOptParser = gameOptParser;
         this.gameOptSerializer = gameOptSerializer;
@@ -467,7 +452,6 @@ export class LobbyScreen extends MainMenuScreen {
                 if (this.hostMode) {
                     this.updatePings();
                 }
-                this.updateGservPing();
             }
         };
 
@@ -532,9 +516,6 @@ export class LobbyScreen extends MainMenuScreen {
             this.setStartGamePending(false);
             if (this.hostOptsIntervalId) {
                 clearInterval(this.hostOptsIntervalId);
-            }
-            if (this.gservPingIntervalId) {
-                clearInterval(this.gservPingIntervalId);
             }
         };
 
@@ -850,14 +831,18 @@ export class LobbyScreen extends MainMenuScreen {
         await this.unrender();
     }
 
+    // Upstream periodically opens a short-lived gserv connection here just to
+    // ping the relay and report the result back to WOL for the pre-join
+    // browser's ping column. Deliberately dropped in this fork: our server
+    // co-locates WOL and gserv on one host (server/src/config.ts), so it's
+    // the same network path already covered by the WOL-chat ping every
+    // lobby member already sees (updatePings/sendPingData below) -- opening
+    // a fresh gserv connection every 30s bought nothing but reconnect churn.
     private initView(): void {
         this.initLobbyForm();
         this.refreshSidebarButtons();
         this.refreshSidebarMpText();
         this.controller.showSidebarButtons();
-        this.gservPingIntervalId = window.setInterval(() => {
-            this.updateGservPing();
-        }, 30000);
     }
 
     private async initHostOptions(observe: boolean, cancellationToken?: CancellationToken): Promise<void> {
@@ -945,65 +930,12 @@ export class LobbyScreen extends MainMenuScreen {
         }
     }
 
-    private updateGservPingNow(): void {
-        if (this.wolCon.isOpen()) {
-            if (this.gameChannelName && this.wolCon.isInChannel(this.gameChannelName)) {
-                this.gservPingUpdateTask?.cancel();
-                const task = (this.gservPingUpdateTask = new Task(async (cancellationToken) => {
-                    if (this.currentGameServer) {
-                        const url = this.currentGameServer.url;
-                        const ping = await this.pingGserv(url, cancellationToken);
-                        if (ping !== undefined) {
-                            this.wolCon.sendGservPing(this.currentGameServer.id, ping);
-                            if (this.hostMode) {
-                                this.updatePings();
-                            }
-                        }
-                    }
-                }));
-                task.start().catch((error) => {
-                    if (!(error instanceof OperationCanceledError)) {
-                        console.error(error);
-                    }
-                });
-            }
-        }
-        else {
-            this.onWolClose();
-        }
-    }
-
-    private async pingGserv(url: string, cancellationToken?: CancellationToken): Promise<number | undefined> {
-        try {
-            await this.gservCon.connect(url, {
-                cancelToken: cancellationToken,
-                timeoutSeconds: 5,
-            });
-            cancellationToken?.throwIfCancelled();
-            const ping = await this.gservCon.ping(5);
-            cancellationToken?.throwIfCancelled();
-            return ping;
-        }
-        catch (error) {
-            if (!(error instanceof OperationCanceledError)) {
-                console.error(error);
-            }
-            return undefined;
-        }
-        finally {
-            this.gservCon.close();
-        }
-    }
-
     private handleError(error: any, message: string): void {
         this.errorHandler.handle(error, message, () => {
             this.controller?.goToScreen(ScreenType.CustomGame as any, {});
         });
         if (this.hostOptsIntervalId) {
             clearInterval(this.hostOptsIntervalId);
-        }
-        if (this.gservPingIntervalId) {
-            clearInterval(this.gservPingIntervalId);
         }
     }
 
@@ -2044,8 +1976,6 @@ export class LobbyScreen extends MainMenuScreen {
         this.ranksUpdateTask = undefined;
         this.pingsUpdateTask?.cancel();
         this.pingsUpdateTask = undefined;
-        this.gservPingUpdateTask?.cancel();
-        this.gservPingUpdateTask = undefined;
         this.currentMapFile = undefined;
         this.gameChannelName = undefined;
         this.hostPlayerName = undefined;
@@ -2064,9 +1994,6 @@ export class LobbyScreen extends MainMenuScreen {
         }
         if (this.hostOptsIntervalId) {
             clearInterval(this.hostOptsIntervalId);
-        }
-        if (this.gservPingIntervalId) {
-            clearInterval(this.gservPingIntervalId);
         }
         this.wolCon.onGameOpt.unsubscribe(this.handleGameOpt);
         this.wolCon.onGameStart.unsubscribe(this.handleGameStart);

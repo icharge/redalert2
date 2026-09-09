@@ -38,7 +38,7 @@ export class MenuVideo extends React.Component<MenuVideoProps, MenuVideoState> {
             ref: (ref) => (this.el = ref as HTMLDivElement),
             dangerouslySetInnerHTML: {
                 __html: `
-          <video style="outline: none;" loop playsinline muted autoplay>
+          <video style="outline: none;" loop playsinline muted autoplay disablepictureinpicture disableremoteplayback>
               <source src="${url}" type="${mimeType}" />
           </video>
           <div class="logo" style="opacity: 0;" />
@@ -50,6 +50,9 @@ export class MenuVideo extends React.Component<MenuVideoProps, MenuVideoState> {
         const src = this.props.src;
         const video = this.el?.querySelector("video");
         const logo = this.el?.querySelector("div");
+        if (video) {
+            video.disablePictureInPicture = true;
+        }
         if (src instanceof File && window.MediaSource) {
             const errorHandler = async () => {
                 this.applyMediaSourceFallback(video, await src.arrayBuffer());

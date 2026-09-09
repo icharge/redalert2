@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { BatchedMesh, BatchMode } from './BatchedMesh';
 import { MeshInstancingBatch } from './MeshInstancingBatch';
-import { RenderableContainer } from '../RenderableContainer';
+import { RenderableContainer, type Renderable } from '../RenderableContainer';
 import { MeshMergingBatch } from './MeshMergingBatch';
 interface MeshBatch {
     castShadow: boolean;
@@ -40,7 +40,7 @@ export class MeshBatchManager extends RenderableContainer {
     private collectMeshes(container: THREE.Object3D): BatchedMesh[] {
         const meshes: BatchedMesh[] = [];
         container.traverseVisible((object) => {
-            if ((object as any).isBatchedMesh) {
+            if ((object as { isBatchedMesh?: boolean }).isBatchedMesh) {
                 meshes.push(object as BatchedMesh);
             }
         });
@@ -67,7 +67,7 @@ export class MeshBatchManager extends RenderableContainer {
                     batch.renderOrder = batchMeshes[0].renderOrder;
                     batch.clippingPlanes = batchMeshes[0].getClippingPlanes();
                     batchArray.push(batch);
-                    this.add(batch as any);
+                    this.add(batch as unknown as Renderable);
                     this.processRenderQueue();
                 }
                 batch.setMeshes(batchMeshes);
@@ -83,7 +83,7 @@ export class MeshBatchManager extends RenderableContainer {
             if (batchArray) {
                 const unusedBatches = batchArray.splice(usedCount);
                 for (const batch of unusedBatches) {
-                    this.remove(batch as any);
+                    this.remove(batch as unknown as Renderable);
                     batch.dispose();
                 }
                 if (batchArray.length === 0) {

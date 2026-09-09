@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+type TypedArrayConstructor = new (lengthOrArray: number | ArrayLike<number>) => THREE.TypedArray;
 export class BufferGeometryUtils {
     static mergeVertices(geometry: THREE.BufferGeometry, tolerance: number = 1e-4): THREE.BufferGeometry {
         tolerance = Math.max(tolerance, Number.EPSILON);
@@ -75,13 +76,13 @@ export class BufferGeometryUtils {
         for (let i = 0, l = attributeNames.length; i < l; i++) {
             const name = attributeNames[i];
             const originalAttribute = geometry.getAttribute(name);
-            const newArray = new (originalAttribute.array.constructor as any)(newAttributes[name]);
+            const newArray = new (originalAttribute.array.constructor as TypedArrayConstructor)(newAttributes[name]);
             const newAttribute = new THREE.BufferAttribute(newArray, originalAttribute.itemSize, originalAttribute.normalized);
             result.setAttribute(name, newAttribute);
             if (name in morphAttributes) {
                 for (let j = 0; j < morphAttributes[name].length; j++) {
                     const originalMorphAttribute = geometry.morphAttributes[name][j];
-                    const newMorphArray = new (originalMorphAttribute.array.constructor as any)(morphAttributes[name][j]);
+                    const newMorphArray = new (originalMorphAttribute.array.constructor as TypedArrayConstructor)(morphAttributes[name][j]);
                     const newMorphAttribute = new THREE.BufferAttribute(newMorphArray, originalMorphAttribute.itemSize, originalMorphAttribute.normalized);
                     result.morphAttributes[name][j] = newMorphAttribute;
                 }
@@ -163,17 +164,17 @@ export class BufferGeometryUtils {
         return mergedGeometry;
     }
     static mergeBufferAttributes(attributes: THREE.BufferAttribute[]): THREE.BufferAttribute | null {
-        let arrayType: any;
+        let arrayType: TypedArrayConstructor | undefined;
         let itemSize: number;
         let normalized: boolean;
         let arrayLength = 0;
         for (let i = 0; i < attributes.length; ++i) {
             const attribute = attributes[i];
-            if ((attribute as any).isInterleavedBufferAttribute) {
+            if ((attribute as { isInterleavedBufferAttribute?: boolean }).isInterleavedBufferAttribute) {
                 throw new Error("mergeBufferAttributes() failed. InterleavedBufferAttributes are not supported.");
             }
             if (arrayType === undefined) {
-                arrayType = attribute.array.constructor;
+                arrayType = attribute.array.constructor as TypedArrayConstructor;
             }
             if (arrayType !== attribute.array.constructor) {
                 throw new Error("mergeBufferAttributes() failed. BufferAttribute.array must be of consistent array types across matching attributes.");
@@ -192,7 +193,7 @@ export class BufferGeometryUtils {
             }
             arrayLength += attribute.array.length;
         }
-        const mergedArray = new arrayType(arrayLength);
+        const mergedArray = new arrayType!(arrayLength);
         let offset = 0;
         for (let i = 0; i < attributes.length; ++i) {
             mergedArray.set(attributes[i].array, offset);

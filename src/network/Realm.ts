@@ -10,4 +10,5 @@ export interface Realm {
     wgameresUrl?: string;
     mapTransferUrl?: string;
     leaderboardUrl?: string;
+    errorReportUrl?: string;
 }

@@ -2,12 +2,25 @@ import * as THREE from 'three';
 import Stats from 'stats.js';
 import { EventDispatcher } from '../../util/event';
 import { RendererError } from './RendererError';
-(THREE.ColorManagement as any).enabled = false;
+THREE.ColorManagement.enabled = false;
+interface SceneLike {
+    get3DObject(): THREE.Object3D | undefined;
+    create3DObject(): void;
+    update(deltaTime: number, ...args: unknown[]): void;
+    viewport: {
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+    };
+    getScene(): THREE.Scene;
+    getCamera(): THREE.Camera;
+}
 export class Renderer {
     private width: number;
     private height: number;
     private renderer!: THREE.WebGLRenderer;
-    private scenes: Set<any> = new Set();
+    private scenes: Set<SceneLike> = new Set();
     private isContextLost: boolean = false;
     private stats?: Stats;
     private _onFrame = new EventDispatcher<string, number>();
@@ -92,17 +105,17 @@ export class Renderer {
             this.renderer.setSize(width, height);
         }
     }
-    addScene(scene: any): void {
+    addScene(scene: SceneLike): void {
         this.scenes.add(scene);
         scene.create3DObject();
     }
-    removeScene(scene: any): void {
+    removeScene(scene: SceneLike): void {
         this.scenes.delete(scene);
     }
-    getScenes(): any[] {
+    getScenes(): SceneLike[] {
         return [...this.scenes];
     }
-    update(deltaTime: number, ...args: any[]): void {
+    update(deltaTime: number, ...args: unknown[]): void {
         this.scenes.forEach((scene) => {
             scene.update(deltaTime, ...args);
         });
@@ -116,7 +129,7 @@ export class Renderer {
             this.renderer.clearDepth();
             const viewportY = this.height - scene.viewport.y - scene.viewport.height;
             this.renderer.setViewport(scene.viewport.x, viewportY, scene.viewport.width, scene.viewport.height);
-            this.renderer.render(scene.scene, scene.camera);
+            this.renderer.render(scene.getScene(), scene.getCamera());
         });
     }
     flush(): void {

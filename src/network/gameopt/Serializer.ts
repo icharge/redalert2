@@ -6,6 +6,19 @@ import { FileNameEncoder } from './FileNameEncoder';
 import { Base64 } from '@/util/Base64';
 import { utf16ToBinaryString, binaryStringToUint8Array } from '@/util/string';
 
+export interface GameTopic {
+    description: string;
+    engineVersion: string;
+    modHash: string;
+    modName: string | undefined;
+    aiPlayers: number;
+    observers: number;
+    observable: boolean;
+    minPlayers: number;
+    maxPlayers: number;
+    mapName: string;
+}
+
 export class Serializer {
     static readonly MAX_ACTION_PAYLOAD_SIZE = 65536;
     static readonly MAX_ROOM_DESC_LEN = 64;
@@ -58,7 +71,7 @@ export class Serializer {
     serializePingData(pings: PingInfo[]): string {
         return pings.length + ',' + pings.map(ping => `${ping.playerName},${ping.ping}`).join(',');
     }
-    serializeTopic(topic: any): string {
+    serializeTopic(topic: GameTopic): string {
         const encodedMapName = new FileNameEncoder().encode(topic.mapName);
         const description = this.encodeTopicText(topic.description, Serializer.MAX_ROOM_DESC_LEN);
         const modName = topic.modName !== undefined ? this.encodeTopicText(topic.modName, Serializer.MAX_ROOM_DESC_LEN) : '';

@@ -48,7 +48,7 @@ export class TriggerManager {
                     const mapObj = context.map.getObjectsOnTile(tile)
                         .find(e => e.name === obj.name && e.type === obj.type);
                     if (mapObj) {
-                        targets.push(mapObj);
+                        targets.push(mapObj as unknown as MapObject);
                     }
                 }
             }
@@ -61,7 +61,7 @@ export class TriggerManager {
                     targets = [];
                     this.targetsByTag.set(cellTag.tagId, targets);
                 }
-                targets.push(tile);
+                targets.push(tile as unknown as MapObject);
             }
             else {
                 console.warn(`CellTag out of bounds at (${cellTag.coords.x}, ${cellTag.coords.y}). Skipping.`);

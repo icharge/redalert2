@@ -179,7 +179,7 @@ export class BuildingTester {
         const tileCollection = new TileCollection([], null as any, this.rules.general, (min: number, max: number) => getRandomInt(min, max));
         const tileOccupation = new TileOccupation(tileCollection);
         const mapBounds = new MapBounds();
-        const bridges = new Bridges(this.theater.tileSets, tileCollection, tileOccupation, mapBounds, this.rules);
+        const bridges = new Bridges(this.theater.tileSets, tileCollection, tileOccupation as unknown as ConstructorParameters<typeof Bridges>[2], mapBounds, this.rules);
         const building = (this.currentBuilding = new ObjectFactory(tileCollection, tileOccupation, bridges, new BoxedVar(1)).create(ObjectType.Building, buildingType, this.rules, this.art) as GameObject);
         this.currentBuildingType = buildingType;
         building.owner = player;
@@ -191,8 +191,8 @@ export class BuildingTester {
         this.disposables.add(renderableManager);
         world.spawnObject(building as any);
         const renderable = (this.currentRenderable = renderableManager.getRenderableByGameObject(building as any) as Renderable);
-        renderable.selectionModel.setSelectionLevel(SelectionLevel.Selected);
-        this.currentRenderable.selectionModel.setControlGroupNumber(3);
+        renderable.selectionModel!.setSelectionLevel(SelectionLevel.Selected);
+        this.currentRenderable.selectionModel!.setControlGroupNumber(3);
         setTimeout(() => {
             this.buildBuildingControls();
             this.createAnimButtons();
@@ -338,7 +338,7 @@ export class BuildingTester {
                 (!this.currentBuilding || !this.currentBuilding.rules.selectable);
             button.addEventListener("click", () => {
                 if (this.currentRenderable) {
-                    this.currentRenderable.selectionModel.setSelectionLevel(level);
+                    this.currentRenderable.selectionModel!.setSelectionLevel(level);
                     this.syncState();
                 }
             });

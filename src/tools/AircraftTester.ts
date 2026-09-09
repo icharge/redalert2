@@ -140,7 +140,7 @@ export class AircraftTester {
         ] as any, this.theater.tileSets as any, this.rules.general as any, () => 0);
         const tileOccupation = new TileOccupation(tileCollection);
         const mapBounds = new MapBounds();
-        const bridges = new Bridges(this.theater.tileSets, tileCollection, tileOccupation, mapBounds, this.rules);
+        const bridges = new Bridges(this.theater.tileSets, tileCollection, tileOccupation as unknown as ConstructorParameters<typeof Bridges>[2], mapBounds, this.rules);
         const aircraft = (this.currentAircraft = new ObjectFactory(tileCollection, tileOccupation, bridges, new BoxedVar(0)).create(ObjectType.Aircraft, aircraftType, this.rules as any, this.art as any));
         this.currentAircraftType = aircraftType;
         aircraft.owner = player;
@@ -151,8 +151,8 @@ export class AircraftTester {
         this.disposables.add(renderableManager);
         world.spawnObject(aircraft);
         const renderable = (this.currentRenderable = renderableManager.getRenderableByGameObject(aircraft));
-        renderable.selectionModel.setSelectionLevel(SelectionLevel.None);
-        renderable.selectionModel.setControlGroupNumber(3);
+        renderable.selectionModel!.setSelectionLevel(SelectionLevel.None);
+        renderable.selectionModel!.setControlGroupNumber(3);
         this.buildControls();
         this.syncState();
     }
@@ -195,7 +195,7 @@ export class AircraftTester {
             btn.disabled = !this.currentAircraft.rules.selectable && level === SelectionLevel.Selected;
             btn.dataset.testid = `aircraft-selection-${SelectionLevel[level].toLowerCase()}`;
             btn.addEventListener("click", () => {
-                this.currentRenderable.selectionModel.setSelectionLevel(level);
+                this.currentRenderable.selectionModel!.setSelectionLevel(level);
                 this.syncState();
             });
             selDiv.appendChild(btn);

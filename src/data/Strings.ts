@@ -37,7 +37,7 @@ export class Strings {
     public has(key: string): boolean {
         return !!this.data[key.toLowerCase()];
     }
-    public get(key: string, ...args: any[]): string {
+    public get(key: string, ...args: unknown[]): string {
         const name = String(key);
         let value = this.data[name.toLowerCase()];
         if (value) {

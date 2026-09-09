@@ -1,4 +1,4 @@
-import { RenderableContainer } from './RenderableContainer';
+import { RenderableContainer, type Renderable } from './RenderableContainer';
 import { FrustumCuller } from './FrustumCuller';
 import { Coords } from '@/game/Coords';
 import * as THREE from 'three';
@@ -56,7 +56,7 @@ export class OctreeContainer extends RenderableContainer {
             cameraClone = this.camera.clone() as THREE.OrthographicCamera | THREE.PerspectiveCamera;
         }
         else {
-            cameraClone.copy(this.camera as any);
+            cameraClone.copy(this.camera as unknown as THREE.OrthographicCamera & THREE.PerspectiveCamera);
         }
         if ('top' in cameraClone && 'bottom' in cameraClone && 'left' in cameraClone && 'right' in cameraClone) {
             const orthoCamera = cameraClone as THREE.OrthographicCamera;
@@ -68,11 +68,11 @@ export class OctreeContainer extends RenderableContainer {
         cameraClone.updateProjectionMatrix();
         return cameraClone.projectionMatrix;
     }
-    updateChild(child: any): void {
+    updateChild(child: Renderable): void {
         const obj3D = child.get3DObject();
         if (obj3D && obj3D.parent) {
-            this.tree.remove(obj3D);
-            this.tree.add(obj3D);
+            (this.tree as unknown as { remove: (obj: THREE.Object3D) => void; add: (obj: THREE.Object3D) => void }).remove(obj3D);
+            (this.tree as unknown as { remove: (obj: THREE.Object3D) => void; add: (obj: THREE.Object3D) => void }).add(obj3D);
         }
     }
 }

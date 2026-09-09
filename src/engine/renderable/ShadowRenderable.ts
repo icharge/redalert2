@@ -3,11 +3,12 @@ import { ShpBuilder } from "@/engine/renderable/builder/ShpBuilder";
 import { Coords } from "@/game/Coords";
 import { IsoCoords } from "@/engine/IsoCoords";
 import { MAGIC_OFFSET } from "@/engine/renderable/entity/map/MapSurface";
+import type { ShpFile } from "@/data/ShpFile";
 import * as THREE from "three";
 export class ShadowRenderable {
     private static shadowPalette: Palette;
-    private shpFile: any;
-    private camera: any;
+    private shpFile: ShpFile;
+    private camera: THREE.Camera;
     private shadowHeightTileAdjust: number;
     private baseFrameNo: number;
     private frameOffset: number;
@@ -28,7 +29,7 @@ export class ShadowRenderable {
         }
         return palette;
     }
-    constructor(shpFile: any, camera: any, drawOffset: {
+    constructor(shpFile: ShpFile, camera: THREE.Camera, drawOffset: {
         x: number;
         y: number;
     }, shadowHeightTileAdjust: number = 0) {

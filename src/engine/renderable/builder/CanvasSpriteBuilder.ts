@@ -129,7 +129,7 @@ export class CanvasSpriteBuilder {
                 this.forceTransparent || this.opacity < 1;
         }
     }
-    setExtraLight(extraLight: any): void {
+    setExtraLight(extraLight: THREE.Vector3): void {
         throw new Error("Not implemented");
     }
     setFrustumCulled(frustumCulled: boolean): void {

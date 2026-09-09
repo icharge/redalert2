@@ -6,7 +6,9 @@ export class MindControlLinkFx {
     private color: THREE.Color;
     private heightTiles: number;
     private colorAnimProgress: number = 0;
-    private container?: any;
+    private container?: {
+        remove(item: unknown): void;
+    };
     private lineMesh?: THREE.Line;
     private lastUpdate?: number;
     constructor(sourcePos: THREE.Vector3, targetPos: THREE.Vector3, color: THREE.Color, heightTiles: number) {
@@ -15,7 +17,9 @@ export class MindControlLinkFx {
         this.color = color;
         this.heightTiles = heightTiles;
     }
-    setContainer(container: any): void {
+    setContainer(container: {
+        remove(item: unknown): void;
+    }): void {
         this.container = container;
     }
     get3DObject(): THREE.Line | undefined {
@@ -92,7 +96,7 @@ export class MindControlLinkFx {
     dispose(): void {
         if (this.lineMesh) {
             this.lineMesh.geometry.dispose();
-            (this.lineMesh.material as any).dispose();
+            (this.lineMesh.material as THREE.Material).dispose();
         }
     }
 }

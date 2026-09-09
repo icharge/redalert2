@@ -1,3 +1,4 @@
+import { IniSection } from '@/data/IniSection';
 export class MapLighting {
     level: number;
     ambient: number;
@@ -15,7 +16,7 @@ export class MapLighting {
         this.ground = 0;
         this.forceTint = false;
     }
-    read(reader: any, prefix: string = ""): MapLighting {
+    read(reader: IniSection, prefix: string = ""): MapLighting {
         this.level = reader.getNumber(prefix + "Level", 0.032);
         this.ambient = reader.getNumber(prefix + "Ambient", 1);
         this.red = reader.getNumber(prefix + "Red", 1);

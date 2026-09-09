@@ -4,19 +4,29 @@ import { Traits } from '@/game/Traits';
 import { fnv32a } from '@/util/math';
 import { Country } from '@/game/Country';
 import type { Production } from '@/game/player/production/Production';
-interface PlayerOwnedObject {
+import type { PowerTrait } from '@/game/player/trait/PowerTrait';
+import type { RadarTrait } from '@/game/player/trait/RadarTrait';
+import type { SuperWeaponsTrait } from '@/game/player/trait/SuperWeaponsTrait';
+import type { SharedDetectDisguiseTrait } from '@/game/player/trait/SharedDetectDisguiseTrait';
+import type { AiDifficulty } from '@/game/gameopts/GameOpts';
+export interface LimboData {
+    selected?: boolean;
+    controlGroup?: number;
+    inTransport?: boolean;
+}
+export interface PlayerOwnedObject {
     id: string;
     name: string;
     type: ObjectType;
     owner: Player;
     buildLimit: number;
-    limboData?: any;
+    limboData?: LimboData;
 }
 export class Player {
     private _credits: number = 0;
     public readonly name: string;
     public readonly country?: Country;
-    public readonly startLocation: any;
+    public readonly startLocation: number;
     public readonly color: Color;
     public isAi: boolean = false;
     public defeated: boolean = false;
@@ -34,14 +44,14 @@ export class Player {
     public cratesPickedUp: number = 0;
     public creditsGained: number = 0;
     public cheerCooldownTicks: number = 0;
-    public readonly isObserver: boolean;
-    public readonly isNeutral: boolean;
-    public aiDifficulty?: any;
+    public isObserver: boolean;
+    public isNeutral: boolean;
+    public aiDifficulty?: AiDifficulty;
     public customBotId?: string;
-    public powerTrait?: any;
-    public radarTrait?: any;
-    public superWeaponsTrait?: any;
-    public sharedDetectDisguiseTrait?: any;
+    public powerTrait?: PowerTrait;
+    public radarTrait?: RadarTrait;
+    public superWeaponsTrait?: SuperWeaponsTrait;
+    public sharedDetectDisguiseTrait?: SharedDetectDisguiseTrait;
     public production?: Production;
     get credits(): number {
         return this._credits;
@@ -52,7 +62,7 @@ export class Player {
         }
         this._credits = value;
     }
-    constructor(name: string, country?: Country, startLocation?: any, color: Color = new Color(255, 0, 0)) {
+    constructor(name: string, country?: Country, startLocation?: number, color: Color = new Color(255, 0, 0)) {
         this.name = name;
         this.country = country;
         this.startLocation = startLocation;
@@ -160,7 +170,7 @@ export class Player {
             ...this.traits.getAll().map(trait => trait.getHash?.() ?? 0)
         ]);
     }
-    debugGetState(): Record<string, any> {
+    debugGetState(): Record<string, unknown> {
         return {
             name: this.name,
             credits: this.credits,
@@ -170,7 +180,7 @@ export class Player {
                     acc[trait.constructor.name] = state;
                 }
                 return acc;
-            }, {} as Record<string, any>)
+            }, {} as Record<string, unknown>)
         };
     }
     dispose(): void {

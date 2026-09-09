@@ -1,48 +1,56 @@
+export interface Trait {
+    getHash?(): number;
+    debugGetState?(): unknown;
+    dispose?(): void;
+    [key: string]: unknown;
+    [key: symbol]: (...args: any[]) => void;
+}
 export class Traits {
-    private allTraits: any[] = [];
-    private traitsByTypeCache: Map<any, any[]> = new Map();
-    add(trait: any): void {
-        this.allTraits.push(trait);
+    private allTraits: Trait[] = [];
+    private traitsByTypeCache: Map<unknown, Trait[]> = new Map();
+    add(trait: object): void {
+        this.allTraits.push(trait as unknown as Trait);
         this.traitsByTypeCache.clear();
     }
-    addToFront(trait: any): void {
-        this.allTraits.unshift(trait);
+    addToFront(trait: object): void {
+        this.allTraits.unshift(trait as unknown as Trait);
         this.traitsByTypeCache.clear();
     }
-    remove(trait: any): void {
-        const index = this.allTraits.indexOf(trait);
+    remove(trait: object): void {
+        const index = this.allTraits.indexOf(trait as unknown as Trait);
         if (index !== -1) {
             this.allTraits.splice(index, 1);
             this.traitsByTypeCache.clear();
         }
     }
-    filter(type: any): any[] {
+    filter(type: unknown): Trait[] {
         let cached = this.traitsByTypeCache.get(type);
         if (cached) {
             return cached;
         }
         cached = typeof type === 'function'
-            ? this.allTraits.filter(trait => trait instanceof type)
+            ? this.allTraits.filter(trait => trait instanceof (type as Function))
             : this.allTraits.filter(trait => this.traitImplements(trait, type));
         this.traitsByTypeCache.set(type, cached);
         return cached;
     }
-    get(type: any): any {
+    get(type: unknown): Trait {
         const trait = this.find(type);
         if (!trait) {
             throw new Error("No matching trait found");
         }
         return trait;
     }
-    find(type: any): any {
+    find(type: unknown): Trait | undefined {
         return this.filter(type)[0];
     }
-    getAll(): any[] {
+    getAll(): Trait[] {
         return this.allTraits;
     }
-    private traitImplements(trait: any, type: any): boolean {
-        for (const prop of Object.getOwnPropertyNames(type)) {
-            if (trait[type[prop]] === undefined) {
+    private traitImplements(trait: Trait, type: unknown): boolean {
+        for (const prop of Object.getOwnPropertyNames(type as object)) {
+            const key = (type as Record<string, symbol>)[prop];
+            if ((trait as unknown as Record<symbol, unknown>)[key] === undefined) {
                 return false;
             }
         }

@@ -3,8 +3,8 @@ export interface ApiGameDetailResponse {
     mapName: string;
     players: Array<{
         name: string;
-        [key: string]: any;
+        [key: string]: unknown;
     }>;
     startedAt: number;
-    [key: string]: any;
+    [key: string]: unknown;
 }

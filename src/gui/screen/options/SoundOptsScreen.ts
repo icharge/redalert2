@@ -25,6 +25,7 @@ interface Music {
 }
 interface LocalPrefs {
     setItem(key: StorageKey, value: string): void;
+    getBool(key: StorageKey, defaultValue?: boolean): boolean;
 }
 interface JsxRenderer {
     render(element: any): [
@@ -61,6 +62,7 @@ export class SoundOptsScreen {
                 mixer: this.mixer,
                 music: this.music,
                 strings: this.strings,
+                localPrefs: this.localPrefs,
             },
         }));
         this.controller.setMainComponent(component);

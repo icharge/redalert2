@@ -12,6 +12,7 @@ import { BoxIntersectObject3D } from "@/engine/renderable/entity/BoxIntersectObj
 import { RotorHelper } from "@/engine/renderable/entity/unit/RotorHelper";
 import { ExtraLightHelper } from "@/engine/renderable/entity/unit/ExtraLightHelper";
 import { DebugRenderable } from "@/engine/renderable/DebugRenderable";
+import type { Palette } from "@/data/Palette";
 import * as THREE from 'three';
 interface GameObject {
     id: string;
@@ -53,10 +54,6 @@ interface Rules {
             bodyLength: number;
         };
     };
-}
-interface Palette {
-    clone(): Palette;
-    remap(color: any): Palette;
 }
 interface VoxelAnims {
     get(key: string): any;

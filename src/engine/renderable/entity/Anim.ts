@@ -8,6 +8,7 @@ import { MapSpriteTranslation } from "@/engine/renderable/MapSpriteTranslation";
 import { SimpleRunner } from "@/engine/animation/SimpleRunner";
 import { MathUtils } from "@/engine/gfx/MathUtils";
 import { Coords } from "@/game/Coords";
+import type { Palette } from "@/data/Palette";
 import * as THREE from 'three';
 interface ObjectArt {
     paletteType: string;
@@ -27,8 +28,6 @@ interface ObjectArt {
 interface Theater {
     getPalette(paletteType: string, customPaletteName?: string): any;
 }
-interface Camera {
-}
 interface DebugFrame {
     value: boolean;
 }
@@ -39,10 +38,6 @@ interface SoundHandle {
     isLoop: boolean;
     stop(): void;
 }
-interface Palette {
-    clone(): Palette;
-    remap(colorMap: any): void;
-}
 export class Anim {
     public objectArt: ObjectArt;
     public extraOffset: {
@@ -51,7 +46,7 @@ export class Anim {
     };
     public imageFinder: ImageFinder;
     public theater: Theater;
-    public camera: Camera;
+    public camera: THREE.Camera;
     public debugFrame: DebugFrame;
     public gameSpeed: number;
     public useSpriteBatching: boolean;
@@ -70,7 +65,7 @@ export class Anim {
     constructor(name: string, objectArt: ObjectArt, extraOffset: {
         x: number;
         y: number;
-    }, imageFinder: ImageFinder, theater: Theater, camera: Camera, debugFrame: DebugFrame, gameSpeed: number, useSpriteBatching: boolean, extraLight: THREE.Vector3 = new THREE.Vector3(0, 0, 0), worldSound?: WorldSound, palette?: Palette) {
+    }, imageFinder: ImageFinder, theater: Theater, camera: THREE.Camera, debugFrame: DebugFrame, gameSpeed: number, useSpriteBatching: boolean, extraLight: THREE.Vector3 = new THREE.Vector3(0, 0, 0), worldSound?: WorldSound, palette?: Palette) {
         this.objectArt = objectArt;
         this.extraOffset = extraOffset;
         this.imageFinder = imageFinder;

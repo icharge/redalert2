@@ -13,6 +13,8 @@ This folder contains architectural and technical documentation for the RA2WEB Re
 - [`online-play.md`](online-play.md) — LAN / online multiplayer room flow, lockstep sync, and map transfer.
 - [`wol-irc-and-modernization.md`](wol-irc-and-modernization.md) — WOL/IRC client stack, the server, and options for modernizing online play.
 - [`server-authoritative-experiment.md`](server-authoritative-experiment.md) — Investigation + implementation plan for a server-authoritative lockstep experiment (isolated sim mode).
+- [`reconnection-improvements.md`](reconnection-improvements.md) — Proposed: instant pause UX on disconnect, rejoin catch-up progress bar, and fair kick/wait voting.
+- [`ai-takeover-on-disconnect.md`](ai-takeover-on-disconnect.md) — Research only: feasibility of letting the skirmish AI pilot a disconnected player's army.
 - [`csf-tool.md`](csf-tool.md) — The CSF CLI (`tools/csf.ts`): commands, the `.csf` binary format, and locale file workflows.
 - [`viewport-resize-system.md`](viewport-resize-system.md) — Viewport/resize pipeline: why menu screens rerender on resize, and the desktop-flicker / mobile-keyboard fixes.
 - [`../server/README.md`](../server/README.md) — The WOL lobby/channel + gserv match server.

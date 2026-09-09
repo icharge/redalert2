@@ -90,7 +90,7 @@ export class Rules {
     public radiation = new RadiationRules();
     private landRules = new Map<LandType, LandRules>();
     private tiberiumRules = new Map<string, TiberiumRules>();
-    private superWeaponRules = new Map<string, SuperWeaponRules>();
+    public superWeaponRules = new Map<string, SuperWeaponRules>();
     private cachedWeaponRules = new Map<string, WeaponRules>();
     private cachedProjectileRules = new Map<string, ProjectileRules>();
     constructor(ini: IniFile, logger?: Logger) {

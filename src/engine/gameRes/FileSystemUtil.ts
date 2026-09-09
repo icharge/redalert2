@@ -8,15 +8,15 @@ export class FileSystemUtil {
                 entries.push(handle);
             }
         }
-        catch (e: any) {
-            if (e.name === "NotFoundError") {
+        catch (e: unknown) {
+            if ((e as Error).name === "NotFoundError") {
                 const err = new FileNotFoundError(`Directory "${directoryHandle.name}" not found while getting contents`);
-                (err as any).cause = e;
+                err.cause = e as Error;
                 throw err;
             }
             if (e instanceof DOMException) {
                 const err = new IOError(`Directory "${directoryHandle.name}" could not be read (${e.name}) while getting contents`);
-                (err as any).cause = e;
+                err.cause = e;
                 throw err;
             }
             throw e;
@@ -30,22 +30,22 @@ export class FileSystemUtil {
                 entries.push(key);
             }
         }
-        catch (e: any) {
-            if (e.name === "NotFoundError") {
+        catch (e: unknown) {
+            if ((e as Error).name === "NotFoundError") {
                 const err = new FileNotFoundError(`Directory "${directoryHandle.name}" not found while listing dir`);
-                (err as any).cause = e;
+                err.cause = e as Error;
                 throw err;
             }
             if (e instanceof DOMException) {
                 const err = new IOError(`Directory "${directoryHandle.name}" could not be read (${e.name}) while listing dir`);
-                (err as any).cause = e;
+                err.cause = e;
                 throw err;
             }
             throw e;
         }
         return entries;
     }
-    static async showArchivePicker(fsAccessLib?: any): Promise<FileSystemFileHandle | null> {
+    static async showArchivePicker(fsAccessLib?: { showOpenFilePicker?: (options?: unknown) => Promise<FileSystemFileHandle[] | FileSystemFileHandle> }): Promise<FileSystemFileHandle | null> {
         const pickerOptions = {
             types: [
                 {
@@ -64,7 +64,7 @@ export class FileSystemUtil {
             ],
             multiple: false,
         };
-        const pickerFn = fsAccessLib?.showOpenFilePicker || (window as any).showOpenFilePicker;
+        const pickerFn = fsAccessLib?.showOpenFilePicker || (window as unknown as { showOpenFilePicker?: (options?: unknown) => Promise<FileSystemFileHandle[] | FileSystemFileHandle> }).showOpenFilePicker;
         if (!pickerFn) {
             return null;
         }
@@ -75,10 +75,10 @@ export class FileSystemUtil {
                     return null;
                 return handles[0];
             }
-            return handles as FileSystemFileHandle;
+            return handles;
         }
-        catch (e: any) {
-            if (e.name === 'AbortError') {
+        catch (e: unknown) {
+            if ((e as Error).name === 'AbortError') {
                 console.log('File picker aborted by user.');
                 return null;
             }

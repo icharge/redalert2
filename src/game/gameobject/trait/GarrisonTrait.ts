@@ -57,7 +57,7 @@ export class GarrisonTrait {
             }
             for (const [speedType, typeUnits] of speedTypeMap) {
                 const finder = new RadialTileFinder(context.map.tiles, context.map.mapBounds, building.tile, building.art.foundation, 1, 1, (tile) => {
-                    return context.map.terrain.getPassableSpeed(tile, speedType, true, false) > 0 &&
+                    return context.map.terrain.getPassableSpeed(tile, speedType as unknown as Parameters<typeof context.map.terrain.getPassableSpeed>[1], true, false) > 0 &&
                         Math.abs(tile.z - building.tile.z) < 2 &&
                         !context.map.terrain.findObstacles({ tile, onBridge: undefined }, typeUnits[0]).length;
                 });

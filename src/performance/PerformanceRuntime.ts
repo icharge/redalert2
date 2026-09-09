@@ -210,7 +210,7 @@ export function snapshotPerformanceTelemetry(): PerformanceTelemetrySnapshot {
     return telemetry.snapshot(performanceOptions);
 }
 
-export function installPerformanceDebugApi(target: Record<string, any>): void {
+export function installPerformanceDebugApi(target: Record<string, unknown>): void {
     target.performance = {
         reset: () => resetPerformanceTelemetry(),
         snapshot: () => snapshotPerformanceTelemetry(),

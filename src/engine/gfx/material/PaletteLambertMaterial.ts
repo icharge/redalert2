@@ -14,7 +14,7 @@ const PaletteLambertShader = {
         .replace("#include <lights_fragment_end>", "#include <lights_fragment_end>\n" + paletteShaderLib.paletteFullLightFragment),
 };
 export class PaletteLambertMaterial extends THREE.MeshLambertMaterial {
-    uniforms: any;
+    uniforms: MaterialUniforms;
     vertexShader: string;
     fragmentShader: string;
     get palette() {
@@ -65,3 +65,4 @@ export class PaletteLambertMaterial extends THREE.MeshLambertMaterial {
         return this;
     }
 }
+type MaterialUniforms = { [uniform: string]: THREE.IUniform };

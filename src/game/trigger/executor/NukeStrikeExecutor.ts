@@ -16,8 +16,7 @@ export class NukeStrikeExecutor extends TriggerExecutor {
         }
         const superWeapon = [...game.rules.superWeaponRules.values()].find((sw) => sw.type === SuperWeaponType.MultiMissile);
         if (superWeapon) {
-            game.traits
-                .get(SuperWeaponsTrait)
+            (game.traits.get(SuperWeaponsTrait) as unknown as SuperWeaponsTrait)
                 .activateEffect(superWeapon, player, game, targetTile, undefined, true);
         }
     }

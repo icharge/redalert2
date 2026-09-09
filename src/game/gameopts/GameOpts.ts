@@ -1,4 +1,4 @@
-export function isHumanPlayerInfo(info: any): boolean {
+export function isHumanPlayerInfo(info: object): info is HumanPlayerInfo {
     return "name" in info;
 }
 export enum AiDifficulty {

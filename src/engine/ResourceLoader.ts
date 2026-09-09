@@ -11,11 +11,11 @@ interface LoadResourceItem {
     sizeHint?: number;
 }
 export class LoaderResult {
-    private items: Map<ResourceId, ArrayBuffer | string | any>;
-    constructor(items: Map<ResourceId, ArrayBuffer | string | any>) {
+    private items: Map<ResourceId, unknown>;
+    constructor(items: Map<ResourceId, unknown>) {
         this.items = items;
     }
-    pop(resourceIdentifier: ResourceType | ResourceId): ArrayBuffer | string | any {
+    pop(resourceIdentifier: ResourceType | ResourceId): unknown {
         let resourceId: ResourceId;
         if (typeof resourceIdentifier === 'string') {
             resourceId = resourceIdentifier;
@@ -135,23 +135,27 @@ export class ResourceLoader {
     async loadBinary(srcRelative: string, cancellationToken?: CancellationToken, options?: FetchResourceOptions): Promise<ArrayBuffer> {
         return await this.loadResource({ src: srcRelative, type: "binary" }, cancellationToken, options) as ArrayBuffer;
     }
-    async loadJson(srcRelative: string, cancellationToken?: CancellationToken, options?: FetchResourceOptions): Promise<any> {
-        return await this.loadResource({ src: srcRelative, type: "json" }, cancellationToken, options);
+    async loadJson<T = Record<string, unknown>>(srcRelative: string, cancellationToken?: CancellationToken, options?: FetchResourceOptions): Promise<T> {
+        return await this.loadResource({ src: srcRelative, type: "json" }, cancellationToken, options) as T;
     }
-    private async loadResource(item: LoadResourceItem, cancellationToken?: CancellationToken, options?: FetchResourceOptions): Promise<ArrayBuffer | string | any> {
-        const absoluteSrc = item.src.match(/^https?:\/\//) ? item.src : this.resourceBaseUrl + item.src;
+    private async loadResource(item: LoadResourceItem, cancellationToken?: CancellationToken, options?: FetchResourceOptions): Promise<unknown> {
+        // Treat https://, //, and root-absolute / paths as already absolute —
+        // prepending resourceBaseUrl onto a leading / would produce //host/path,
+        // which browsers interpret as a protocol-relative URL with the path as host.
+        const isAbsolute = /^(https?:)?\//.test(item.src);
+        const absoluteSrc = isAbsolute ? item.src : this.resourceBaseUrl + item.src;
         const result = await this.fetchResource(absoluteSrc, cancellationToken, options);
         return this.httpRequest.parseResult(item.type, result);
     }
     async loadResources(resourceTypes: (ResourceType | ResourceConfig)[], cancellationToken?: CancellationToken, onTotalProgress?: (progressPercent: number) => void): Promise<LoaderResult> {
         const manifestItems = this.buildResourceManifest(resourceTypes);
-        const resultsMap = new Map<ResourceId, ArrayBuffer | string | any>();
+        const resultsMap = new Map<ResourceId, unknown>();
         const numItems = manifestItems.length;
         let completedItems = 0;
         const totalSizeHint = manifestItems.reduce((sum, item) => sum + (item.sizeHint ?? 0), 0);
         let totalLoadedBytes = 0;
         for (const item of manifestItems) {
-            if ((cancellationToken as any)?.isCancellationRequested) {
+            if ((cancellationToken as { isCancellationRequested?: boolean })?.isCancellationRequested) {
                 throw new OperationCanceledError(cancellationToken);
             }
             const itemProgress = { loadedBytes: 0 };
@@ -186,6 +190,6 @@ export class ResourceLoader {
             }
             return await pending;
         }
-        return await this.httpRequest.fetchRaw(url, cancellationToken as any, options?.onProgress as any);
+        return await this.httpRequest.fetchRaw(url, cancellationToken, options?.onProgress as unknown as { onProgress?: (loadedBytes: number, totalLength?: number) => void });
     }
 }

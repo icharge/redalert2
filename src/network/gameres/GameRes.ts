@@ -7,6 +7,9 @@ import type { GameResGameInfo } from "@/network/gameres/GameResGameInfo";
 import type { GameResClientInfo } from "@/network/gameres/GameResClientInfo";
 import type { GameResPlayerInfo } from "@/network/gameres/GameResPlayerInfo";
 import type { GameResAiPlayerInfo } from "@/network/gameres/GameResAiPlayerInfo";
+import type { Game } from "@/game/Game";
+import type { Player } from "@/game/Player";
+import type { GameOpts, HumanPlayerInfo } from "@/game/gameopts/GameOpts";
 
 enum FieldType {
     Byte = 1,
@@ -16,7 +19,7 @@ enum FieldType {
     String = 7,
 }
 
-type FlatValue = [FieldType, any];
+type FlatValue = [FieldType, number | string | boolean];
 
 export class GameRes {
     public game!: GameResGameInfo;
@@ -24,15 +27,15 @@ export class GameRes {
     public players: GameResPlayerInfo[] = [];
     public aiPlayers: GameResAiPlayerInfo[] = [];
 
-    fromGame(game: any, tournament: boolean, clientInfo: GameResClientInfo): GameRes {
-        const gameOpts = game.gameOpts;
+    fromGame(game: Game, tournament: boolean, clientInfo: GameResClientInfo): GameRes {
+        const gameOpts = game.gameOpts as GameOpts;
         const humanPlayers = gameOpts.humanPlayers
-            .filter((player: any) => player.countryId !== OBS_COUNTRY_ID)
-            .map((player: any) => game.getPlayerByName(player.name));
-        const aiPlayers = game.getNonNeutralPlayers().filter((player: any) => player.isAi);
+            .filter((player: HumanPlayerInfo) => player.countryId !== OBS_COUNTRY_ID)
+            .map((player) => game.getPlayerByName(player.name));
+        const aiPlayers = game.getNonNeutralPlayers().filter((player) => player.isAi);
         const allPlayers = [...humanPlayers, ...aiPlayers];
         this.game = {
-            id: game.id,
+            id: game.id as string,
             startTime: game.startTimestamp,
             duration: Math.floor(game.currentTime / 1000),
             speed: 6 - gameOpts.gameSpeed,
@@ -62,13 +65,13 @@ export class GameRes {
         return this;
     }
 
-    private createPlayerInfo(player: any, game: any, clientInfo: GameResClientInfo, allPlayers: any[], playerTeams: Map<any, number>): GameResPlayerInfo {
+    private createPlayerInfo(player: Player, game: Game, clientInfo: GameResClientInfo, allPlayers: Player[], playerTeams: Map<Player, number>): GameResPlayerInfo {
         return {
             buildingsBuilt: player.getUnitsBuilt(ObjectType.Building),
             buildingsCaptured: player.buildingsCaptured,
             buildingsKilled: player.getUnitsKilled(ObjectType.Building),
             buildingsLeft: player.buildings.size,
-            color: [...game.rules.getMultiplayerColors().values()].findIndex((color: any) => color.asHex() === player.color.asHex()),
+            color: [...game.rules.getMultiplayerColors().values()].findIndex((color) => color.asHex() === player.color.asHex()),
             cratesFound: player.cratesPickedUp,
             endCredits: player.credits,
             creditsGained: player.creditsGained,
@@ -84,14 +87,14 @@ export class GameRes {
             unitsKilled: player.getUnitsKilled(ObjectType.Vehicle),
             unitsLeft: player.getOwnedObjectsByType(ObjectType.Vehicle).length,
             completionStatus: this.getCompletionStatus(player, game, clientInfo, allPlayers),
-            country: player.country.id,
+            country: player.country.id as unknown as number,
             side: player.country.side,
             team: playerTeams.get(player)!,
             startPos: player.startLocation,
         };
     }
 
-    private createAiPlayerInfo(player: any, game: any, clientInfo: GameResClientInfo, allPlayers: any[], playerTeams: Map<any, number>): GameResAiPlayerInfo {
+    private createAiPlayerInfo(player: Player, game: Game, clientInfo: GameResClientInfo, allPlayers: Player[], playerTeams: Map<Player, number>): GameResAiPlayerInfo {
         if (player.aiDifficulty === undefined) {
             throw new Error(`AI player "${player.name}" is missing difficulty`);
         }
@@ -101,8 +104,8 @@ export class GameRes {
         };
     }
 
-    private computePlayerTeams(game: any, players: any[]): Map<any, number> {
-        const teams = new Map<any, number>();
+    private computePlayerTeams(game: Game, players: Player[]): Map<Player, number> {
+        const teams = new Map<Player, number>();
         let nextTeamId = 0;
         for (const player of players) {
             if (!teams.has(player)) {
@@ -118,8 +121,8 @@ export class GameRes {
         return teams;
     }
 
-    private getCompletionStatus(player: any, game: any, clientInfo: GameResClientInfo, allPlayers: any[]): GameResType {
-        const hasUndefeatedAlly = game.alliances.getAllies(player).some((ally: any) => !ally.defeated);
+    private getCompletionStatus(player: Player, game: Game, clientInfo: GameResClientInfo, allPlayers: Player[]): GameResType {
+        const hasUndefeatedAlly = game.alliances.getAllies(player).some((ally) => !ally.defeated);
         if (clientInfo.finished) {
             if (game.stalemateDetectTrait?.isStale() && game.stalemateDetectTrait.getCountdownTicks() === 0) {
                 if (!game.alliances.getAllies(player).length) {
@@ -143,7 +146,7 @@ export class GameRes {
         if (clientInfo.outOfSync) {
             return GameResType.Playing;
         }
-        if (!allPlayers.some((p: any) => p.name === clientInfo.accountName)) {
+        if (!allPlayers.some((p: Player) => p.name === clientInfo.accountName)) {
             return GameResType.Playing;
         }
         if (clientInfo.accountName === player.name) {
@@ -244,9 +247,9 @@ export class GameRes {
     }
 
     fromFlat(flat: Record<string, FlatValue>): void {
-        const toInt = (value?: FlatValue): number => value && (value[0] === FieldType.Int || value[0] === FieldType.Time) ? value[1] : 0;
-        const toBool = (value?: FlatValue): boolean => !!value && value[0] === FieldType.Boolean && value[1];
-        const toString = (value?: FlatValue): string => value && value[0] === FieldType.String ? value[1] : "";
+        const toInt = (value?: FlatValue): number => (value && (value[0] === FieldType.Int || value[0] === FieldType.Time) ? value[1] : 0) as number;
+        const toBool = (value?: FlatValue): boolean => (!!value && value[0] === FieldType.Boolean && value[1]) as boolean;
+        const toString = (value?: FlatValue): string => (value && value[0] === FieldType.String ? value[1] : "") as string;
         const playerCount = toInt(flat.PLRS);
         const aiCount = toInt(flat.AIPL);
         const bitmask = toInt(flat.BAMR);
@@ -363,7 +366,7 @@ export class GameRes {
         return this;
     }
 
-    private writeType(type: FieldType, fieldName: string, value: any, stream: DataStream): void {
+    private writeType(type: FieldType, fieldName: string, value: number | string | boolean, stream: DataStream): void {
         if (fieldName.length > 4) {
             throw new Error(`Field "${fieldName}" must not exceed 4 characters`);
         }
@@ -384,10 +387,10 @@ export class GameRes {
                 stream.writeUint32(value as number, DataStream.BIG_ENDIAN);
                 return;
             case FieldType.String: {
-                const length = value.length + 1;
+                const length = (value as string).length + 1;
                 const paddedLength = 4 * Math.ceil(length / 4);
                 stream.writeUint16(length, DataStream.BIG_ENDIAN);
-                stream.writeCString(value);
+                stream.writeCString(value as string);
                 stream.writeUint8Array(new Uint8Array(paddedLength - length));
                 return;
             }
@@ -396,11 +399,11 @@ export class GameRes {
         }
     }
 
-    private readType(stream: DataStream): { fieldName: string; type: FieldType; data: any } {
+    private readType(stream: DataStream): { fieldName: string; type: FieldType; data: number | boolean | string | undefined } {
         const fieldName = stream.readString(4, "ASCII");
         const type = stream.readUint16(DataStream.BIG_ENDIAN);
         const length = stream.readUint16(DataStream.BIG_ENDIAN);
-        let data: any;
+        let data: number | boolean | string | undefined;
         switch (type) {
             case FieldType.Byte:
                 data = stream.readUint32(DataStream.BIG_ENDIAN);

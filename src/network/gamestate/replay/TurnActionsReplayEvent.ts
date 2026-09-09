@@ -2,9 +2,12 @@ import { DataStream } from "@/data/DataStream";
 import { uint8ArrayToBase64String, base64StringToUint8Array } from "@/util/string";
 import { ReplayEvent } from "@/network/gamestate/replay/ReplayEvent";
 import { ReplayEventType } from "@/network/gamestate/replay/ReplayEventType";
+import type { Parser } from "@/network/gameopt/Parser";
+import type { Serializer } from "@/network/gameopt/Serializer";
+import type { PlayerActionPayload } from "@/network/gamestate/PlayerActionPayload";
 
-export class TurnActionsReplayEvent extends ReplayEvent {
-    constructor(private gameOptsParser: any, private gameOptsSerializer: any, tickNo: number) {
+export class TurnActionsReplayEvent extends ReplayEvent<Array<[number, Array<PlayerActionPayload>]>> {
+    constructor(private gameOptsParser: Parser, private gameOptsSerializer: Serializer, tickNo: number) {
         super(ReplayEventType.TurnActions, tickNo);
     }
 

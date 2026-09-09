@@ -281,6 +281,14 @@ export class WolServer {
             this.sendNumeric(user, Code.RPL_MOTD, nick, [], `- ${line}`);
         }
         this.sendNumeric(user, Code.RPL_ENDOFMOTD, nick, [], "- End of /MOTD command.");
+        // Ping immediately on login rather than waiting for the next shared
+        // pingAll() tick (up to pingIntervalSeconds away) -- otherwise a
+        // player who just logged in and joined a lobby shows ping 0 (the
+        // ServerUser default) to everyone else in that lobby until the next
+        // tick happens to land.
+        const now = Date.now();
+        user.lastPingSent = now;
+        user.send(`PING ${now}\r\n`);
     }
 
     private handleJoin(user: ServerUser, args: string[]): void {

@@ -322,7 +322,7 @@ export class GameLoader {
                             ? imageFinder.find(artObject.bibShape, artObject.useTheaterExtension)
                             : undefined;
                         const animShps = buildingShpHelper.collectAnimShpFiles(animProps as any, artObject);
-                        const frameInfos = buildingShpHelper.getShpFrameInfos(artObject, mainShp, bibShp, animShps as any);
+                        const frameInfos = buildingShpHelper.getShpFrameInfos(artObject, mainShp as unknown as string, bibShp as unknown as string, animShps as any);
                         const aggregatedShp = shpAggregator.aggregate([...frameInfos.values()], `agg_${buildingName}.shp`);
                         this.buildingImageDataCache.set(buildingName, aggregatedShp);
                         ShpBuilder.prepareTexture(aggregatedShp.file);

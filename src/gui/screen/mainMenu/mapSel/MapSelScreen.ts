@@ -108,6 +108,8 @@ export class MapSelScreen extends MainMenuScreen {
     private form?: any;
     private mapFileUpdateTask?: Task<void>;
     private changedMapFile?: VirtualFile;
+    /** Set when the last map load failed; cleared on every new map selection. */
+    private mapLoadError = false;
     constructor(strings: any, jsxRenderer: any, mapFileLoader: MapFileLoader, errorHandler: ErrorHandler, messageBoxApi: MessageBoxApi, localPrefs: LocalPrefs, mapList: MapList, gameModes: GameModes, mapDir: MapDirectory, fsAccessLib: FsAccessLib, sentry: Sentry) {
         super();
         this.strings = strings;
@@ -126,11 +128,13 @@ export class MapSelScreen extends MainMenuScreen {
         this.handleSelectMap = (mapName: string, doubleClick: boolean) => {
             const isNewMap = this.selectedMapName !== mapName;
             this.selectedMapName = mapName;
-            this.refreshMapInfo();
             if (isNewMap) {
+                // Clear any previous load error so Use Map re-enables for the new pick.
+                this.mapLoadError = false;
                 this.updateMapDeferred({ updatePreview: !doubleClick });
                 this.initSidebar();
             }
+            this.refreshMapInfo();
             this.form.applyOptions((options: any) => {
                 options.selectedMapName = mapName;
             });
@@ -212,6 +216,7 @@ export class MapSelScreen extends MainMenuScreen {
             {
                 label: this.strings.get("GUI:UseMap"),
                 tooltip: this.strings.get("STT:ScenarioButtonUseMap"),
+                disabled: this.mapLoadError,
                 onClick: () => {
                     this.handleSubmit();
                 },
@@ -446,9 +451,12 @@ export class MapSelScreen extends MainMenuScreen {
             }
             catch (error) {
                 if (error instanceof DownloadError) {
-                    this.errorHandler.handle(error, this.strings.get("TXT_DOWNLOAD_FAILED"), () => {
-                        this.controller?.popScreen();
-                    });
+                    // Stay on screen — mark the error so Use Map is disabled,
+                    // then let the user pick a different map.
+                    this.mapLoadError = true;
+                    this.initSidebar();
+                    this.refreshMapInfo();
+                    this.errorHandler.handle(error, this.strings.get("TXT_DOWNLOAD_FAILED"), () => { });
                     return;
                 }
                 throw error;

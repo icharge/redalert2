@@ -1,6 +1,8 @@
 import { ShpBuilder } from "./builder/ShpBuilder";
 import { ShadowRenderable } from "./ShadowRenderable";
 import { Coords } from "@/game/Coords";
+import type { ShpFile } from "@/data/ShpFile";
+import type { Palette } from "@/data/Palette";
 import * as THREE from "three";
 export class ShpRenderable {
     private builder: ShpBuilder;
@@ -9,7 +11,7 @@ export class ShpRenderable {
     private target?: THREE.Object3D;
     private shapeMesh?: THREE.Object3D;
     private shadowMesh?: THREE.Object3D;
-    static factory(shpFile: any, palette: any, camera: any, drawOffset: {
+    static factory(shpFile: ShpFile, palette: Palette, camera: THREE.Camera, drawOffset: {
         x: number;
         y: number;
     }, hasShadow: boolean = false, shadowHeightTileAdjust: number = 0, useBatching: boolean = false, frameOffset: number = 0, hasZShapeFix: boolean = false): ShpRenderable {
@@ -40,7 +42,7 @@ export class ShpRenderable {
         this.zShapeFixBuilder?.setBatched(batched);
         this.shadowRenderable?.setBatched(batched);
     }
-    setBatchPalettes(palettes: any[]): void {
+    setBatchPalettes(palettes: Palette[]): void {
         this.builder.setBatchPalettes(palettes);
         this.zShapeFixBuilder?.setBatchPalettes(palettes);
     }
@@ -67,11 +69,11 @@ export class ShpRenderable {
         this.zShapeFixBuilder?.setFrameOffset(offset);
         this.shadowRenderable?.setFrameOffset(offset);
     }
-    setPalette(palette: any): void {
+    setPalette(palette: Palette): void {
         this.builder.setPalette(palette);
         this.zShapeFixBuilder?.setPalette(palette);
     }
-    setExtraLight(light: any): void {
+    setExtraLight(light: THREE.Vector3): void {
         this.builder.setExtraLight(light);
         this.zShapeFixBuilder?.setExtraLight(light);
     }

@@ -149,8 +149,8 @@ describe("E2E: in-game chat over the real WOL+gserv stack", () => {
         (bobGserv as any).serverName = "gserv-ra2web";
         gserv.handleMessage(aliceClient, `ticket ${aliceStart.ticket}`);
         gserv.handleMessage(bobClient, `ticket ${bobStart.ticket}`);
-        gserv.handleMessage(aliceClient, `join ${aliceStart.gameId} 0.83 `);
-        gserv.handleMessage(bobClient, `join ${bobStart.gameId} 0.83 `);
+        gserv.handleMessage(aliceClient, `join ${aliceStart.gameId}`);
+        gserv.handleMessage(bobClient, `join ${bobStart.gameId}`);
         gserv.handleMessage(aliceClient, "loaded 100");
         gserv.handleMessage(bobClient, "loaded 100");
 

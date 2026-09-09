@@ -13,6 +13,8 @@ import { GservManager } from "./gserv/GservManager";
 import { LadderService } from "./ladder/LadderService";
 import { handleHttp, HttpDeps } from "./http/routes";
 import { resetRateLimiters } from "./http/routes";
+import { MapStore } from "./mapstore/MapStore";
+import { openDatabase } from "./auth/db";
 import { isOriginAllowed } from "./http/cors";
 
 interface WsData {
@@ -33,7 +35,18 @@ const ladder = new LadderService(storage, makeLogger(config.logLevel, "ladder", 
     startingRating: config.startingRating,
     placementMatches: config.placementMatches,
 });
-const httpDeps: HttpDeps = { accounts, sessions, ladder, gservs: gservManager, wol };
+const httpDeps: HttpDeps = {
+    accounts,
+    sessions,
+    ladder,
+    gservs: gservManager,
+    wol,
+    replaySnapshot: (gameId) => gserv.getReplaySnapshot(gameId),
+    maps: config.mapServiceEnabled ? new MapStore(openDatabase(config.dbPath), {
+        mapsDir: config.mapsDir,
+        maxUploadBytes: config.mapMaxUploadBytes,
+    }) : undefined,
+};
 
 // Archive every finished game (public + ranked) with its replay file name so
 // the admin console can list and serve replays. Ranked reports later upgrade
@@ -66,7 +79,9 @@ const tls = existsSync(tlsKeyPath) && existsSync(tlsCertPath)
 const server = Bun.serve<WsData>({
     hostname: config.host,
     port: config.port,
-    maxRequestBodySize: config.maxPayloadBytes,
+    // Allow map uploads/transfers to exceed the (small) chat payload cap; the
+    // per-request size is still bounded by config.mapMaxUploadBytes in the store.
+    maxRequestBodySize: Math.max(config.maxPayloadBytes, config.mapMaxUploadBytes),
     tls,
     fetch(req, srv) {
         if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {

@@ -33,7 +33,7 @@ export class ToggleRepairAction extends Action {
                 building.rules.repairable &&
                 building.rules.clickRepairable &&
                 building.healthTrait.health !== 100) {
-                const repairTrait = building.traits.get(AutoRepairTrait);
+                const repairTrait = building.traits.get(AutoRepairTrait) as unknown as AutoRepairTrait;
                 repairTrait.setDisabled(!repairTrait.isDisabled());
                 if (!repairTrait.isDisabled()) {
                     this.game.events.dispatch(new BuildingRepairStartEvent(building));

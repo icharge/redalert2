@@ -1,5 +1,15 @@
 import { paletteShaderLib } from "./paletteShaderLib";
 import * as THREE from 'three';
+interface PaletteBasicMaterialParameters extends THREE.MeshBasicMaterialParameters {
+    palette?: THREE.Texture;
+    paletteCount?: number;
+    paletteOffset?: number;
+    extraLight?: THREE.Vector3;
+    useVertexColorMult?: boolean;
+    useRedIndex?: boolean;
+    flatShading?: boolean;
+}
+type MaterialUniforms = { [uniform: string]: THREE.IUniform };
 const PaletteBasicShader = {
     uniforms: THREE.UniformsUtils.merge([
         THREE.ShaderLib.basic.uniforms,
@@ -32,7 +42,7 @@ const PaletteBasicShader = {
         ].join("\n")),
 };
 export class PaletteBasicMaterial extends THREE.MeshBasicMaterial {
-    uniforms: any;
+    uniforms: MaterialUniforms;
     vertexShader: string;
     fragmentShader: string;
     get palette() {
@@ -68,7 +78,7 @@ export class PaletteBasicMaterial extends THREE.MeshBasicMaterial {
             delete this.defines.USE_VERTEX_COLOR_MULT;
         }
     }
-    constructor({ palette, paletteCount, paletteOffset, extraLight, useVertexColorMult, flatShading, useRedIndex, ...options }: any = {}) {
+    constructor({ palette, paletteCount, paletteOffset, extraLight, useVertexColorMult, flatShading, useRedIndex, ...options }: PaletteBasicMaterialParameters = {}) {
         if (options.side === undefined) {
             options.side = THREE.DoubleSide;
         }
@@ -96,7 +106,7 @@ export class PaletteBasicMaterial extends THREE.MeshBasicMaterial {
             this.defines.USE_RED_INDEX = '';
         }
         this.type = "PaletteBasicMaterial";
-        this.onBeforeCompile = (shader: any) => {
+        this.onBeforeCompile = (shader: THREE.WebGLProgramParametersWithUniforms) => {
             shader.uniforms = THREE.UniformsUtils.merge([shader.uniforms, this.uniforms]);
             shader.vertexShader = this.vertexShader;
             shader.fragmentShader = this.fragmentShader;

@@ -1,10 +1,10 @@
-export type EventListener<TSource = any, TData = any> = (data: TData, source: TSource) => void;
-export interface IEvent<TSource = any, TData = any> {
+export type EventListener<TSource = unknown, TData = unknown> = (data: TData, source: TSource) => void;
+export interface IEvent<TSource = unknown, TData = unknown> {
     subscribe(listener: EventListener<TSource, TData>): void;
     subscribeOnce(listener: EventListener<TSource, TData>): void;
     unsubscribe(listener: EventListener<TSource, TData>): void;
 }
-export class EventDispatcher<TSource = any, TData = any> implements IEvent<TSource, TData> {
+export class EventDispatcher<TSource = unknown, TData = unknown> implements IEvent<TSource, TData> {
     private listeners: Set<EventListener<TSource, TData>>;
     constructor() {
         this.listeners = new Set<EventListener<TSource, TData>>();

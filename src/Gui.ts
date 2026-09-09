@@ -12,7 +12,6 @@ import { ManageGameScreen } from './gui/screen/options/ManageGameScreen.js';
 import { Config } from './Config.js';
 import { Strings } from './data/Strings.js';
 import { Engine } from './engine/Engine.js';
-import { MusicType } from './engine/sound/Music.js';
 import { MessageBoxApi } from './gui/component/MessageBoxApi.js';
 import { ToastApi } from './gui/component/ToastApi';
 import { ShpFile } from './data/ShpFile.js';
@@ -21,6 +20,7 @@ import { UiAnimationLoop } from './engine/UiAnimationLoop.js';
 import { Mixer } from './engine/sound/Mixer.js';
 import { ChannelType } from './engine/sound/ChannelType.js';
 import { AudioSystem } from './engine/sound/AudioSystem.js';
+import { FocusMusicMuter } from './engine/sound/FocusMusicMuter.js';
 import { Sound } from './engine/sound/Sound.js';
 import { SoundSpecs } from './engine/sound/SoundSpecs.js';
 import { Music } from './engine/sound/Music.js';
@@ -67,6 +67,7 @@ export class Gui {
     private gameResConfig?: GameResConfig;
     private mixer?: Mixer;
     private audioSystem?: AudioSystem;
+    private focusMusicMuter?: FocusMusicMuter;
     private sound?: Sound;
     private music?: Music;
     private localPrefs: LocalPrefs;
@@ -79,6 +80,12 @@ export class Gui {
     private lastTime: number = 0;
     private appLocale: string;
     private cfTurnstile?: any;
+    // Built once in navigateToMainMenu() and reused for every screen
+    // (including the singleton GameScreen) -- kept here too so
+    // routeToInitialScreen()'s page-refresh reconnect path (which runs after
+    // navigateToMainMenu() returns) can reach it. See
+    // configureOnlineServicesForReconnect().
+    private onlineServices?: any;
     constructor(appVersion: string, strings: Strings, config: Config, viewport: BoxedVar<ViewportRect>, rootEl: HTMLElement, cdnResourceLoader?: any, gameResConfig?: GameResConfig, runtimeVars?: any, generalOptions?: GeneralOptions, fullScreen?: FullScreen, appLocale?: string, cfTurnstile?: any) {
         this.appVersion = appVersion;
         this.strings = strings;
@@ -419,6 +426,7 @@ export class Gui {
                     this.strings.get('gui:quit')
                 );
                 if (shouldReconnect) {
+                    await this.configureOnlineServicesForReconnect();
                     this.rootController!.goToScreen(ScreenType.Game, {
                         ...reconnectParams,
                         reconnect: true,
@@ -427,6 +435,45 @@ export class Gui {
                 }
                 this.localPrefs.removeItem(StorageKey.LastConnection);
             }
+        }
+    }
+    // Page-refresh reconnect (routeToInitialScreen above, `reconnect: true`)
+    // jumps straight into the already-built GameScreen singleton, entirely
+    // bypassing LoginScreen/NicknameSelectionScreen/RealmSelectionScreen --
+    // so unlike every other path into GameScreen, wladderService/
+    // wgameresService/errorReportService/mapTransferService (constructed once
+    // in navigateToMainMenu() and shared by every screen, GameScreen
+    // included) never get their setUrl() called. Mirrors LoginScreen.connect()'s
+    // equivalent block, minus the actual WOL login: a reconnecting client only
+    // re-attaches directly to gserv with its stored ticket
+    // (GameScreen.connectToServerInstance), it never re-establishes a WOL
+    // session, so there is no other hook in this path where these URLs would
+    // otherwise get set. Best-effort and silent on failure -- a player must
+    // still be able to rejoin their game with no report/ladder/mapTransfer
+    // URLs configured, same as if servers.ini simply omitted them.
+    private async configureOnlineServicesForReconnect(): Promise<void> {
+        const services = this.onlineServices;
+        if (!services?.wolService || !services.serverRegions || services.errorReportService?.getUrl?.()) {
+            return;
+        }
+        try {
+            const serverList = await services.wolService.loadServerList(this.config.serversUrl);
+            services.serverRegions.load(serverList);
+            const region = services.serverRegions.getFirstAvailable();
+            if (!region) {
+                console.warn('[Gui] No available server region found ahead of page-refresh reconnect');
+                return;
+            }
+            services.wladderService?.setUrl(region.wladderUrl);
+            services.wgameresService?.setUrl(region.wgameresUrl);
+            if (region.errorReportUrl) {
+                services.errorReportService?.setUrl(region.errorReportUrl);
+            }
+            services.mapTransferService?.setUrl(region.mapTransferUrl);
+        }
+        catch (error) {
+            console.warn('[Gui] Failed to configure online services ahead of page-refresh reconnect; ' +
+                'error report submission and related services will be unavailable this session', error);
         }
     }
     private async navigateToMainMenu(): Promise<void> {
@@ -446,6 +493,8 @@ export class Gui {
         subScreens.set(MainMenuScreenType.MapSelection, MapSelScreen);
         const { TestEntryScreen } = await import('./gui/screen/mainMenu/main/TestEntryScreen.js');
         subScreens.set(MainMenuScreenType.TestEntry, TestEntryScreen);
+        const { MapSelPrototypeScreen } = await import('./gui/screen/mainMenu/mapSel/MapSelPrototypeScreen.js');
+        subScreens.set(MainMenuScreenType.MapSelectionPrototype, MapSelPrototypeScreen);
         subScreens.set(MainMenuScreenType.LanSetup, LanSetupScreen);
         const { LoginScreen } = await import('./gui/screen/mainMenu/login/LoginScreen.js');
         subScreens.set(MainMenuScreenType.Login, LoginScreen);
@@ -492,10 +541,11 @@ export class Gui {
             const { ReplayStorageMemStorage } = await import('./gui/replay/ReplayStorageMemStorage.js');
             replayManager = new ReplayManager(new ReplayStorageMemStorage());
         }
-        const mainMenuRootScreen = new MainMenuRootScreen(subScreens, this.uiScene, this.strings, Engine.images, this.jsxRenderer, this.messageBoxApi, this.appVersion, this.config, videoSrc, this.sound, this.music, this.generalOptions, this.localPrefs, this.fullScreen, this.mixer, this.keyBinds, this.rootController, this.appLocale, this.cfTurnstile);
+        const mainMenuRootScreen = new MainMenuRootScreen(subScreens, this.uiScene, this.strings, Engine.images, this.jsxRenderer, this.messageBoxApi, this.appVersion, this.config, videoSrc, this.sound, this.music, this.generalOptions, this.localPrefs, this.fullScreen, this.mixer, this.keyBinds, this.rootController, this.appLocale, this.cfTurnstile, this.cdnResourceLoader);
         (mainMenuRootScreen as any).replayManager = replayManager;
         this.rootController.addScreen(ScreenType.MainMenuRoot, mainMenuRootScreen);
         const onlineServices = await mainMenuRootScreen.getOnlineServices();
+        this.onlineServices = onlineServices;
         const { GameScreen } = await import('./gui/screen/game/GameScreen.js');
         const errorHandler = new ErrorHandler(this.messageBoxApi, this.strings);
         const gameResBaseUrl = this.config.gameresBaseUrl ?? '';
@@ -523,18 +573,24 @@ export class Gui {
         gameMenuSubScreens.set((await import('./gui/screen/game/gameMenu/ScreenType.js')).ScreenType.Diplo, new (await import('./gui/screen/game/gameMenu/DiploScreen.js')).DiploScreen(this.strings, this.jsxRenderer!, this.renderer!, Engine.getMpModes() as any, tauntsEnabled, mutedPlayers));
         gameMenuSubScreens.set((await import('./gui/screen/game/gameMenu/ScreenType.js')).ScreenType.ConnectionInfo, new (await import('./gui/screen/game/gameMenu/ConnectionInfoScreen.js')).ConnectionInfoScreen(this.strings, this.jsxRenderer!));
         gameMenuSubScreens.set((await import('./gui/screen/game/gameMenu/ScreenType.js')).ScreenType.QuitConfirm, new (await import('./gui/screen/game/gameMenu/QuitConfirmScreen.js')).QuitConfirmScreen(this.strings));
-        gameMenuSubScreens.set((await import('./gui/screen/game/gameMenu/ScreenType.js')).ScreenType.Options, new (await import('./gui/screen/options/OptionsScreen.js')).OptionsScreen(this.strings, this.jsxRenderer!, this.generalOptions!, this.localPrefs, this.fullScreen!, true, false));
+        gameMenuSubScreens.set((await import('./gui/screen/game/gameMenu/ScreenType.js')).ScreenType.Options, new (await import('./gui/screen/options/OptionsScreen.js')).OptionsScreen(this.strings, this.jsxRenderer!, this.generalOptions!, this.localPrefs, this.fullScreen!, true));
         gameMenuSubScreens.set((await import('./gui/screen/game/gameMenu/ScreenType.js')).ScreenType.OptionsSound, new (await import('./gui/screen/options/SoundOptsScreen.js')).SoundOptsScreen(this.strings, this.jsxRenderer!, this.mixer!, this.music!, this.localPrefs));
         gameMenuSubScreens.set((await import('./gui/screen/game/gameMenu/ScreenType.js')).ScreenType.OptionsKeyboard, new (await import('./gui/screen/options/KeyboardScreen.js')).KeyboardScreen(this.strings, this.jsxRenderer!, this.keyBinds!));
         const sharedVxlGeometryPool = new VxlGeometryPool(new VxlGeometryCache(null, Engine.getActiveMod?.() ?? null), this.generalOptions!.graphics.models.value);
         const buildingImageDataCache = new Map();
         const workerHost = new WorkerHost();
-        const gameScreen = new GameScreen(workerHost, onlineServices.gservCon, onlineServices.wgameresService, onlineServices.wolService, onlineServices.mapTransferService, Engine.getVersion(), '', errorHandler, gameMenuSubScreens, loadingScreenApiFactory, new Parser(), new Serializer(), this.config, this.strings, this.renderer, this.uiScene, this.runtimeVars || {}, this.messageBoxApi, this.toastApi, this.uiAnimationLoop, this.viewport, this.jsxRenderer, this.pointer, this.sound, this.music, this.mixer, this.keyBinds, this.generalOptions, this.localPrefs, undefined, undefined, replayManager, this.fullScreen, mapFileLoader, undefined, Engine.getMapList?.(), new GameLoader(this.appVersion, workerHost, gameResLoader, gameResLoader, rules, gameModes, this.sound, (console as any), undefined, speedCheat, this.gameResConfig!, sharedVxlGeometryPool, buildingImageDataCache, (this as any).runtimeVars?.debugBotIndex, this.config.devMode ?? false), sharedVxlGeometryPool, buildingImageDataCache, mutedPlayers, tauntsEnabled, speedCheat, undefined, clientApi.battleControl);
+        // Full major.minor.patch-githash, not Engine.getVersion()'s truncated
+        // major.minor: this is what gets stamped into recorded replays, the
+        // error-report clientVersion field, and sent to the gserv join
+        // handshake, all of which need to identify the exact build.
+        const gameScreen = new GameScreen(workerHost, onlineServices.gservCon, onlineServices.wgameresService, onlineServices.errorReportService, onlineServices.wolService, onlineServices.mapTransferService, this.appVersion, Engine.getModHashString(), errorHandler, gameMenuSubScreens, loadingScreenApiFactory, new Parser(), new Serializer(), this.config, this.strings, this.renderer, this.uiScene, this.runtimeVars || {}, this.messageBoxApi, this.toastApi, this.uiAnimationLoop, this.viewport, this.jsxRenderer, this.pointer, this.sound, this.music, this.mixer, this.keyBinds, this.generalOptions, this.localPrefs, undefined, undefined, replayManager, this.fullScreen, mapFileLoader, undefined, Engine.getMapList?.(), new GameLoader(this.appVersion, workerHost, gameResLoader, gameResLoader, rules, gameModes, this.sound, (console as any), undefined, speedCheat, this.gameResConfig!, sharedVxlGeometryPool, buildingImageDataCache, (this as any).runtimeVars?.debugBotIndex, this.config.devMode ?? false), sharedVxlGeometryPool, buildingImageDataCache, mutedPlayers, tauntsEnabled, speedCheat, undefined, clientApi.battleControl);
         (gameScreen as any).setController?.(this.rootController);
         this.rootController.addScreen(ScreenType.Game, gameScreen as any);
         const { ReplayScreen } = await import('./gui/screen/replay/ReplayScreen.js');
         const replayGameLoader = new GameLoader(this.appVersion, workerHost, gameResLoader, gameResLoader, rules, gameModes, this.sound, (console as any), undefined, speedCheat, this.gameResConfig!, sharedVxlGeometryPool, buildingImageDataCache, (this as any).runtimeVars?.debugBotIndex, this.config.devMode ?? false);
-        const replayScreen = new ReplayScreen(Engine.getVersion(), '', errorHandler, gameMenuSubScreens, loadingScreenApiFactory, this.config as any, this.strings, this.renderer as any, this.uiScene as any, this.runtimeVars || {} as any, this.messageBoxApi as any, this.uiAnimationLoop as any, this.viewport as any, this.jsxRenderer as any, this.pointer as any, this.sound as any, this.music as any, this.keyBinds as any, this.generalOptions as any, undefined as any, this.fullScreen as any, mapFileLoader as any, replayGameLoader as any, sharedVxlGeometryPool as any, buildingImageDataCache as any, (params?: any) => {
+        // Full version, matching GameScreen above: the replay's own recorded
+        // version is now full too, so this comparison must be apples-to-apples.
+        const replayScreen = new ReplayScreen(this.appVersion, Engine.getModHashString(), errorHandler, gameMenuSubScreens, loadingScreenApiFactory, this.config as any, this.strings, this.renderer as any, this.uiScene as any, this.runtimeVars || {} as any, this.messageBoxApi as any, this.uiAnimationLoop as any, this.viewport as any, this.jsxRenderer as any, this.pointer as any, this.sound as any, this.music as any, this.keyBinds as any, this.generalOptions as any, undefined as any, this.fullScreen as any, mapFileLoader as any, replayGameLoader as any, sharedVxlGeometryPool as any, buildingImageDataCache as any, (params?: any) => {
             this.rootController!.goToScreen(ScreenType.MainMenuRoot, params);
         }, clientApi.battleControl);
         this.rootController.addScreen(ScreenType.Replay, replayScreen as any);
@@ -575,6 +631,9 @@ export class Gui {
         }
         if (this.messageBoxApi) {
             this.messageBoxApi.destroy();
+        }
+        if (this.focusMusicMuter) {
+            this.focusMusicMuter.stop();
         }
         if (this.music) {
             this.music.stopPlaying();
@@ -640,6 +699,8 @@ export class Gui {
             }
             this.mixer = mixer;
             this.audioSystem = new AudioSystem(mixer as any);
+            this.focusMusicMuter = new FocusMusicMuter(mixer, this.localPrefs);
+            this.focusMusicMuter.start();
             const debugRoot = ((window as any).__ra2debug ??= {});
             debugRoot.audioSystem = this.audioSystem;
             debugRoot.mixer = this.mixer;
@@ -692,13 +753,13 @@ export class Gui {
     }
     private createDefaultMixer(): Mixer {
         const mixer = new Mixer();
-        mixer.setVolume(ChannelType.Master, 0.4);
-        mixer.setVolume(ChannelType.CreditTicks, 0.2);
-        mixer.setVolume(ChannelType.Music, 0.3);
-        mixer.setVolume(ChannelType.Ambient, 0.3);
-        mixer.setVolume(ChannelType.Effect, 0.5);
-        mixer.setVolume(ChannelType.Voice, 0.7);
-        mixer.setVolume(ChannelType.Ui, 0.5);
+        mixer.setVolume(ChannelType.Master, 1);
+        mixer.setVolume(ChannelType.CreditTicks, 0.5);
+        mixer.setVolume(ChannelType.Music, 0.6);
+        mixer.setVolume(ChannelType.Ambient, 0.7);
+        mixer.setVolume(ChannelType.Effect, 0.8);
+        mixer.setVolume(ChannelType.Voice, 0.8);
+        mixer.setVolume(ChannelType.Ui, 0.7);
         console.log('[Gui] Created default mixer settings');
         return mixer;
     }

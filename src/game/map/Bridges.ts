@@ -59,7 +59,7 @@ interface BridgePiece {
     next?: BridgePiece;
     headType: BridgeHeadType;
 }
-interface BridgeSpec {
+export interface BridgeSpec {
     start: Tile;
     end: Tile;
     type: OverlayBridgeType;
@@ -502,7 +502,7 @@ export class Bridges {
             height: isHorizontal ? 3 : spec.end.ry - spec.start.ry + 1,
         };
     }
-    findBridgeSpecsForHeadTiles(headTiles: Set<Tile>): BridgeSpec[] {
+    findBridgeSpecsForHeadTiles(headTiles: Iterable<Tile>): BridgeSpec[] {
         const specMap = new Map<string, BridgeSpec>();
         for (const tile of headTiles) {
             const spec = this.findClosestBridgeSpec(tile);

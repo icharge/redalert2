@@ -1,5 +1,6 @@
-export interface Region {
-    id: string;
+import type { IniFile } from "@/data/IniFile";
+
+export interface Region {    id: string;
     label: string;
     available: boolean;
     gameVersion?: string;
@@ -10,12 +11,13 @@ export interface Region {
     wgameresUrl?: string;
     mapTransferUrl?: string;
     leaderboardUrl?: string;
+    errorReportUrl?: string;
 }
 
 export class ServerRegions {
     private regions: Map<string, Region> = new Map();
 
-    load(ini: any): void {
+    load(ini: IniFile): void {
         this.regions.clear();
         for (const section of ini.getOrderedSections()) {
             this.regions.set(section.name, {
@@ -30,6 +32,7 @@ export class ServerRegions {
                 wgameresUrl: section.getString("wgameresUrl") || undefined,
                 mapTransferUrl: section.getString("mapTransferUrl") || undefined,
                 leaderboardUrl: section.getString("leaderboardUrl") || undefined,
+                errorReportUrl: section.getString("errorReportUrl") || undefined,
             });
         }
     }

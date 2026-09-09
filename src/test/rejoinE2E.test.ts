@@ -85,7 +85,7 @@ describe("E2E: mid-game reconnect and resync over the real gserv stack", () => {
             gserv.onPlayerReconnected.subscribe((nick: string) => reconnected.push(nick));
             gserv.onPlayerGaveUp.subscribe((nick: string) => gaveUp.push(nick));
             server.handleMessage(client, `ticket ${instance.tickets.get(nick)}`);
-            server.handleMessage(client, `join ${instance.gameId} 0.83 `);
+            server.handleMessage(client, `join ${instance.gameId}`);
             const pump = makePump(irc, socket);
             pump();
             return { socket, client, irc, gserv, pump, received, reconnecting, reconnected, gaveUp };
@@ -147,7 +147,7 @@ describe("E2E: mid-game reconnect and resync over the real gserv stack", () => {
             const socket = new FakeSocket();
             const client = server.handleOpen(socket);
             server.handleMessage(client, `ticket ${instance.tickets.get(nick)}`);
-            server.handleMessage(client, `join ${instance.gameId} 0.83 `);
+            server.handleMessage(client, `join ${instance.gameId}`);
             return { socket, client };
         };
         const alice = joinAs("alice");
@@ -179,7 +179,7 @@ describe("E2E: mid-game reconnect and resync over the real gserv stack", () => {
             const socket = new FakeSocket();
             const client = server.handleOpen(socket);
             server.handleMessage(client, `ticket ${instance.tickets.get(nick)}`);
-            server.handleMessage(client, `join ${instance.gameId} 0.83 `);
+            server.handleMessage(client, `join ${instance.gameId}`);
             return { socket, client };
         };
         const alice = joinRaw("alice");
@@ -241,7 +241,7 @@ describe("E2E: mid-game reconnect and resync over the real gserv stack", () => {
             const socket = new FakeSocket();
             const client = server.handleOpen(socket);
             server.handleMessage(client, `ticket ${instance.tickets.get(nick)}`);
-            server.handleMessage(client, `join ${instance.gameId} 0.83 `);
+            server.handleMessage(client, `join ${instance.gameId}`);
             return { socket, client };
         };
         const alice = joinRaw("alice");
@@ -358,7 +358,7 @@ describe("E2E: mid-game reconnect and resync over the real gserv stack", () => {
             gserv.onResumeCountdown.subscribe(() => events.push("resume-countdown"));
             gserv.onResumed.subscribe(() => events.push("resumed"));
             server.handleMessage(client, `ticket ${instance.tickets.get(nick)}`);
-            server.handleMessage(client, `join ${instance.gameId} 0.83 `);
+            server.handleMessage(client, `join ${instance.gameId}`);
             const pump = makePump(irc, socket);
             pump();
             return { socket, client, irc, gserv, pump, events };

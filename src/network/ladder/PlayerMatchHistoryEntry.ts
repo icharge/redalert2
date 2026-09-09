@@ -3,5 +3,5 @@ export interface PlayerMatchHistoryEntry {
     timestamp: number;
     mapName: string;
     result: string;
-    [key: string]: any;
+    [key: string]: unknown;
 }

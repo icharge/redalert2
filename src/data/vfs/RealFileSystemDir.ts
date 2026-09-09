@@ -31,12 +31,12 @@ export class RealFileSystemDir {
                 yield key;
             }
         }
-        catch (e: any) {
-            if (e.name === "NotFoundError") {
-                throw new FileNotFoundError(`Directory \"${this.handle.name}\" not found`, e);
+        catch (e: unknown) {
+            if ((e as { name?: string }).name === "NotFoundError") {
+                throw new FileNotFoundError(`Directory \"${this.handle.name}\" not found`, e as Error);
             }
             if (e instanceof DOMException) {
-                throw new IOError(`Directory \"${this.handle.name}\" could not be read (${e.name})`, e);
+                throw new IOError(`Directory \"${this.handle.name}\" could not be read (${e.name})`, e as Error);
             }
             throw e;
         }
@@ -56,12 +56,12 @@ export class RealFileSystemDir {
                 }
             }
         }
-        catch (e: any) {
-            if (e.name === "NotFoundError") {
-                throw new FileNotFoundError(`Directory \"${this.handle.name}\" not found`, e);
+        catch (e: unknown) {
+            if ((e as { name?: string }).name === "NotFoundError") {
+                throw new FileNotFoundError(`Directory \"${this.handle.name}\" not found`, e as Error);
             }
             if (e instanceof DOMException) {
-                throw new IOError(`Directory \"${this.handle.name}\" could not be read (${e.name})`, e);
+                throw new IOError(`Directory \"${this.handle.name}\" could not be read (${e.name})`, e as Error);
             }
             throw e;
         }
@@ -114,15 +114,15 @@ export class RealFileSystemDir {
             const resolvedName = skipCaseFix ? filename : await this.fixEntryCase(filename);
             fileHandle = await this.handle.getFileHandle(resolvedName);
         }
-        catch (e: any) {
-            if (e.name === "NotFoundError") {
-                throw new FileNotFoundError(`File \"${filename}\" not found in directory \"${this.handle.name}\"`, e);
+        catch (e: unknown) {
+            if ((e as { name?: string }).name === "NotFoundError") {
+                throw new FileNotFoundError(`File \"${filename}\" not found in directory \"${this.handle.name}\"`, e as Error);
             }
             if (e instanceof TypeError && e.message.includes("not allowed")) {
-                throw new NameNotAllowedError(`File name \"${filename}\" is not allowed`, e);
+                throw new NameNotAllowedError(`File name \"${filename}\" is not allowed`, e as Error);
             }
             if (e instanceof DOMException) {
-                throw new IOError(`File \"${filename}\" could not be read (${e.name})`, e);
+                throw new IOError(`File \"${filename}\" could not be read (${e.name})`, e as Error);
             }
             throw e;
         }
@@ -143,7 +143,7 @@ export class RealFileSystemDir {
             try {
                 await this.deleteFile(finalFilename, true);
             }
-            catch (delError: any) {
+            catch (delError: unknown) {
                 if (!(delError instanceof FileNotFoundError)) {
                 }
             }
@@ -153,7 +153,7 @@ export class RealFileSystemDir {
                 const bytes = virtualFile.getBytes();
                 for (let offset = 0; offset < bytes.byteLength; offset += WRITE_CHUNK_BYTES) {
                     const chunk = bytes.subarray(offset, offset + WRITE_CHUNK_BYTES);
-                    await writable.write(chunk as any);
+                    await writable.write(chunk as unknown as FileSystemWriteChunkType);
                 }
                 await writable.close();
             }
@@ -162,18 +162,18 @@ export class RealFileSystemDir {
                 throw writeError;
             }
         }
-        catch (e: any) {
-            if (e.name === "QuotaExceededError" || (e instanceof DOMException && e.message.toLowerCase().includes("quota"))) {
-                throw new StorageQuotaError(undefined, e);
+        catch (e: unknown) {
+            if ((e as { name?: string }).name === "QuotaExceededError" || (e instanceof DOMException && e.message.toLowerCase().includes("quota"))) {
+                throw new StorageQuotaError(undefined, e as Error);
             }
-            if (e.name === "NotFoundError") {
-                throw new FileNotFoundError(`Directory \"${this.handle.name}\" not found during writeFile operation for \"${resolvedFilename}\"`, e);
+            if ((e as { name?: string }).name === "NotFoundError") {
+                throw new FileNotFoundError(`Directory \"${this.handle.name}\" not found during writeFile operation for \"${resolvedFilename}\"`, e as Error);
             }
             if (e instanceof TypeError && e.message.includes("not allowed")) {
-                throw new NameNotAllowedError(`File name \"${resolvedFilename}\" is not allowed`, e);
+                throw new NameNotAllowedError(`File name \"${resolvedFilename}\" is not allowed`, e as Error);
             }
             if (e instanceof DOMException) {
-                throw new IOError(`File \"${resolvedFilename}\" could not be written (${e.name})`, e);
+                throw new IOError(`File \"${resolvedFilename}\" could not be written (${e.name})`, e as Error);
             }
             throw e;
         }
@@ -184,18 +184,18 @@ export class RealFileSystemDir {
             try {
                 await this.handle.removeEntry(resolvedName);
             }
-            catch (e: any) {
-                if (skipCaseFix && e.name === "NotFoundError") {
+            catch (e: unknown) {
+                if (skipCaseFix && (e as { name?: string }).name === "NotFoundError") {
                     return;
                 }
-                if (e.name === "QuotaExceededError" || (e instanceof DOMException && e.message.toLowerCase().includes("quota"))) {
-                    throw new StorageQuotaError(undefined, e);
+                if ((e as { name?: string }).name === "QuotaExceededError" || (e instanceof DOMException && e.message.toLowerCase().includes("quota"))) {
+                    throw new StorageQuotaError(undefined, e as Error);
                 }
                 if (e instanceof TypeError && e.message.includes("not allowed")) {
-                    throw new NameNotAllowedError(`File name \"${resolvedName}\" is not allowed for deletion`, e);
+                    throw new NameNotAllowedError(`File name \"${resolvedName}\" is not allowed for deletion`, e as Error);
                 }
                 if (e instanceof DOMException) {
-                    throw new IOError(`File \"${resolvedName}\" could not be deleted (${e.name})`, e);
+                    throw new IOError(`File \"${resolvedName}\" could not be deleted (${e.name})`, e as Error);
                 }
                 throw e;
             }
@@ -207,15 +207,15 @@ export class RealFileSystemDir {
         try {
             dirHandle = await this.handle.getDirectoryHandle(resolvedName);
         }
-        catch (e: any) {
-            if (e.name === "NotFoundError") {
-                throw new FileNotFoundError(`Directory \"${dirName}\" not found or parent directory \"${this.handle.name}\" is gone`, e);
+        catch (e: unknown) {
+            if ((e as { name?: string }).name === "NotFoundError") {
+                throw new FileNotFoundError(`Directory \"${dirName}\" not found or parent directory \"${this.handle.name}\" is gone`, e as Error);
             }
             if (e instanceof TypeError && e.message.includes("not allowed")) {
-                throw new NameNotAllowedError(`Directory name \"${dirName}\" is not allowed`, e);
+                throw new NameNotAllowedError(`Directory name \"${dirName}\" is not allowed`, e as Error);
             }
             if (e instanceof DOMException) {
-                throw new IOError(`Directory \"${dirName}\" could not be read (${e.name})`, e);
+                throw new IOError(`Directory \"${dirName}\" could not be read (${e.name})`, e as Error);
             }
             throw e;
         }
@@ -227,18 +227,18 @@ export class RealFileSystemDir {
             const dirHandle = await this.handle.getDirectoryHandle(resolvedName, { create: true });
             return new RealFileSystemDir(dirHandle, forceCaseSensitive);
         }
-        catch (e: any) {
-            if (e.name === "QuotaExceededError" || (e instanceof DOMException && e.message.toLowerCase().includes("quota"))) {
-                throw new StorageQuotaError(undefined, e);
+        catch (e: unknown) {
+            if ((e as { name?: string }).name === "QuotaExceededError" || (e instanceof DOMException && e.message.toLowerCase().includes("quota"))) {
+                throw new StorageQuotaError(undefined, e as Error);
             }
-            if (e.name === "NotFoundError") {
-                throw new FileNotFoundError(`Directory \"${this.handle.name}\" not found while trying to create/get \"${dirName}\"`, e);
+            if ((e as { name?: string }).name === "NotFoundError") {
+                throw new FileNotFoundError(`Directory \"${this.handle.name}\" not found while trying to create/get \"${dirName}\"`, e as Error);
             }
             if (e instanceof TypeError && e.message.includes("not allowed")) {
-                throw new NameNotAllowedError(`Directory name \"${dirName}\" is not allowed`, e);
+                throw new NameNotAllowedError(`Directory name \"${dirName}\" is not allowed`, e as Error);
             }
             if (e instanceof DOMException) {
-                throw new IOError(`Directory \"${dirName}\" could not be created/accessed (${e.name})`, e);
+                throw new IOError(`Directory \"${dirName}\" could not be created/accessed (${e.name})`, e as Error);
             }
             throw e;
         }
@@ -253,21 +253,21 @@ export class RealFileSystemDir {
             try {
                 await this.handle.removeEntry(resolvedName, { recursive });
             }
-            catch (e: any) {
-                if (e.name === "QuotaExceededError" || (e instanceof DOMException && e.message.toLowerCase().includes("quota"))) {
-                    throw new StorageQuotaError(undefined, e);
+            catch (e: unknown) {
+                if ((e as { name?: string }).name === "QuotaExceededError" || (e instanceof DOMException && e.message.toLowerCase().includes("quota"))) {
+                    throw new StorageQuotaError(undefined, e as Error);
                 }
-                if (e.name === "InvalidModificationError" && !recursive) {
-                    throw new IOError("Can't delete non-empty directory when recursive = false", e);
+                if ((e as { name?: string }).name === "InvalidModificationError" && !recursive) {
+                    throw new IOError("Can't delete non-empty directory when recursive = false", e as Error);
                 }
-                if (e.name === "NotFoundError") {
-                    throw new FileNotFoundError(`Directory \"${resolvedName}\" not found for deletion.`, e);
+                if ((e as { name?: string }).name === "NotFoundError") {
+                    throw new FileNotFoundError(`Directory \"${resolvedName}\" not found for deletion.`, e as Error);
                 }
                 if (e instanceof TypeError && e.message.includes("not allowed")) {
-                    throw new NameNotAllowedError(`Directory name \"${resolvedName}\" is not allowed for deletion`, e);
+                    throw new NameNotAllowedError(`Directory name \"${resolvedName}\" is not allowed for deletion`, e as Error);
                 }
                 if (e instanceof DOMException) {
-                    throw new IOError(`Directory \"${resolvedName}\" could not be deleted (${e.name})`, e);
+                    throw new IOError(`Directory \"${resolvedName}\" could not be deleted (${e.name})`, e as Error);
                 }
                 throw e;
             }

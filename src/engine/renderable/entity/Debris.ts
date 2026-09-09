@@ -6,6 +6,7 @@ import { AnimProps } from "@/engine/AnimProps";
 import { SimpleRunner } from "@/engine/animation/SimpleRunner";
 import { Coords } from "@/game/Coords";
 import { ShadowRenderable } from "@/engine/renderable/ShadowRenderable";
+import type { Palette } from "@/data/Palette";
 import * as THREE from "three";
 interface GameObject {
     rules: any;
@@ -32,10 +33,6 @@ interface ImageFinder {
 }
 interface Voxels {
     get(filename: string): any;
-}
-interface Palette {
-}
-interface Camera {
 }
 interface Lighting {
     compute(lightingType: any, tile: any, tileElevation: number): THREE.Vector3;
@@ -64,7 +61,7 @@ export class Debris {
     private imageFinder: ImageFinder;
     private voxels: Voxels;
     private palette: Palette;
-    private camera: Camera;
+    private camera: THREE.Camera;
     private lighting: Lighting;
     private gameSpeed: GameSpeed;
     private vxlBuilderFactory: VxlBuilderFactory;
@@ -86,7 +83,7 @@ export class Debris {
     private shpAnimRunner!: SimpleRunner;
     private shpRenderable?: ShpRenderable;
     private shpShadowRenderable?: ShpRenderable;
-    constructor(gameObject: GameObject, rules: Rules, imageFinder: ImageFinder, voxels: Voxels, _unusedVoxelAnimCollection: unknown, palette: Palette, camera: Camera, lighting: Lighting, gameSpeed: GameSpeed, vxlBuilderFactory: VxlBuilderFactory, useSpriteBatching: boolean) {
+    constructor(gameObject: GameObject, rules: Rules, imageFinder: ImageFinder, voxels: Voxels, _unusedVoxelAnimCollection: unknown, palette: Palette, camera: THREE.Camera, lighting: Lighting, gameSpeed: GameSpeed, vxlBuilderFactory: VxlBuilderFactory, useSpriteBatching: boolean) {
         this.gameObject = gameObject;
         this.rules = rules;
         this.imageFinder = imageFinder;

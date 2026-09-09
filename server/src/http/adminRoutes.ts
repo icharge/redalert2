@@ -9,6 +9,7 @@ import { Session, SessionManager } from "../auth/session";
 import { AccountStore } from "../auth/accountStore";
 import { LadderService, isLadderType } from "../ladder/LadderService";
 import { WolServer } from "../server/WolServer";
+import { MapStore } from "../mapstore/MapStore";
 import { Logger } from "../logger";
 import { statSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
@@ -20,6 +21,7 @@ export interface AdminDeps {
     accounts: AccountStore;
     wol: WolServer;
     replaysDir: string;
+    maps?: MapStore;
 }
 
 function json(body: unknown, status = 200): Response {
@@ -290,9 +292,91 @@ export async function handleAdmin(req: Request, deps: AdminDeps, config: ServerC
             }
             return deny(config, req, "Not Found", 404);
         }
+        case "maps": {
+            if (!deps.maps) {
+                return deny(config, req, "Map service disabled", 404);
+            }
+            // GET /admin/maps — list all (including hidden) with stats.
+            if (req.method === "GET" && parts.length === 2) {
+                const url = new URL(req.url);
+                const query = url.searchParams.get("q")?.trim() || undefined;
+                const sortRaw = url.searchParams.get("sort") ?? "newest";
+                const page = Number(url.searchParams.get("page") ?? 1);
+                const limit = Number(url.searchParams.get("limit") ?? 50);
+                const result = deps.maps.list({
+                    query,
+                    sort: ["newest", "downloads", "uploads", "plays", "rating"].includes(sortRaw) ? sortRaw as never : "newest",
+                    page,
+                    limit,
+                    includeHidden: true,
+                });
+                return withCors(json(result), config, req);
+            }
+            // GET /admin/maps/{id}/meta — metadata + upload log.
+            if (req.method === "GET" && parts.length === 4 && parts[3] === "meta") {
+                const record = resolveAdminMap(deps.maps, parts[2]);
+                if (!record) {
+                    return deny(config, req, "Map not found", 404);
+                }
+                return withCors(json({ ...record, uploadLog: deps.maps.getUploadLog(record.sha256) }), config, req);
+            }
+            // POST /admin/maps/{id} — edit metadata.
+            if (req.method === "POST" && parts.length === 3) {
+                let body: any;
+                try {
+                    body = await req.json();
+                }
+                catch {
+                    return deny(config, req, "Invalid request body", 400);
+                }
+                const record = resolveAdminMap(deps.maps, parts[2]);
+                if (!record) {
+                    return deny(config, req, "Map not found", 404);
+                }
+                const updated = deps.maps.updateMeta(record.sha256, {
+                    title: typeof body?.title === "string" ? body.title : undefined,
+                    description: typeof body?.description === "string" ? body.description : undefined,
+                    official: typeof body?.official === "boolean" ? body.official : undefined,
+                    maxPlayers: Number.isInteger(body?.maxPlayers) ? body.maxPlayers : undefined,
+                    gameModes: Array.isArray(body?.gameModes) ? body.gameModes.map(String) : undefined,
+                    theater: typeof body?.theater === "string" ? body.theater : undefined,
+                });
+                log.info(`admin: ${session.username} edited map ${record.filename}`);
+                return withCors(json({ updated }), config, req);
+            }
+            // POST /admin/maps/{id}/visible?visible=0|1 — moderation.
+            if (req.method === "POST" && parts.length === 4 && parts[3] === "visible") {
+                const visible = new URL(req.url).searchParams.get("visible") === "1";
+                const record = resolveAdminMap(deps.maps, parts[2]);
+                if (!record) {
+                    return deny(config, req, "Map not found", 404);
+                }
+                deps.maps.setVisible(record.sha256, visible);
+                log.info(`admin: ${session.username} set ${record.filename} visible=${visible}`);
+                return withCors(json({ visible }), config, req);
+            }
+            // DELETE /admin/maps/{id} — remove record + blob.
+            if (req.method === "DELETE" && parts.length === 3) {
+                const record = resolveAdminMap(deps.maps, parts[2]);
+                if (!record) {
+                    return deny(config, req, "Map not found", 404);
+                }
+                deps.maps.delete(record.sha256);
+                log.info(`admin: ${session.username} deleted map ${record.filename}`);
+                return withCors(json({ deleted: true }), config, req);
+            }
+            return deny(config, req, "Not Found", 404);
+        }
         default:
             return deny(config, req, "Not Found", 404);
     }
+}
+
+function resolveAdminMap(maps: MapStore, id: string) {
+    if (/^[0-9a-f]{64}$/.test(id)) {
+        return maps.getBySha256(id);
+    }
+    return maps.getByFilename(id, true);
 }
 
 function requireAdmin(deps: AdminDeps, config: ServerConfig, req: Request, log: Logger): Session | undefined {

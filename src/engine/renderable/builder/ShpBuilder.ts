@@ -3,6 +3,8 @@ import * as SpriteUtils from "../../gfx/SpriteUtils";
 import { ShpTextureAtlas } from "./ShpTextureAtlas";
 import { PaletteBasicMaterial } from "../../gfx/material/PaletteBasicMaterial";
 import { BatchedMesh, BatchMode } from "../../gfx/batch/BatchedMesh";
+import type { Palette } from "../../../data/Palette";
+import type { ShpFile } from "../../../data/ShpFile";
 import * as THREE from 'three';
 export class ShpBuilder {
     static textureCache = new Map();
@@ -11,7 +13,7 @@ export class ShpBuilder {
     private scale!: number;
     private depth!: boolean;
     private depthOffset!: number;
-    private batchPalettes!: any[];
+    private batchPalettes!: Palette[];
     private useMeshBatching!: boolean;
     private opacity!: number;
     private forceTransparent!: boolean;
@@ -22,23 +24,23 @@ export class ShpBuilder {
     private frameOffset!: number;
     public flat!: boolean;
     private uiAnchorCompensation!: boolean;
-    private shpFile: any;
-    private palette: any;
-    private camera: any;
+    private shpFile: ShpFile;
+    private palette: Palette;
+    private camera: THREE.Camera;
     private shpSize!: {
         width: number;
         height: number;
     };
-    private mesh?: any;
-    private extraLight?: any;
+    private mesh?: BatchedMesh | THREE.Mesh;
+    private extraLight?: THREE.Vector3;
     private materialCacheKey?: string;
-    private atlas: any;
-    private frameNo?: number;
+    private atlas: ShpTextureAtlas;
+    private frameNo: number = 0;
     private align?: {
         x: number;
         y: number;
     };
-    static prepareTexture(shpFile) {
+    static prepareTexture(shpFile: ShpFile) {
         if (!ShpBuilder.textureCache.has(shpFile)) {
             const atlas = new ShpTextureAtlas().fromShpFile(shpFile);
             ShpBuilder.textureCache.set(shpFile, atlas);
@@ -50,7 +52,7 @@ export class ShpBuilder {
         ShpBuilder.geometryCache.forEach((cache) => cache.forEach((geometry) => geometry.dispose()));
         ShpBuilder.geometryCache.clear();
     }
-    constructor(shpFile, palette, camera, scale = 1, depth = false, depthOffset = 0) {
+    constructor(shpFile: ShpFile, palette: Palette, camera: THREE.Camera, scale = 1, depth = false, depthOffset = 0) {
         this.scale = scale;
         this.depth = depth;
         this.depthOffset = depthOffset;
@@ -74,13 +76,13 @@ export class ShpBuilder {
         }
         this.uiAnchorCompensation = enabled;
     }
-    useMaterial(texture, palette, transparent) {
+    useMaterial(texture: THREE.Texture, palette: THREE.Texture, transparent: boolean) {
         if (texture.format !== THREE.RGBAFormat) {
             throw new Error("Texture must have format THREE.RGBAFormat");
         }
         this.materialCacheKey = texture.uuid + "_" + palette.uuid + "_" + Number(transparent);
         let cached = ShpBuilder.materialCache.get(this.materialCacheKey);
-        let material;
+        let material: PaletteBasicMaterial | undefined;
         if (cached) {
             material = cached.material;
             cached.usages++;
@@ -142,7 +144,7 @@ export class ShpBuilder {
         ShpBuilder.prepareTexture(this.shpFile);
         this.atlas = ShpBuilder.textureCache.get(this.shpFile);
     }
-    getSpriteGeometryOptions(frameNo) {
+    getSpriteGeometryOptions(frameNo: number) {
         frameNo += this.frameOffset;
         const image = this.shpFile.getImage(frameNo);
         const offset = {
@@ -162,7 +164,7 @@ export class ShpBuilder {
             scale: this.scale,
         };
     }
-    getGeometryCacheKey(frameNo) {
+    getGeometryCacheKey(frameNo: number) {
         return (frameNo +
             this.frameOffset +
             "_" +
@@ -180,7 +182,7 @@ export class ShpBuilder {
             "_" +
             this.depthOffset);
     }
-    setFrame(frameNo) {
+    setFrame(frameNo: number) {
         if (this.frameNo !== frameNo) {
             this.frameNo = frameNo;
             if (this.mesh) {
@@ -215,28 +217,28 @@ export class ShpBuilder {
     get frameCount() {
         return this.shpFile.numImages;
     }
-    getBatchPaletteIndex(palette) {
+    getBatchPaletteIndex(palette: Palette) {
         const index = this.batchPalettes.findIndex((p) => p.hash === palette.hash);
         if (index === -1) {
             throw new Error("Provided palette not found in the list of batch palettes. Call setBatchPalettes first.");
         }
         return index;
     }
-    setPalette(palette) {
+    setPalette(palette: Palette) {
         this.palette = palette;
         if (this.mesh) {
             if (this.useMeshBatching) {
                 const paletteIndex = this.getBatchPaletteIndex(palette);
-                this.mesh.setPaletteIndex(paletteIndex);
+                (this.mesh as BatchedMesh).setPaletteIndex(paletteIndex);
             }
             else {
                 const paletteTexture = TextureUtils.textureFromPalette(palette);
-                let material = this.mesh.material;
+                let material = this.mesh.material as PaletteBasicMaterial;
                 material.palette = paletteTexture;
             }
         }
     }
-    setBatchPalettes(palettes) {
+    setBatchPalettes(palettes: Palette[]) {
         if (!this.useMeshBatching) {
             throw new Error("Can't use multiple palettes when not batching");
         }
@@ -245,14 +247,14 @@ export class ShpBuilder {
         }
         this.batchPalettes = palettes;
     }
-    setExtraLight(extraLight) {
+    setExtraLight(extraLight: THREE.Vector3) {
         this.extraLight = extraLight;
         if (this.mesh) {
             if (this.useMeshBatching) {
-                this.mesh.setExtraLight(extraLight);
+                (this.mesh as BatchedMesh).setExtraLight(extraLight);
             }
             else {
-                let material = this.mesh.material;
+                let material = this.mesh.material as PaletteBasicMaterial;
                 material.extraLight = extraLight;
             }
         }
@@ -276,10 +278,10 @@ export class ShpBuilder {
     updateOpacity() {
         if (this.mesh) {
             if (this.useMeshBatching) {
-                this.mesh.setOpacity(this.opacity);
+                (this.mesh as BatchedMesh).setOpacity(this.opacity);
             }
             else {
-                this.mesh.material.opacity = this.opacity;
+                (this.mesh.material as THREE.Material).opacity = this.opacity;
             }
         }
     }
@@ -287,13 +289,14 @@ export class ShpBuilder {
         if (this.mesh) {
             const transparent = this.forceTransparent || this.opacity < 1;
             if (this.useMeshBatching) {
-                const texture = this.mesh.material.map;
-                const palette = this.mesh.material.palette;
+                const material = this.mesh.material as PaletteBasicMaterial;
+                const texture = material.map;
+                const palette = material.palette;
                 this.freeMaterial();
-                this.mesh.material = this.useMaterial(texture, palette, transparent);
+                this.mesh.material = this.useMaterial(texture!, palette, transparent);
             }
             else {
-                this.mesh.material.transparent = transparent;
+                (this.mesh.material as THREE.Material).transparent = transparent;
             }
         }
     }
@@ -313,12 +316,12 @@ export class ShpBuilder {
         }
         else {
         }
-        let mesh;
+        let mesh: BatchedMesh | THREE.Mesh;
         const transparent = this.opacity < 1 || this.forceTransparent;
         if (this.useMeshBatching) {
             const paletteTexture = TextureUtils.textureFromPalettes(this.batchPalettes);
             const material = this.useMaterial(texture, paletteTexture, transparent);
-            mesh = new BatchedMesh(geometry, material, BatchMode.Merging);
+            mesh = new BatchedMesh(geometry, material!, BatchMode.Merging);
             mesh.castShadow = false;
         }
         else {
@@ -347,7 +350,7 @@ export class ShpBuilder {
                 this.freeMaterial();
             }
             else {
-                this.mesh.material.dispose();
+                (this.mesh.material as THREE.Material).dispose();
             }
             this.mesh = undefined;
         }

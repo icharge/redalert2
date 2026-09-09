@@ -1,12 +1,12 @@
 export class LightningStormRules {
-    private deferment: number = 0;
-    private damage: number = 0;
-    private duration: number = 0;
-    private warhead: string = '';
-    private hitDelay: number = 0;
-    private scatterDelay: number = 0;
-    private cellSpread: number = 0;
-    private separation: number = 0;
+    public deferment: number = 0;
+    public damage: number = 0;
+    public duration: number = 0;
+    public warhead: string = '';
+    public hitDelay: number = 0;
+    public scatterDelay: number = 0;
+    public cellSpread: number = 0;
+    public separation: number = 0;
     readIni(ini: any): LightningStormRules {
         this.deferment = ini.getNumber("LightningDeferment");
         this.damage = ini.getNumber("LightningDamage");
