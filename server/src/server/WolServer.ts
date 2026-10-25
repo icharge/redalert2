@@ -626,7 +626,7 @@ export class WolServer {
             this.sendStartgAbort(user, key, 1);
             return;
         }
-        const instance = this.gservs.create(players, gserv.url);
+        const instance = this.gservs.create(players, gserv.url, { nativeSku: game.channelType === 33 ? 16640 : game.channelType === 41 ? 18688 : undefined });
         instance.gameopts = game.gameOpts;
         this.log.info(`game start ${key} by ${user.nick}: instance ${instance.gameId} for ${players.join(", ")}`);
         for (const nick of players) {

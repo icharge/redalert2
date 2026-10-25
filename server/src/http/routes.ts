@@ -4,6 +4,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { ServerConfig } from "../config";
 import { Logger, makeLogger } from "../logger";
+import { handleNativeResults } from "./nativeResults";
 import { randomHex } from "../util/random";
 import { FixedWindowLimiter } from "../util/rateLimit";
 import { LadderError, LadderService } from "../ladder/LadderService";
@@ -207,6 +208,9 @@ ${mapTransferLine}`;
     }
 
     const pathParts = url.pathname.split("/").filter(Boolean);
+    if (req.method === "POST" && pathParts[0] === "native-results" && pathParts.length === 2) {
+        return handleNativeResults(req, deps, config, pathParts[1]);
+    }
     if (pathParts[0] === "admin") {
         return handleAdmin(req, {
             sessions: deps.sessions,

@@ -14,6 +14,8 @@
 //   rungSearch   -> {records: [{name, rank, points, mmr, wins, losses, draws,
 //                               rankType}], totalCount} (1-based start)
 
+import { createHash } from "node:crypto";
+import { NativeGameRes, StoredNativeReport, NativeResultError, nativeResultType } from "./nativeGameRes";
 import { Logger } from "../logger";
 import {
     LadderMatchRecord,
@@ -334,6 +336,35 @@ export class LadderService {
         }
         this.log.info(`ladder match ${input.gameId} recorded (${input.ladderType}, season ${seasonId}): ${input.players.map(player => `${player.name}:${WolGameReportResult[player.resultType]}`).join(", ")}`);
         return report;
+    }
+
+    recordNativeReport(gameId: string, reporter: string, report: NativeGameRes, roster: string[]): void {
+        const existing = this.storage.getLadderMatch(gameId);
+        if (existing?.scored) throw new NativeResultError("Cannot replace ranked history", 409);
+        const previous = existing ? JSON.parse(existing.payload) : {};
+        const reports: StoredNativeReport[] = previous.nativeReports ?? [];
+        const digest = createHash("sha256").update(report.packetBase64).digest("hex");
+        if (reports.some(r => r.reporter.toLowerCase() === reporter.toLowerCase() && r.digest === digest)) return;
+        if (reports.filter(r => r.reporter.toLowerCase() === reporter.toLowerCase()).length >= 4) throw new NativeResultError("Report limit reached", 429);
+        const now = Date.now();
+        reports.push({ ...report, reporter, source: "native-client", digest, reportedAt: now });
+        // Retain every report; select a terminal report before a provisional one.
+        // Disagreement stays explicit and never becomes an authoritative winner.
+        const terminal = reports.filter(r => r.finished && !r.outOfSync && roster.every(n => nativeResultType(r.players.find(p => p.name.toLowerCase() === n.toLowerCase())!.completionStatus) >= 0));
+        const summary = terminal[0] ?? reports[reports.length - 1];
+        const outcomes = (r: StoredNativeReport) => roster.map(n => nativeResultType(r.players.find(p => p.name.toLowerCase() === n.toLowerCase())!.completionStatus));
+        const disputed = terminal.some(r => JSON.stringify(outcomes(r)) !== JSON.stringify(outcomes(terminal[0])));
+        const players = roster.map(name => {
+            const player = summary.players.find(p => p.name.toLowerCase() === name.toLowerCase())!;
+            return { name, resultType: disputed || terminal.length === 0 ? -1 : nativeResultType(player.completionStatus),
+                rankType: 0, points: { value: 0, gain: 0 }, mmr: { value: 0, gain: 0 } };
+        });
+        this.storage.upsertUnscoredLadderMatch({ gameId, seasonId: 0, ladderType: "", reportedAt: existing?.reportedAt ?? now,
+            payload: JSON.stringify({ gameId, duration: summary.duration, mapName: summary.mapName, players, disputed, nativeReports: reports }),
+            replayPath: existing?.replayPath ?? "", scored: false });
+        for (const player of players) this.storage.insertLadderMatchPlayer({ gameId, usernameKey: player.name.toLowerCase(), seasonId: 0, ladderType: "",
+            resultType: player.resultType, rankType: 0, points: 0, pointsGain: 0, mmr: 0, mmrGain: 0, mapName: summary.mapName, reportedAt: existing?.reportedAt ?? now });
+        this.log.info(`native results: stored ${gameId} from ${reporter}`);
     }
 
     // --- Admin console domain operations ------------------------------------
@@ -771,6 +802,8 @@ export interface AdminDashboard {
 }
 
 export interface AdminMatch {
+    nativeReports?: StoredNativeReport[];
+    disputed?: boolean;
     gameId: string;
     seasonId: number;
     ladderType: string;

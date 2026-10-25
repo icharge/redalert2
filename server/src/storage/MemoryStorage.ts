@@ -141,6 +141,12 @@ export class MemoryStorage implements Storage {
         });
     }
 
+    upsertUnscoredLadderMatch(match: LadderMatchRecord): void {
+        const existing = this.matches.get(match.gameId);
+        if (existing?.scored) return;
+        this.matches.set(match.gameId, { ...match, scored: false, replayPath: existing?.replayPath || match.replayPath });
+    }
+
     updateLadderMatchReplayPath(gameId: string, replayPath: string): boolean {
         const match = this.matches.get(gameId);
         if (!match || match.replayPath !== "") {

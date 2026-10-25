@@ -24,6 +24,21 @@ function datagram(ip: number, srcPort: number, dstPort: number, payload: number[
 }
 
 describe("NativeRelay", () => {
+    test("keeps an active native instance and retains it for late results after the last departure", () => {
+        const { manager, instance, relay } = setup(["alice", "bob"]);
+        const a = connect(relay, instance.tickets.get("alice")!);
+        const b = connect(relay, instance.tickets.get("bob")!);
+        expect(instance.started).toBe(true);
+        manager.sweepExpired(1, 60, instance.timestamp + 100);
+        expect(manager.get(instance.gameId)).toBe(instance);
+        relay.handleClose(a.client);
+        expect(instance.endedAt).toBeUndefined();
+        relay.handleClose(b.client);
+        expect(instance.endedAt).toBeNumber();
+        expect(manager.get(instance.gameId)).toBe(instance);
+        relay.dispose();
+    });
+
     test("virtual IPs are stable, case-insensitive and avoid .0 / .255", () => {
         expect(nativeVirtualIp("Alice")).toBe(nativeVirtualIp("alice"));
         expect(formatIp(nativeVirtualIp("alice")).startsWith("10.")).toBe(true);

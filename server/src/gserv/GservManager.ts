@@ -9,6 +9,7 @@ export interface GservServerInfo {
 }
 
 export interface GservInstanceOptions {
+    nativeSku?: number;
     /** Ranked games are scored into the ladder when the game-res report arrives. */
     ranked?: boolean;
     /** Ladder type this instance belongs to ("1v1" | "2v2-random"); set with ranked. */
@@ -16,6 +17,7 @@ export interface GservInstanceOptions {
 }
 
 export interface GservInstance {
+    nativeSku?: number;
     gameId: string;
     timestamp: number;
     gservUrl: string;
@@ -74,6 +76,7 @@ export class GservManager {
             loaded: new Map(),
             started: false,
             players: [...players],
+            nativeSku: options.nativeSku,
             ranked: options.ranked,
             ladderType: options.ranked ? options.ladderType : undefined,
             loadingDepartures: new Map(),

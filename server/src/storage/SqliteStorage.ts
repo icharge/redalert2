@@ -250,7 +250,7 @@ export class SqliteStorage implements Storage {
         this.matchRecent = db.prepare("SELECT game_id, season_id, ladder_type, reported_at, payload, replay_path, scored FROM ladder_matches ORDER BY reported_at DESC LIMIT ?");
         this.matchCount = db.prepare("SELECT COUNT(*) AS count FROM ladder_matches");
         this.matchCountSince = db.prepare("SELECT COUNT(*) AS count FROM ladder_matches WHERE reported_at >= ?");
-        this.matchPlayerInsert = db.prepare(`INSERT INTO ladder_match_players (game_id, username_key, season_id, ladder_type,
+        this.matchPlayerInsert = db.prepare(`INSERT OR REPLACE INTO ladder_match_players (game_id, username_key, season_id, ladder_type,
             result_type, rank_type, points, points_gain, mmr, mmr_gain, map_name, reported_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
         this.matchPlayerSelect = db.prepare(`SELECT game_id, username_key, season_id, ladder_type, result_type, rank_type,
@@ -384,6 +384,13 @@ export class SqliteStorage implements Storage {
             match.payload,
             match.replayPath,
         );
+    }
+
+    upsertUnscoredLadderMatch(match: LadderMatchRecord): void {
+        this.db.query(`INSERT INTO ladder_matches (game_id, season_id, ladder_type, reported_at, payload, replay_path, scored)
+            VALUES (?, ?, ?, ?, ?, ?, 0) ON CONFLICT(game_id) DO UPDATE SET
+            payload=excluded.payload, reported_at=excluded.reported_at
+            WHERE ladder_matches.scored=0`).run(match.gameId, match.seasonId, match.ladderType, match.reportedAt, match.payload, match.replayPath);
     }
 
     updateLadderMatchReplayPath(gameId: string, replayPath: string): boolean {

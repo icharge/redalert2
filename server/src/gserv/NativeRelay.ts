@@ -81,7 +81,10 @@ export class NativeRelay {
         if (!client.gameId) return;
         const peers = this.games.get(client.gameId);
         if (peers?.get(client.ip) === client) peers.delete(client.ip);
-        if (peers && peers.size === 0) this.games.delete(client.gameId);
+        if (peers && peers.size === 0) {
+            this.games.delete(client.gameId);
+            this.manager.retireInstance(client.gameId);
+        }
         this.log.info(`native relay: ${client.nick} left ${client.gameId}`);
     }
 
@@ -123,6 +126,7 @@ export class NativeRelay {
         client.gameId = info.gameId;
         clearTimeout(client.handshakeTimer);
         peers.set(ip, client);
+        if (peers.size >= instance.players.length) instance.started = true;
         this.log.info(`native relay: ${client.nick} joined ${client.gameId} as ${formatIp(ip)}`);
         client.socket.send(`ok ${formatIp(ip)}`);
     }

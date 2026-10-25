@@ -106,6 +106,8 @@ export interface Storage {
     insertLadderMatch(match: LadderMatchRecord): void;
     /** Upgrade an existing unscored (public) row to a scored ranked one. */
     upsertScoredLadderMatch(match: LadderMatchRecord): void;
+    /** Update native history only; a scored record must never be changed. */
+    upsertUnscoredLadderMatch(match: LadderMatchRecord): void;
     updateLadderMatchReplayPath(gameId: string, replayPath: string): boolean;
     getRecentLadderMatches(limit: number): LadderMatchRecord[];
     countLadderMatches(): number;
