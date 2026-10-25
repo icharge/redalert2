@@ -10,6 +10,7 @@ import { WolServer } from "./server/WolServer";
 import { ServerUser } from "./server/ServerUser";
 import { GservServer, GservClient } from "./gserv/GservServer";
 import { GservManager } from "./gserv/GservManager";
+import { NativeRelay, NativeRelayClient } from "./gserv/NativeRelay";
 import { LadderService } from "./ladder/LadderService";
 import { handleHttp, HttpDeps } from "./http/routes";
 import { resetRateLimiters } from "./http/routes";
@@ -18,9 +19,10 @@ import { openDatabase } from "./auth/db";
 import { isOriginAllowed } from "./http/cors";
 
 interface WsData {
-    target: "wol" | "gserv";
+    target: "wol" | "gserv" | "native";
     user?: ServerUser;
     client?: GservClient;
+    relay?: NativeRelayClient;
 }
 
 const config = loadConfig();
@@ -31,6 +33,7 @@ const sessions = new SessionManager(storage, config.sessionTtlSeconds);
 const gservManager = new GservManager({ id: config.gservId, url: config.externalUrl + config.gservUrlPath });
 const wol = new WolServer(config, sessions, accounts, gservManager);
 const gserv = new GservServer(config, gservManager);
+const nativeRelay = new NativeRelay(gservManager, makeLogger(config.logLevel, "native-relay", fileLogOptionsOf(config)));
 const ladder = new LadderService(storage, makeLogger(config.logLevel, "ladder", fileLogOptionsOf(config)), {
     startingRating: config.startingRating,
     placementMatches: config.placementMatches,
@@ -90,7 +93,8 @@ const server = Bun.serve<WsData>({
                 return new Response("Forbidden", { status: 403 });
             }
             const url = new URL(req.url);
-            const target: WsData["target"] = url.pathname.startsWith(config.gservUrlPath) ? "gserv" : "wol";
+            const target: WsData["target"] = url.pathname === config.gservUrlPath + "/native" ? "native"
+                : url.pathname.startsWith(config.gservUrlPath) ? "gserv" : "wol";
             const upgraded = srv.upgrade(req, { data: { target } });
             return upgraded ? undefined : new Response("WebSocket upgrade failed", { status: 400 });
         }
@@ -99,7 +103,10 @@ const server = Bun.serve<WsData>({
     websocket: {
         maxPayloadLength: config.maxPayloadBytes,
         open(ws) {
-            if (ws.data.target === "gserv") {
+            if (ws.data.target === "native") {
+                ws.data.relay = nativeRelay.handleOpen(ws);
+            }
+            else if (ws.data.target === "gserv") {
                 ws.data.client = gserv.handleOpen(ws);
             }
             else {
@@ -107,7 +114,12 @@ const server = Bun.serve<WsData>({
             }
         },
         message(ws, message) {
-            if (ws.data.target === "gserv") {
+            if (ws.data.target === "native") {
+                if (ws.data.relay) {
+                    nativeRelay.handleMessage(ws.data.relay, message);
+                }
+            }
+            else if (ws.data.target === "gserv") {
                 if (ws.data.client) {
                     gserv.handleMessage(ws.data.client, message);
                 }
@@ -117,7 +129,12 @@ const server = Bun.serve<WsData>({
             }
         },
         close(ws) {
-            if (ws.data.target === "gserv") {
+            if (ws.data.target === "native") {
+                if (ws.data.relay) {
+                    nativeRelay.handleClose(ws.data.relay);
+                }
+            }
+            else if (ws.data.target === "gserv") {
                 if (ws.data.client) {
                     gserv.handleClose(ws.data.client);
                 }
@@ -164,6 +181,7 @@ function shutdown(signal: string): void {
     log.info(`received ${signal}; shutting down`);
     wol.dispose();
     gserv.dispose();
+    nativeRelay.dispose();
     server.stop(true);
     storage.close();
     process.exit(0);
