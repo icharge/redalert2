@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, jest, test } from "bun:test";
 import { WolServer } from "../src/server/WolServer";
 import { ServerUser } from "../src/server/ServerUser";
 import { AccountStore } from "../src/auth/accountStore";
@@ -75,6 +75,31 @@ describe("WolServer login", () => {
         expect(user.authenticated).toBe(true);
         expect(user.channels.has(LOBBY)).toBe(true);
         expect(hasLine(socket, line => /JOIN :\d+,\d+,\d+,\d+ #Lob_45_0$/.test(line))).toBe(true);
+    });
+});
+
+describe("WolServer ping measurement", () => {
+    test("sends PING right after login", async () => {
+        const { server, accounts, sessions } = makeServer();
+        const { socket } = await login(server, accounts, sessions, "alice");
+        expect(socket.sent.some(data => typeof data === "string" && /^PING \d+\r\n$/.test(data))).toBe(true);
+    });
+
+    test("a sub-millisecond PONG counts as 1 ms", async () => {
+        const { server, accounts, sessions } = makeServer();
+        const { socket, user } = await login(server, accounts, sessions, "alice");
+        const token = socket.lines().find(line => /^PING \d+$/.test(line))!.split(" ")[1];
+        // Freeze the clock at the PING's timestamp so the round trip is exactly 0 ms.
+        jest.useFakeTimers({ now: Number(token) });
+        try {
+            server.handleMessage(user, `PONG ${token}`);
+        }
+        finally {
+            jest.useRealTimers();
+        }
+        socket.sent.length = 0;
+        server.handleMessage(user, `join ${LOBBY} zotclot9`);
+        expect(hasLine(socket, line => /353 alice = #Lob_45_0 :alice,0,1,[01]$/.test(line))).toBe(true);
     });
 });
 

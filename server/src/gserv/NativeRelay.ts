@@ -56,7 +56,13 @@ export class NativeRelay {
         private manager: GservManager,
         private log: Logger,
         private handshakeTimeoutMs = HANDSHAKE_TIMEOUT_MS,
-    ) {}
+        /** Test-only: hold every datagram this long before delivery, to simulate a slow relay. */
+        private delayMs = 0,
+    ) {
+        if (delayMs > 0) {
+            log.warn(`native relay: delaying every datagram by ${delayMs} ms (test setting)`);
+        }
+    }
 
     handleOpen(socket: SocketLike): NativeRelayClient {
         const client: NativeRelayClient = { socket, nick: "", ip: 0 };
@@ -138,10 +144,14 @@ export class NativeRelay {
         if (targets.length === 0) return;
         const out = new Uint8Array(packet);
         out[0] = client.ip >>> 24; out[1] = (client.ip >>> 16) & 255; out[2] = (client.ip >>> 8) & 255; out[3] = client.ip & 255;
-        for (const peer of targets) {
-            if (peer.socket.readyState !== OPEN_STATE) continue;
-            peer.socket.send(out);
-        }
+        const deliver = () => {
+            for (const peer of targets) {
+                if (peer.socket.readyState !== OPEN_STATE) continue;
+                peer.socket.send(out);
+            }
+        };
+        if (this.delayMs > 0) setTimeout(deliver, this.delayMs);
+        else deliver();
     }
 
     dispose(): void {
