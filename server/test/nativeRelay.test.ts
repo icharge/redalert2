@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, jest, test } from "bun:test";
 import { GservManager } from "../src/gserv/GservManager";
 import { NativeRelay, nativeVirtualIp, formatIp } from "../src/gserv/NativeRelay";
 import { makeLogger } from "../src/logger";
@@ -82,6 +82,29 @@ describe("NativeRelay", () => {
         expect(Array.from(got.slice(4))).toEqual([4, 210, 4, 210, 1, 2, 3]);
         expect(c.socket.sent.length).toBe(1);
         expect(a.socket.sent.length).toBe(1);
+    });
+
+    test("delays datagrams by delayMs", () => {
+        jest.useFakeTimers();
+        try {
+            const manager = new GservManager({ id: "gs1", url: "ws://test.local/gserv" });
+            const instance = manager.create(["alice", "bob"], "ws://gserv");
+            const relay = new NativeRelay(manager, makeLogger("error", "test"), 10_000, 50);
+            const a = connect(relay, instance.tickets.get("alice")!);
+            const b = connect(relay, instance.tickets.get("bob")!);
+            const payload = [1, 2, 3];
+            const packet = datagram(nativeVirtualIp("bob"), 1234, 1234, payload);
+            relay.handleMessage(a.client, packet);
+            packet[8] = 99; // the relay must have copied the bytes already
+            jest.advanceTimersByTime(49);
+            expect(b.socket.sent.length).toBe(1);
+            jest.advanceTimersByTime(1);
+            expect(b.socket.sent.length).toBe(2);
+            expect(Array.from((b.socket.sent[1] as Uint8Array).slice(8))).toEqual(payload);
+        }
+        finally {
+            jest.useRealTimers();
+        }
     });
 
     test("broadcast reaches everyone but the sender; unknown and pre-login traffic is dropped", () => {

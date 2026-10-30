@@ -55,6 +55,8 @@ export interface ServerConfig {
     wolUrlPath: string;
     expectedModHash?: string;
     pingIntervalSeconds: number;
+    /** Test-only: delay every native-relay datagram by this many ms (0 = off). */
+    nativeRelayTestDelayMs: number;
     maxPayloadBytes: number;
     instanceTtlSeconds: number;
     startTimeoutSeconds: number;
@@ -135,6 +137,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
         wolUrlPath: env.WOL_URL_PATH ?? "",
         expectedModHash: env.EXPECTED_MOD_HASH || undefined,
         pingIntervalSeconds: Number(env.PING_INTERVAL_SECONDS ?? 30),
+        nativeRelayTestDelayMs: Number(env.NATIVE_RELAY_TEST_DELAY_MS ?? 0),
         maxPayloadBytes: Number(env.MAX_PAYLOAD_BYTES ?? 256 * 1024),
         instanceTtlSeconds: Number(env.GSERV_INSTANCE_TTL_SECONDS ?? 600),
         startTimeoutSeconds: Number(env.GSERV_START_TIMEOUT_SECONDS ?? 180),

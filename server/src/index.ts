@@ -33,7 +33,7 @@ const sessions = new SessionManager(storage, config.sessionTtlSeconds);
 const gservManager = new GservManager({ id: config.gservId, url: config.externalUrl + config.gservUrlPath });
 const wol = new WolServer(config, sessions, accounts, gservManager);
 const gserv = new GservServer(config, gservManager);
-const nativeRelay = new NativeRelay(gservManager, makeLogger(config.logLevel, "native-relay", fileLogOptionsOf(config)));
+const nativeRelay = new NativeRelay(gservManager, makeLogger(config.logLevel, "native-relay", fileLogOptionsOf(config)), undefined, config.nativeRelayTestDelayMs);
 const ladder = new LadderService(storage, makeLogger(config.logLevel, "ladder", fileLogOptionsOf(config)), {
     startingRating: config.startingRating,
     placementMatches: config.placementMatches,

@@ -99,9 +99,17 @@ export class WolServer {
                 user.socket.close(4009, "Ping timeout");
                 continue;
             }
-            user.lastPingSent = now;
-            user.send(`PING ${now}\r\n`);
+            this.pingUser(user);
         }
+    }
+
+    // Sends one PING and records when; the matching PONG yields user.ping.
+    // user.ping stays 0 until the first PONG arrives, so 0 means "not
+    // measured yet" to everything that reads it.
+    pingUser(user: ServerUser): void {
+        const now = Date.now();
+        user.lastPingSent = now;
+        user.send(`PING ${now}\r\n`);
     }
 
     dispose(): void {
@@ -220,7 +228,8 @@ export class WolServer {
     private handlePong(user: ServerUser, args: string[]): void {
         const sentAt = Number(args[0]);
         if (Number.isFinite(sentAt) && sentAt > 0) {
-            user.ping = Math.max(0, Date.now() - sentAt);
+            // A round trip under 1 ms still counts as 1: 0 means "not measured".
+            user.ping = Math.max(1, Date.now() - sentAt);
         }
         user.lastPongAt = Date.now();
     }
@@ -286,9 +295,7 @@ export class WolServer {
         // player who just logged in and joined a lobby shows ping 0 (the
         // ServerUser default) to everyone else in that lobby until the next
         // tick happens to land.
-        const now = Date.now();
-        user.lastPingSent = now;
-        user.send(`PING ${now}\r\n`);
+        this.pingUser(user);
     }
 
     private handleJoin(user: ServerUser, args: string[]): void {
