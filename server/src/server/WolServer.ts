@@ -13,6 +13,19 @@ import { isValidChannelKey, isValidNickChars, stripCrlf } from "../protocol/vali
 import { numeric, userLine, userPrefix, WOL_SERVER_NAME } from "../protocol/replies";
 import { SocketLike } from "./SocketLike";
 import * as Code from "../protocol/wolCodes";
+import { WdtService } from "../wdt/service";
+
+// WDT context rides the game options as tags (`WDS=<side>`, `WDT=<territory>`).
+// The tab is safe to scan even though the rest of the options are opaque.
+export function parseWdtOpts(gameOpts?: string): { side: number; territory?: number } | undefined {
+    if (!gameOpts) return undefined;
+    const side = /(?:^|[,;:\s])WDS=(\d+)/.exec(gameOpts);
+    if (!side) return undefined;
+    const number = Number(side[1]);
+    if (!Number.isInteger(number) || number < 0) return undefined;
+    const territory = /(?:^|[,;:\s])WDT=(\d+)/.exec(gameOpts);
+    return { side: number, territory: territory ? Number(territory[1]) : undefined };
+}
 
 const LOCALE_CODE_BY_ID: Record<number, string> = {
     2: "en-US",
@@ -57,6 +70,7 @@ export class WolServer {
         readonly sessions: SessionManager,
         readonly accounts: AccountStore,
         gservs: GservManager,
+        readonly wdt?: WdtService,
     ) {
         this.gservs = gservs;
         this.log = makeLogger(config.logLevel, "wol", fileLogOptionsOf(config));
@@ -653,6 +667,19 @@ export class WolServer {
         }
         const instance = this.gservs.create(players, gserv.url, { nativeSku: game.channelType === 33 ? 16640 : game.channelType === 41 ? 18688 : undefined });
         instance.gameopts = game.gameOpts;
+        const wdt = parseWdtOpts(game.gameOpts);
+        if (wdt && this.wdt) {
+            try {
+                const conflict = this.wdt.assignConflict(wdt.side, wdt.territory, instance.gameId);
+                instance.wdtConflictId = conflict.id;
+                instance.wdtSides = Object.fromEntries(players.map((nick, index) =>
+                    [nick, index === 0 ? conflict.attacker : conflict.defender]));
+                this.log.info(`wdt conflict ${conflict.id} for territory ${conflict.territoryId} (game ${instance.gameId})`);
+            }
+            catch (error) {
+                this.log.warn(`wdt assignment failed for ${key}: ${error instanceof Error ? error.message : String(error)}`);
+            }
+        }
         this.log.info(`game start ${key} by ${user.nick}: instance ${instance.gameId} for ${players.join(", ")}`);
         for (const nick of players) {
             const member = game.members.get(nick);

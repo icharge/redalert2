@@ -17,6 +17,8 @@ import { resetRateLimiters } from "./http/routes";
 import { MapStore } from "./mapstore/MapStore";
 import { openDatabase } from "./auth/db";
 import { isOriginAllowed } from "./http/cors";
+import { WdtService } from "./wdt/service";
+import { WdtTcpServer } from "./wdt/server";
 
 interface WsData {
     target: "wol" | "gserv" | "native";
@@ -31,19 +33,30 @@ const storage = createStorage(config);
 const accounts = new AccountStore(storage, config);
 const sessions = new SessionManager(storage, config.sessionTtlSeconds);
 const gservManager = new GservManager({ id: config.gservId, url: config.externalUrl + config.gservUrlPath });
-const wol = new WolServer(config, sessions, accounts, gservManager);
+// World Domination Tour: one cycle service, shared by the WOL bridge (HTTP)
+// and the native TCP listener. The browser fetches /wdt/state; native clients
+// connect to WDT_HOST:WDT_PORT from the server-list MGL entry.
+const wdt = new WdtService({
+    edition: process.env.WDT_EDITION === "yr" ? "yr" : "ra2",
+    url: process.env.WDT_URL ?? config.externalUrl.replace(/^ws/, "http") + "/wdt",
+});
+const wol = new WolServer(config, sessions, accounts, gservManager, wdt);
 const gserv = new GservServer(config, gservManager);
 const nativeRelay = new NativeRelay(gservManager, makeLogger(config.logLevel, "native-relay", fileLogOptionsOf(config)), undefined, config.nativeRelayTestDelayMs);
 const ladder = new LadderService(storage, makeLogger(config.logLevel, "ladder", fileLogOptionsOf(config)), {
     startingRating: config.startingRating,
     placementMatches: config.placementMatches,
 });
+const wdtServer = config.wdtEnabled
+    ? new WdtTcpServer(wdt, { host: config.wdtHost, port: config.wdtPort })
+    : undefined;
 const httpDeps: HttpDeps = {
     accounts,
     sessions,
     ladder,
     gservs: gservManager,
     wol,
+    wdt,
     replaySnapshot: (gameId) => gserv.getReplaySnapshot(gameId),
     maps: config.mapServiceEnabled ? new MapStore(openDatabase(config.dbPath), {
         mapsDir: config.mapsDir,
@@ -66,6 +79,15 @@ backfillReplayPaths(storage, config.replaysDir, ladder, log);
 
 wol.startPingLoop();
 gserv.startSweepLoop();
+if (wdtServer) {
+    try {
+        const address = await wdtServer.start();
+        log.info(`World Domination listener on tcp://${address.host}:${address.port} (state also at /wdt/state)`);
+    }
+    catch (error) {
+        log.warn(`World Domination listener did not start: ${error instanceof Error ? error.message : String(error)}`);
+    }
+}
 
 // Shares the same self-signed cert vite's dev server uses/auto-generates
 // (see scripts/dev-all.mjs), so a client served over https:// can reach this

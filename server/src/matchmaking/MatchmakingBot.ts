@@ -29,6 +29,8 @@ interface QueueEntry {
     players: string[];
     channelType: number;
     ranked: boolean;
+    /** WDT request that formed this queue entry, if any. */
+    wdt?: { side: number; territory?: number };
     matched?: { gameKey: string; players: string[] };
 }
 
@@ -70,6 +72,10 @@ export class MatchmakingBot {
             case REQ_MATCH:
                 this.handleMatch(user, parts.slice(1));
                 break;
+            case "MatchWDT":
+            case "WDT":
+                this.handleWdtMatch(user, parts.slice(1));
+                break;
             case REQ_STATS:
                 this.handleStats(user);
                 break;
@@ -109,7 +115,30 @@ export class MatchmakingBot {
         this.timers.clear();
     }
 
-    private handleMatch(user: ServerUser, tags: string[]): void {
+    private handleWdtMatch(user: ServerUser, tags: string[]): void {
+        if (!this.server.wdt) {
+            this.reply(user, RPL_MODE_UNAVAIL);
+            return;
+        }
+        const parsed = new Map<string, string>();
+        for (const tag of tags) {
+            const eq = tag.indexOf("=");
+            if (eq !== -1) parsed.set(tag.slice(0, eq), tag.slice(eq + 1));
+        }
+        const side = Number(parsed.get("WDS") ?? 0);
+        if (!Number.isInteger(side) || side < 0) {
+            this.reply(user, RPL_BAD_VERS);
+            return;
+        }
+        const territory = parsed.get("WDT") !== undefined ? Number(parsed.get("WDT")) : undefined;
+        if (territory !== undefined && (!Number.isInteger(territory) || territory < 0)) {
+            this.reply(user, RPL_BAD_VERS);
+            return;
+        }
+        this.handleMatch(user, tags.filter(tag => !tag.startsWith("WDS=") && !tag.startsWith("WDT=")), { side, territory });
+    }
+
+    private handleMatch(user: ServerUser, tags: string[], wdt?: { side: number; territory?: number }): void {
         if (this.byNick.has(user.nick)) {
             this.reply(user, RPL_ALREADY_QUEUED);
             return;
@@ -157,6 +186,7 @@ export class MatchmakingBot {
                 players: [...party.members],
                 channelType,
                 ranked: parsed.get(TAG_RANKED) === "1",
+                wdt,
             };
             for (const nick of entry.players) {
                 const member = this.server.users.get(nick);
@@ -177,6 +207,7 @@ export class MatchmakingBot {
             players: [user.nick],
             channelType,
             ranked: parsed.get(TAG_RANKED) === "1",
+            wdt,
         };
         user.inQueue = true;
         this.byNick.set(user.nick, entry);
@@ -249,7 +280,22 @@ export class MatchmakingBot {
             ranked: a.ranked && b.ranked,
             ladderType: ladderTypeForChannelType(a.channelType),
         });
-        instance.gameopts = this.buildDefaultGameOpts(a, b);
+        const wdt = a.wdt ?? b.wdt;
+        if (wdt && this.server.wdt) {
+            try {
+                const conflict = this.server.wdt.assignConflict(wdt.side, wdt.territory, instance.gameId);
+                instance.wdtConflictId = conflict.id;
+                instance.wdtSides = Object.fromEntries([
+                    ...a.players.map(nick => [nick, conflict.attacker] as const),
+                    ...b.players.map(nick => [nick, conflict.defender] as const),
+                ]);
+                this.log.info(`wdt conflict ${conflict.id} for territory ${conflict.territoryId} (game ${instance.gameId})`);
+            }
+            catch (error) {
+                this.log.warn(`wdt assignment failed: ${error instanceof Error ? error.message : String(error)}`);
+            }
+        }
+        instance.gameopts = this.buildDefaultGameOpts(a, b, wdt);
         this.log.info(`instance ${instance.gameId} created${a.ranked && b.ranked ? ` (ranked ${instance.ladderType})` : ""} for ${players.join(", ")}`);
 
         const matched = { gameKey: key, players };
@@ -327,7 +373,7 @@ export class MatchmakingBot {
     // normal fight (each team has one member -> no pre-formed alliance) and a
     // 2v2 forms the expected two-man teams. lockAlliances=1 disables in-game
     // diplomacy so players can neither re-team nor betray their side.
-    private buildDefaultGameOpts(a: QueueEntry, b: QueueEntry): string {
+    private buildDefaultGameOpts(a: QueueEntry, b: QueueEntry, wdt?: { side: number; territory?: number }): string {
         const players = [...a.players, ...b.players];
         const teamOf = new Map<string, number>();
         for (const nick of a.players) {
@@ -339,7 +385,8 @@ export class MatchmakingBot {
         const mapTitle = Buffer.from("Default Map", "utf16le").toString("base64");
         const playersPart = players.map((name, index) => `${name},0,0,${index},${teamOf.get(name) ?? 0},0,0,0`).join(",");
         const aiPart = new Array(8).fill("0,-1,-1,-1,-1").join(",");
-        return `0,0,2,10000,100,0,0,1,1,0,1,0,${mapTitle},${players.length},1,1000,mpdefault,abc123,1,0,0,1,0,1:${playersPart}:@:${aiPart},`;
+        const wdtPart = wdt ? `,WDS=${wdt.side}${wdt.territory !== undefined ? `,WDT=${wdt.territory}` : ""}` : "";
+        return `0,0,2,10000,100,0,0,1,1,0,1,0,${mapTitle},${players.length},1,1000,mpdefault,abc123,1,0,0,1,0,1:${playersPart}:@:${aiPart},${wdtPart}`;
     }
 
     private reply(user: ServerUser, text: string): void {

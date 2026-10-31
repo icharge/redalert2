@@ -1,7 +1,29 @@
 import { HttpDeps } from "./routes";
 import { ServerConfig } from "../config";
-import { decodeNativeGameRes, NativeResultError, NATIVE_RESULT_MAX } from "../ladder/nativeGameRes";
+import { decodeNativeGameRes, NativeResultError, NATIVE_RESULT_MAX, nativeResultType } from "../ladder/nativeGameRes";
 import { withCors } from "./cors";
+import { WdtError } from "../wdt/types";
+import { WdtService } from "../wdt/service";
+import { GservInstance } from "../gserv/GservManager";
+
+/** Apply a WDT instance's result from a decoded native report. Exported so the
+ * side-map/winner rules are unit-testable without building a whole packet. */
+export function applyWdtNativeResult(
+    wdt: WdtService | undefined,
+    instance: Pick<GservInstance, "gameId" | "wdtConflictId" | "wdtSides">,
+    report: { players: Array<{ name: string; completionStatus: number }> },
+    gameId: string,
+): { conflictId: number; winner: number } | undefined {
+    if (!wdt || instance.wdtConflictId === undefined) return undefined;
+    const winner = report.players.find(player => nativeResultType(player.completionStatus) === 0);
+    const nick = winner?.name.toLowerCase();
+    const row = nick
+        ? Object.entries(instance.wdtSides ?? {}).find(([name]) => name.toLowerCase() === nick)?.[1]
+        : undefined;
+    if (row === undefined) return undefined;
+    wdt.reportResult({ conflictId: instance.wdtConflictId, winner: row, gameId });
+    return { conflictId: instance.wdtConflictId, winner: row };
+}
 
 /** Native history ingestion deliberately cannot enter the ranked scoring path. */
 export async function handleNativeResults(req: Request, deps: HttpDeps, config: ServerConfig, gameId: string): Promise<Response> {
@@ -33,7 +55,18 @@ export async function handleNativeResults(req: Request, deps: HttpDeps, config: 
         // remain client-reported; AIPL bounds them, never authenticates them.
         if (report.aiPlayers > 7 || report.players.length - instance.players.length > report.aiPlayers) throw new NativeResultError("Unexpected players");
         deps.ladder.recordNativeReport(gameId, session.username, report, instance.players);
-        return reply({ gameId, stored: true, ranked: false }, 200);
+        // A WDT match settles the conflict it was assigned. The winning player
+        // is the one whose native completion status is a win; the instance's
+        // side map turns that nick into the owner row.
+        let wdt: { conflictId: number; winner: number } | undefined;
+        try {
+            wdt = applyWdtNativeResult(deps.wdt, instance, report, gameId);
+        }
+        catch (error) {
+            if (error instanceof WdtError) return reply({ error: error.message }, 409);
+            throw error;
+        }
+        return reply({ gameId, stored: true, ranked: false, ...(wdt ? { wdt } : {}) }, 200);
     } catch (error) {
         if (error instanceof NativeResultError) return reply({ error: error.message }, error.status);
         throw error;

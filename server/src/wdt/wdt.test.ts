@@ -1,0 +1,185 @@
+import { describe, expect, test } from "bun:test";
+import {
+    TERRITORY_RECORD_BYTES,
+    TERRITORIES_PER_CONTINENT,
+    decodeContainer,
+    encodeContainer,
+    encodeNack,
+    readString,
+    readU32,
+} from "./codec";
+import { WdtService } from "./service";
+import { WdtTcpServer } from "./server";
+import { handleWdt } from "./http";
+import { parseWdtOpts } from "../server/WolServer";
+import { applyWdtNativeResult } from "../http/nativeResults";
+
+describe("WDT container codec", () => {
+    test("round-trips tags, integers and strings with four-byte padding", () => {
+        const packet = encodeContainer([
+            { tag: "ABCD", value: Buffer.from([1, 2, 3, 4]) },
+            { tag: "TEXT", value: Buffer.from("hello") },
+            { tag: "ZERO", value: Buffer.alloc(0) },
+        ]);
+        expect(packet.readUInt16BE(0)).toBe(packet.length);
+        const records = decodeContainer(packet);
+        expect([...records.keys()]).toEqual(["ABCD", "TEXT", "ZERO"]);
+        expect(readU32(records, "ABCD")).toBe(0x04030201);
+        expect(readString(records, "TEXT")).toBe("hello");
+    });
+
+    test("a truncated container is rejected, not partially parsed", () => {
+        const packet = encodeContainer([{ tag: "ABCD", value: Buffer.from("x") }]);
+        expect(() => decodeContainer(packet.subarray(0, packet.length - 2))).toThrow();
+    });
+
+    test("NACK is a container with a single string record", () => {
+        const records = decodeContainer(encodeNack("no cycle"));
+        expect([...records.keys()]).toEqual(["NACK"]);
+        expect(readString(records, "NACK")).toBe("no cycle");
+    });
+});
+
+describe("WDT state packets", () => {
+    const service = new WdtService({ edition: "ra2", now: () => 1_700_000_000_000 });
+
+    test("the current packet has the tags the client's WDTState reads", () => {
+        const records = decodeContainer(service.packet("current"));
+        for (const tag of ["CRTK", "CYLN", "MPVC", "HSVC", "CMID", "CYID", "TICC", "WURL", "SDSC", "LDSC"]) {
+            expect(records.has(tag)).toBe(true);
+        }
+        expect(readU32(records, "CRTK")).toBe(2); // RA2: allied, soviet, neutral
+        expect(readU32(records, "TICC")).toBe(TERRITORIES_PER_CONTINENT);
+        expect(records.get("MPVC")!.length).toBe(TERRITORIES_PER_CONTINENT * TERRITORY_RECORD_BYTES);
+        expect(records.get("HSVC")!.length).toBe(Math.ceil((3 * TERRITORIES_PER_CONTINENT * 2) / 8));
+        expect(records.get("CMID")!.length).toBe(1);
+        expect(readU32(records, "CYID")).toBe(1);
+    });
+
+    test("the previous packet has TOTK and no current-only records", () => {
+        service.advanceCycle();
+        const records = decodeContainer(service.packet("previous"));
+        expect(records.has("TOTK")).toBe(true);
+        expect(records.has("CRTK")).toBe(false);
+        expect(records.has("MPVC")).toBe(false);
+        expect(records.has("TICC")).toBe(false);
+        expect(readU32(records, "TOTK")).toBe(2);
+        expect(readU32(records, "CYID")).toBe(1);
+    });
+
+    test("a fresh deployment still answers the previous-cycle request", () => {
+        const fresh = new WdtService({ edition: "yr" });
+        const records = decodeContainer(fresh.packet("previous"));
+        expect(records.has("TOTK")).toBe(true);
+        expect(records.has("MPVC")).toBe(false);
+        expect(readU32(records, "CYID")).toBe(0);
+    });
+});
+
+describe("WDT cycle service", () => {
+    test("assignment prefers neutral territory and only one conflict closes", () => {
+        let now = 1_000;
+        const service = new WdtService({ edition: "yr", now: () => now++ });
+        const conflict = service.assignConflict(0);
+        expect(conflict.territoryId).toBe(10);
+        expect(conflict.defender).toBe(3); // neutral row
+        service.reportResult({ conflictId: conflict.id, winner: 0 });
+        expect(service.cycle.territories[10].owner).toBe(0);
+        expect(service.cycle.history).toHaveLength(1);
+        expect(() => service.reportResult({ conflictId: conflict.id, winner: 0 })).toThrow(/closed/);
+    });
+
+    test("a winner outside the conflict is rejected", () => {
+        const service = new WdtService({ edition: "ra2" });
+        const conflict = service.assignConflict(0, 11);
+        expect(() => service.reportResult({ conflictId: conflict.id, winner: 1 })).toThrow(/not part/);
+    });
+
+    test("a game id assignment applies once, then rejects the duplicate report", () => {
+        const service = new WdtService({ edition: "ra2", now: () => 1_000 });
+        const conflict = service.assignConflict(0, 11, "g1-wdt");
+        expect(conflict.gameId).toBe("g1-wdt");
+        expect(service.conflictForGame("g1-wdt")?.id).toBe(conflict.id);
+        service.reportResultByGame("g1-wdt", conflict.attacker);
+        expect(service.cycle.territories[11].owner).toBe(conflict.attacker);
+        expect(service.cycle.conflicts.find(c => c.id === conflict.id)?.closedAt).toBeDefined();
+        expect(() => service.reportResultByGame("g1-wdt", conflict.defender)).toThrow(/closed/);
+    });
+
+    test("a native win settles the assigned conflict once, then rejects the duplicate", () => {
+        const service = new WdtService({ edition: "ra2", now: () => 2_000 });
+        const conflict = service.assignConflict(0, 11, "g2-wdt");
+        const instance = {
+            gameId: "g2-wdt",
+            wdtConflictId: conflict.id,
+            wdtSides: { ally: conflict.attacker, axis: conflict.defender },
+        };
+        const report = {
+            players: [
+                { name: "Ally", completionStatus: 256 },
+                { name: "Axis", completionStatus: 512 },
+            ],
+        };
+        expect(applyWdtNativeResult(service, instance, report, "g2-wdt"))
+            .toEqual({ conflictId: conflict.id, winner: conflict.attacker });
+        expect(service.cycle.territories[11].owner).toBe(conflict.attacker);
+        expect(() => applyWdtNativeResult(service, instance, report, "g2-wdt")).toThrow(/closed/);
+    });
+
+    test("game options carry the WDT side and territory into STARTG", () => {
+        expect(parseWdtOpts("0,0,2,...,WDS=1,WDT=11")).toEqual({ side: 1, territory: 11 });
+        expect(parseWdtOpts("WDS=0")).toEqual({ side: 0, territory: undefined });
+        expect(parseWdtOpts("0,0,2,no tags")).toBeUndefined();
+        expect(parseWdtOpts(undefined)).toBeUndefined();
+    });
+
+    test("the rollover freezes the current map as the previous cycle", () => {
+        const service = new WdtService({ edition: "ra2" });
+        const conflict = service.assignConflict(0, 11);
+        service.reportResult({ conflictId: conflict.id, winner: 0 });
+        service.advanceCycle();
+        const previous = decodeContainer(service.packet("previous"));
+        expect(readU32(previous, "CYID")).toBe(1);
+        const current = service.packet("current");
+        expect(current.readUInt16BE(0)).toBe(current.length);
+        expect(decodeContainer(current).has("CRTK")).toBe(true);
+    });
+});
+
+describe("WDT endpoints", () => {
+    test("HTTP state serves the binary packet and status serves JSON", async () => {
+        const service = new WdtService({ edition: "ra2" });
+        const state = handleWdt(new Request("http://x/wdt/state?cycle=current"), service)!;
+        expect(state.headers.get("Content-Type")).toBe("application/octet-stream");
+        const records = decodeContainer(Buffer.from(await state.arrayBuffer()));
+        expect(records.has("CRTK")).toBe(true);
+        const status = handleWdt(new Request("http://x/wdt/status"), service)!;
+        const json = await status.json() as { cycle: { id: number } };
+        expect(json.cycle.id).toBe(1);
+        expect(handleWdt(new Request("http://x/other"), service)).toBeUndefined();
+    });
+
+    test("the native listener answers a text request with a decodable packet", async () => {
+        const service = new WdtService({ edition: "ra2" });
+        const server = new WdtTcpServer(service, { port: 0, idleTimeoutMs: 2000 });
+        const { port } = await server.start();
+        try {
+            const packet = await new Promise<Buffer>((resolve, reject) => {
+                const socket = Bun.connect({
+                    hostname: "127.0.0.1",
+                    port,
+                    socket: {
+                        open(socket) { socket.write("WDT CURRENT\n"); },
+                        data(_socket, data) { resolve(Buffer.from(data)); },
+                        error(_socket, error) { reject(error); },
+                    },
+                });
+                setTimeout(() => reject(new Error("timeout")), 3000);
+            });
+            const records = decodeContainer(packet);
+            expect(records.has("CRTK")).toBe(true);
+        } finally {
+            await server.close();
+        }
+    });
+});

@@ -14,6 +14,10 @@ export interface GservInstanceOptions {
     ranked?: boolean;
     /** Ladder type this instance belongs to ("1v1" | "2v2-random"); set with ranked. */
     ladderType?: string;
+    /** World Domination conflict this instance plays for. */
+    wdtConflictId?: number;
+    /** Nick -> owner row for a WDT match (attacker/defender sides). */
+    wdtSides?: Record<string, number>;
 }
 
 export interface GservInstance {
@@ -34,6 +38,10 @@ export interface GservInstance {
     // removes them (see sweepExpired).
     ranked?: boolean;
     ladderType?: string;
+    /** World Domination conflict this instance plays for, if any. */
+    wdtConflictId?: number;
+    /** Nick -> owner row for a WDT match. */
+    wdtSides?: Record<string, number>;
     endedAt?: number;
     // Unix seconds at which the first player joined the instance; used to
     // abort instances that never gather the full roster and start.
@@ -79,6 +87,8 @@ export class GservManager {
             nativeSku: options.nativeSku,
             ranked: options.ranked,
             ladderType: options.ranked ? options.ladderType : undefined,
+            wdtConflictId: options.wdtConflictId,
+            wdtSides: options.wdtSides,
             loadingDepartures: new Map(),
         };
         for (const nick of players) {

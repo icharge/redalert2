@@ -104,6 +104,10 @@ export interface ServerConfig {
     mapPublishDefault: boolean;
     /** Upper bound for a single uploaded/transferred map blob. */
     mapMaxUploadBytes: number;
+    /** World Domination Tour: the native TCP listener and its HTTP state. */
+    wdtEnabled: boolean;
+    wdtHost: string;
+    wdtPort: number;
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env as Record<string, string | undefined>): ServerConfig {
@@ -252,5 +256,12 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
         // MAX_MAP_TRANSFER_BYTES (2 MiB); 4 MiB headroom keeps the store
         // useful for direct uploads/browsing beyond the lobby path.
         mapMaxUploadBytes: Number(env.MAP_MAX_UPLOAD_BYTES ?? 4 * 1024 * 1024),
+        // World Domination Tour: one service per process, shared by the WOL
+        // bridge and the native TCP listener. The listener is loopback-only by
+        // default because a native install points WDTHost at this host; put it
+        // behind the same edge as the lobby when players are remote.
+        wdtEnabled: env.WDT_ENABLED !== "false",
+        wdtHost: env.WDT_HOST ?? "127.0.0.1",
+        wdtPort: Number(env.WDT_PORT ?? 29090),
     };
 }

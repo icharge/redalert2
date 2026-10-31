@@ -20,6 +20,8 @@ import { handleAdmin } from "./adminRoutes";
 import { handleMapTransfer, handleMaps } from "./mapRoutes";
 import { corsHeaders, withCors } from "./cors";
 import { MapStore } from "../mapstore/MapStore";
+import { WdtService } from "../wdt/service";
+import { handleWdt } from "../wdt/http";
 
 function json(body: unknown, status = 200): Response {
     return new Response(JSON.stringify(body), {
@@ -119,6 +121,9 @@ export interface HttpDeps {
     // /maptransfer* routes then 404 and /servers.ini stops advertising
     // mapTransferUrl.
     maps?: MapStore;
+    // World Domination Tour state; the /wdt/* routes use the same service as
+    // the native TCP listener. Absent when the feature is disabled.
+    wdt?: WdtService;
 }
 
 export async function handleHttp(req: Request, deps: HttpDeps, config: ServerConfig, log: Logger = makeLogger("error", "http")): Promise<Response> {
@@ -128,6 +133,11 @@ export async function handleHttp(req: Request, deps: HttpDeps, config: ServerCon
 
     if (req.method === "OPTIONS") {
         return new Response(null, { status: 204, headers: corsHeaders(config, req) });
+    }
+
+    if (deps.wdt) {
+        const wdt = handleWdt(req, deps.wdt);
+        if (wdt) return withCors(wdt, config, req);
     }
 
     if (req.method === "POST" && url.pathname === "/login") {
