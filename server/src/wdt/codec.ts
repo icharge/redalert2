@@ -143,7 +143,14 @@ export function territoryRecord(id: number, art = 10): Buffer {
     record.set([0, 100, 50, 0, 100, 50, 0, 100], 12);
     record.set([1, 100, 50, 0, 100, 50, 0, 100, 50], 20);
     record.set([0, 100, 50, 0, 100, 50, 0], 29);
-    record.fill(0xff, 36, 44);
+    // The two big-endian words at +0x24/+0x28 are the region's map position
+    // (the client stores them at WDTTerritory+0x3C/+0x38). A six-column grid
+    // inside the 640x480 WDT map keeps every region on screen; -1, -1 draws
+    // them all off the map.
+    const x = 40 + (id % 6) * 95;
+    const y = 40 + Math.floor(id / 6) * 70;
+    record.writeUInt32BE(x >>> 0, 36);
+    record.writeUInt32BE(y >>> 0, 40);
     if (art !== 10) record[2] = record[3] = (art + 0x80) & 0xff;
     return record;
 }
