@@ -192,13 +192,17 @@ export function encodeState(state: WdtState): Buffer {
         records.push({ tag: "CMID", value: Buffer.from([state.mapId & 0xff]) });
         records.push({ tag: "CYID", value: le32(state.cycleId) });
     }
-    records.push({ tag: "WURL", value: Buffer.from(state.url, "utf8") });
-    records.push({ tag: "SDSC", value: Buffer.from(state.shortDescription, "utf8") });
-    records.push({ tag: "LDSC", value: Buffer.from(state.longDescription, "utf8") });
+    // SDSC/LDSC carry CSF key names (the client resolves them through its
+    // localized string table), not display text. The service defaults are the
+    // client's own `"WDT:DefaultShortDescription"` / `"WDT:DefaultLongDescription"`.
+    const text = (value: string) => Buffer.from(`${value}\0`, "utf8");
+    records.push({ tag: "WURL", value: text(state.url) });
+    records.push({ tag: "SDSC", value: text(state.shortDescription) });
+    records.push({ tag: "LDSC", value: text(state.longDescription) });
     return encodeContainer(records);
 }
 
 /** A refusal the client shows as "NACK received from server". */
 export function encodeNack(reason = ""): Buffer {
-    return encodeContainer([{ tag: "NACK", value: Buffer.from(reason, "utf8") }]);
+    return encodeContainer([{ tag: "NACK", value: Buffer.from(reason + "\0", "utf8") }]);
 }

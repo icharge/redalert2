@@ -280,8 +280,8 @@ export class WdtService {
             startsAt,
             endsAt: startsAt + this.cycleDays * 86_400_000,
             lengthDays: this.cycleDays,
-            shortDescription: `Cycle ${id}`,
-            longDescription: "World Domination Tour: fight for the thirty regions of the world map.",
+            shortDescription: '"WDT:DefaultShortDescription"',
+            longDescription: '"WDT:DefaultLongDescription"',
             url: this.url,
             territories: Array.from({ length: TERRITORIES_PER_CONTINENT }, (_, index) => {
                 // Start with a few owned regions so the map has both sides on
