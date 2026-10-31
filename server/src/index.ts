@@ -19,6 +19,7 @@ import { openDatabase } from "./auth/db";
 import { isOriginAllowed } from "./http/cors";
 import { WdtService } from "./wdt/service";
 import { WdtTcpServer } from "./wdt/server";
+import { createWdtStore } from "./wdt/store";
 
 interface WsData {
     target: "wol" | "gserv" | "native";
@@ -39,6 +40,7 @@ const gservManager = new GservManager({ id: config.gservId, url: config.external
 const wdt = new WdtService({
     edition: process.env.WDT_EDITION === "yr" ? "yr" : "ra2",
     url: process.env.WDT_URL ?? config.externalUrl.replace(/^ws/, "http") + "/wdt",
+    store: createWdtStore(config),
 });
 const wol = new WolServer(config, sessions, accounts, gservManager, wdt);
 const gserv = new GservServer(config, gservManager);

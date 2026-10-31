@@ -96,7 +96,7 @@ export interface WdtResultInput {
 }
 
 export class WdtError extends Error {
-    constructor(message: string, readonly code: "unknown_conflict" | "closed_conflict" | "bad_faction" | "no_territory") {
+    constructor(message: string, readonly code: "unknown_conflict" | "closed_conflict" | "bad_faction" | "no_territory" | "disabled") {
         super(message);
         this.name = "WdtError";
     }

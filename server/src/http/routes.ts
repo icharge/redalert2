@@ -136,7 +136,14 @@ export async function handleHttp(req: Request, deps: HttpDeps, config: ServerCon
     }
 
     if (deps.wdt) {
-        const wdt = handleWdt(req, deps.wdt);
+        // Same bearer session + ADMIN_USERNAMES rule as /admin/*.
+        const isWdtAdmin = (request: Request): boolean => {
+            const authorization = request.headers.get("authorization") ?? "";
+            const token = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
+            const session = deps.sessions.validate(token);
+            return !!session && config.adminUsernames.includes(session.username.toLowerCase());
+        };
+        const wdt = await handleWdt(req, deps.wdt, isWdtAdmin);
         if (wdt) return withCors(wdt, config, req);
     }
 

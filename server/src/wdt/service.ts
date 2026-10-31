@@ -17,6 +17,7 @@ import {
     WdtState,
     WdtTerritory,
 } from "./types";
+import { WdtSnapshot, WdtStore } from "./store";
 
 export interface WdtServiceOptions {
     edition?: WdtEdition;
@@ -25,6 +26,8 @@ export interface WdtServiceOptions {
     cycleDays?: number;
     map?: string;
     url?: string;
+    /** Optional durable snapshot store; absent keeps the state in memory. */
+    store?: WdtStore;
 }
 
 const FACTIONS: Record<WdtEdition, WdtFaction[]> = {
@@ -51,7 +54,9 @@ export class WdtService {
     private previous?: WdtCycle;
     private nextConflict = 1;
     private nextCycle = 2;
+    private enabled = true;
     private listeners: Array<(cycle: WdtCycle) => void> = [];
+    private readonly store?: WdtStore;
 
     constructor(options: WdtServiceOptions = {}) {
         this.now = options.now ?? Date.now;
@@ -59,7 +64,52 @@ export class WdtService {
         this.cycleDays = options.cycleDays ?? 7;
         this.map = options.map ?? "World";
         this.url = options.url ?? "https://ra2web.example/wdt";
-        this.current = this.makeCycle(1);
+        this.store = options.store;
+        const saved = this.store?.load();
+        this.current = saved?.current ?? this.makeCycle(1);
+        this.previous = saved?.previous;
+        this.nextConflict = saved?.nextConflict ?? 1;
+        this.nextCycle = saved?.nextCycle ?? 2;
+        this.enabled = saved?.enabled ?? true;
+    }
+
+    /** Operators can stop serving WDT without stopping the WOL lobby. */
+    isEnabled(): boolean {
+        return this.enabled;
+    }
+
+    setEnabled(enabled: boolean): void {
+        this.enabled = enabled;
+        this.persist();
+    }
+
+    /** Drop the cycle and start a fresh one (admin reset). */
+    reset(): WdtCycle {
+        this.previous = undefined;
+        this.current = this.makeCycle(this.nextCycle++);
+        this.nextConflict = 1;
+        this.persist();
+        return this.current;
+    }
+
+    snapshot(): WdtSnapshot {
+        return JSON.parse(JSON.stringify({
+            version: 1,
+            enabled: this.enabled,
+            nextConflict: this.nextConflict,
+            nextCycle: this.nextCycle,
+            current: this.current,
+            previous: this.previous,
+        })) as WdtSnapshot;
+    }
+
+    private persist(): void {
+        try {
+            this.store?.save(this.snapshot());
+        }
+        catch {
+            // A broken disk must not take the lobby down; the next mutation retries.
+        }
     }
 
     /** Watch for applied results (the HTTP/native paths use this to log). */
@@ -79,11 +129,13 @@ export class WdtService {
     advanceCycle(): WdtCycle {
         this.previous = this.current;
         this.current = this.makeCycle(this.nextCycle++);
+        this.persist();
         return this.current;
     }
 
     /** The current or frozen previous cycle as the client's wire state. */
     state(kind: "current" | "previous" = "current"): WdtState {
+        if (!this.enabled) throw new WdtError("World Domination is disabled", "disabled");
         // A fresh deployment has no frozen cycle yet; the client still asks
         // for one after the current state, so answer with an empty neutral map
         // rather than a NACK (the screen shows "no previous cycle" text).
@@ -141,6 +193,7 @@ export class WdtService {
             startedAt: this.now(),
         };
         cycle.conflicts.push(conflict);
+        this.persist();
         return conflict;
     }
 
@@ -182,6 +235,7 @@ export class WdtService {
         conflict.closedAt = entry.at;
         conflict.winner = faction.row;
         cycle.history.push(entry);
+        this.persist();
         for (const listener of this.listeners) listener(cycle);
         return conflict;
     }
@@ -191,6 +245,7 @@ export class WdtService {
         const cycle = this.current;
         return {
             edition: this.edition,
+            enabled: this.enabled,
             cycle: {
                 id: cycle.id,
                 map: cycle.map,

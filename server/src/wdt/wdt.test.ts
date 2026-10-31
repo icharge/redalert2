@@ -13,6 +13,8 @@ import { WdtTcpServer } from "./server";
 import { handleWdt } from "./http";
 import { parseWdtOpts } from "../server/WolServer";
 import { applyWdtNativeResult } from "../http/nativeResults";
+import { Database } from "bun:sqlite";
+import { SqliteWdtStore } from "./store";
 
 describe("WDT container codec", () => {
     test("round-trips tags, integers and strings with four-byte padding", () => {
@@ -146,17 +148,62 @@ describe("WDT cycle service", () => {
     });
 });
 
+describe("WDT admin and persistence", () => {
+    test("admin actions require the guard; rollover, reset and enable work", async () => {
+        const service = new WdtService({ edition: "ra2" });
+        const admin = () => true;
+        const denied = await handleWdt(new Request("http://x/wdt/admin/rollover", { method: "POST" }), service);
+        expect(denied?.status).toBe(401);
+
+        const roll = await handleWdt(new Request("http://x/wdt/admin/rollover", { method: "POST" }), service, admin);
+        expect(roll?.status).toBe(200);
+        expect(((await roll!.json()) as { cycle: { id: number } }).cycle.id).toBe(2);
+
+        const reset = await handleWdt(new Request("http://x/wdt/admin/reset", { method: "POST" }), service, admin);
+        expect(((await reset!.json()) as { cycle: { id: number } }).cycle.id).toBe(3);
+
+        const enable = await handleWdt(new Request("http://x/wdt/admin/enable", {
+            method: "POST",
+            body: JSON.stringify({ enabled: false }),
+        }), service, admin);
+        expect(await enable!.json()).toEqual({ ok: true, enabled: false });
+        expect(service.isEnabled()).toBe(false);
+        const packet = await handleWdt(new Request("http://x/wdt/state"), service);
+        expect(packet?.status).toBe(503);
+
+        const on = await handleWdt(new Request("http://x/wdt/admin/enable", { method: "POST" }), service, admin);
+        expect(await on!.json()).toEqual({ ok: true, enabled: true });
+        expect((await handleWdt(new Request("http://x/wdt/state"), service))?.status).toBe(200);
+    });
+
+    test("SQLite keeps the cycle, closed conflict and history across services", () => {
+        const db = new Database(":memory:");
+        const store = new SqliteWdtStore(db);
+        const first = new WdtService({ edition: "ra2", now: () => 5_000, store });
+        const conflict = first.assignConflict(0, 11, "g7-wdt");
+        first.reportResultByGame("g7-wdt", conflict.attacker);
+        expect(first.cycle.history).toHaveLength(1);
+
+        const reopened = new WdtService({ edition: "ra2", now: () => 6_000, store });
+        expect(reopened.cycle.territories[11].owner).toBe(conflict.attacker);
+        expect(reopened.cycle.history).toHaveLength(1);
+        expect(reopened.conflictForGame("g7-wdt")?.closedAt).toBeDefined();
+        expect(() => reopened.reportResultByGame("g7-wdt", conflict.attacker)).toThrow(/closed/);
+        db.close();
+    });
+});
+
 describe("WDT endpoints", () => {
     test("HTTP state serves the binary packet and status serves JSON", async () => {
         const service = new WdtService({ edition: "ra2" });
-        const state = handleWdt(new Request("http://x/wdt/state?cycle=current"), service)!;
+        const state = (await handleWdt(new Request("http://x/wdt/state?cycle=current"), service))!;
         expect(state.headers.get("Content-Type")).toBe("application/octet-stream");
         const records = decodeContainer(Buffer.from(await state.arrayBuffer()));
         expect(records.has("CRTK")).toBe(true);
-        const status = handleWdt(new Request("http://x/wdt/status"), service)!;
+        const status = (await handleWdt(new Request("http://x/wdt/status"), service))!;
         const json = await status.json() as { cycle: { id: number } };
         expect(json.cycle.id).toBe(1);
-        expect(handleWdt(new Request("http://x/other"), service)).toBeUndefined();
+        expect(await handleWdt(new Request("http://x/other"), service)).toBeUndefined();
     });
 
     test("the native listener answers a text request with a decodable packet", async () => {
