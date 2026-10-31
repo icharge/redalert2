@@ -185,6 +185,26 @@ describe("WolServer games", () => {
         expect(hasLine(bob.socket, line => /^:wol-ra2web STARTG #alice's_game :ws:\/\/test\.local\/gserv :g/.test(line))).toBe(true);
     });
 
+    test("lists lobby channels with their player counts for a type-0 request", async () => {
+        const { server, accounts, sessions } = makeServer();
+        const alice = await login(server, accounts, sessions, "alice");
+        const bob = await login(server, accounts, sessions, "bob");
+        server.handleMessage(alice.user, `join ${LOBBY} zotclot9`);
+
+        alice.socket.sent.length = 0;
+        server.handleMessage(alice.user, `list 0 0`);
+        expect(hasLine(alice.socket, line => line.startsWith(":wol-ra2web 321 alice 0"))).toBe(true);
+        // The native channel list reads currentUsers from this row and needs
+        // type 0 so the lobby stays out of the game-room list.
+        expect(hasLine(alice.socket, line => line.includes("322 alice #Lob_45_0 1 0 0 0 0 0 0::"))).toBe(true);
+        expect(hasLine(alice.socket, line => line.startsWith(":wol-ra2web 323 alice 0"))).toBe(true);
+
+        server.handleMessage(bob.user, `join ${LOBBY} zotclot9`);
+        alice.socket.sent.length = 0;
+        server.handleMessage(alice.user, `list 0 0`);
+        expect(hasLine(alice.socket, line => line.includes("322 alice #Lob_45_0 2 0 0 0 0 0 0::"))).toBe(true);
+    });
+
     test("rejects joining a game with a bad password", async () => {
         const { server, accounts, sessions } = makeServer();
         const alice = await login(server, accounts, sessions, "alice");

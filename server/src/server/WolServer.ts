@@ -372,11 +372,29 @@ export class WolServer {
     private handleList(user: ServerUser, args: string[]): void {
         const arg = args[0] ?? "";
         const numericFilter = Number(arg);
+        // Native WOL clients ask for the channel (lobby) list with type 0.
+        // RA2Web otherwise lists only game rooms, but the native channel list
+        // needs every lobby's player count, so include them for that request.
+        const lobbies = arg === "0" ? [...this.channels.values()] : [];
         const matching = [...this.games.values()].filter(game =>
             (Number.isFinite(numericFilter) && game.channelType === numericFilter) ||
             game.key === arg ||
             game.name === unescapeChannelName(arg));
         this.sendNumeric(user, Code.RPL_LISTSTART, user.nick, [arg], "Channel Users Name");
+        for (const channel of lobbies) {
+            // A lobby is a chat channel, not a game room: type 0 keeps it in the
+            // native lobby list and currentUsers carries the player count.
+            this.sendNumeric(user, Code.RPL_LIST, user.nick, [
+                channel.key,
+                String(channel.members.size),
+                "0",
+                "0",
+                "0",
+                "0",
+                "0",
+                "0::",
+            ], "0");
+        }
         for (const game of matching) {
             const human = game.members.size;
             const topic = game.topic ?? "";
