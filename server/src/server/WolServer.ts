@@ -66,6 +66,8 @@ export class WolServer {
     readonly log: Logger;
     private pingInterval?: ReturnType<typeof setInterval>;
     private localeCodes = LOCALE_CODE_BY_ID;
+    /** Territory the player clicked in the WDT map, sent by the browser bridge. */
+    private readonly wdtPendingTerritory = new Map<string, number>();
 
     constructor(
         readonly config: ServerConfig,
@@ -224,6 +226,16 @@ export class WolServer {
             case "topic": this.handleTopic(user, line, args); break;
             case "gping": this.handleGping(user, args); break;
             case "startg": this.handleStartg(user, args); break;
+            case "wdtstart": {
+                // The browser bridge reports the territory the player clicked, since
+                // the client's own match worker (which normally puts WDS/WDT in the
+                // game options) does not run in the browser flow.
+                const territory = Number(args[0]);
+                if (Number.isInteger(territory) && territory >= 0) {
+                    this.wdtPendingTerritory.set(user.nick, territory);
+                }
+                break;
+            }
             case "party_invite": this.parties.invite(user, args[0]); break;
             case "party_accept": this.parties.accept(user, args[0]); break;
             case "party_decline": this.parties.decline(user, args[0]); break;
@@ -469,7 +481,16 @@ export class WolServer {
             const room = this.games.get(WDT_MATCH_ROOM);
             if (room) {
                 room.hostName = user.nick;
-                room.gameOpts = "WDS=0";
+                const clicked = this.wdtPendingTerritory.get(user.nick);
+                this.wdtPendingTerritory.delete(user.nick);
+                // Only tag a territory that exists and is not already ours:
+                // assignConflict rejects an owned territory and would create no
+                // conflict, so fall back to its automatic neutral pick.
+                const target = clicked === undefined
+                    ? undefined
+                    : this.wdt?.cycle.territories.find(t => t.id === clicked);
+                const attackable = target !== undefined && target.owner !== 0;
+                room.gameOpts = attackable ? `WDS=0,WDT=${clicked}` : "WDS=0";
                 this.joinGame(user, [WDT_MATCH_ROOM]);
                 this.handleStartg(user, [WDT_MATCH_ROOM, user.nick]);
             }
