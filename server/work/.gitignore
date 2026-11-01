@@ -1,0 +1,4 @@
+# Live-check server output (captured during WDT verification); the scripts below
+# are the probes, the .out/.err files are disposable run logs.
+*.out
+*.err
