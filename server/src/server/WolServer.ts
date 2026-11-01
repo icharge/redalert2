@@ -57,6 +57,8 @@ const LOCALE_CODE_BY_ID: Record<number, string> = {
 
 export class WolServer {
     readonly serverName = WOL_SERVER_NAME;
+    /** Milliseconds a picked territory waits before the match starts. */
+    private static readonly WDT_CLICK_DELAY_MS = 700;
     readonly users = new Map<string, ServerUser>();
     readonly channels = new Map<string, Channel>();
     readonly games = new Map<string, GameChannel>();
@@ -68,6 +70,10 @@ export class WolServer {
     private localeCodes = LOCALE_CODE_BY_ID;
     /** Territory the player clicked in the WDT map, sent by the browser bridge. */
     private readonly wdtPendingTerritory = new Map<string, number>();
+    /** The WDT screen is up; the next LIST 33 is its match start. */
+    private readonly wdtArmed = new Set<string>();
+    /** A click starts the match shortly after the selection settles. */
+    private readonly wdtStartTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
     constructor(
         readonly config: ServerConfig,
@@ -141,6 +147,12 @@ export class WolServer {
 
     handleClose(user: ServerUser): void {
         this.wdtPendingTerritory.delete(user.nick);
+        this.wdtArmed.delete(user.nick);
+        const timer = this.wdtStartTimers.get(user.nick);
+        if (timer) {
+            clearTimeout(timer);
+            this.wdtStartTimers.delete(user.nick);
+        }
         for (const key of [...user.channels]) {
             const channel = this.channels.get(key);
             if (channel) {
@@ -227,6 +239,14 @@ export class WolServer {
             case "topic": this.handleTopic(user, line, args); break;
             case "gping": this.handleGping(user, args); break;
             case "startg": this.handleStartg(user, args); break;
+            case "wdtarmed": {
+                // The browser bridge reports that the WDT screen is up. Only
+                // then does a LIST 33 mean "start this WDT match"; the ordinary
+                // lobby game-list refresh must not start one.
+                this.wdtArmed.add(user.nick);
+                this.log.info(`wdt armed for ${user.nick}`);
+                break;
+            }
             case "wdtstart": {
                 // The browser bridge reports the territory the player clicked, since
                 // the client's own match worker (which normally puts WDS/WDT in the
@@ -245,6 +265,20 @@ export class WolServer {
                     const conflict = instance && this.wdt?.retargetConflict(instance.wdtConflictId!, territory, 0);
                     if (conflict) {
                         this.log.info(`wdt clicked territory ${territory} for conflict ${conflict.id} (game ${instance!.gameId})`);
+                    }
+                    // The select screen is up and the player picked a region:
+                    // start the match from the server (the client's own worker
+                    // does not run in the browser). Waiting for the selection to
+                    // settle avoids starting on every hover sample.
+                    if (this.wdtArmed.has(user.nick) && !user.gameChannel) {
+                        const prior = this.wdtStartTimers.get(user.nick);
+                        if (prior) clearTimeout(prior);
+                        const timer = setTimeout(() => {
+                            this.wdtStartTimers.delete(user.nick);
+                            this.startPendingWdt(user.nick);
+                        }, WolServer.WDT_CLICK_DELAY_MS);
+                        timer.unref?.();
+                        this.wdtStartTimers.set(user.nick, timer);
                     }
                 }
                 break;
@@ -421,12 +455,7 @@ export class WolServer {
         // (LIST 33). Ensure the matching room exists so it is listed and the
         // server can place the player into it.
         if (arg === "33" && ![...this.games.values()].some(game => game.channelType === 33)) {
-            const room = new GameChannel(WDT_MATCH_ROOM, "WDTmatch");
-            room.hostName = "";
-            room.mode = 1;
-            room.slots = 2;
-            room.channelType = 33;
-            this.games.set(WDT_MATCH_ROOM, room);
+            this.ensureWdtRoom();
             this.log.info(`wdt match room ${WDT_MATCH_ROOM} created for ${user.nick}`);
         }
         const matching = [...this.games.values()].filter(game =>
@@ -486,7 +515,8 @@ export class WolServer {
             ], "0");
         }
         this.sendNumeric(user, Code.RPL_LISTEND, user.nick, [arg], "End of /LIST");
-        if (arg === "33" && !user.gameChannel) {
+        if (arg === "33" && !user.gameChannel &&
+            (this.wdtArmed.has(user.nick) || this.wdtPendingTerritory.has(user.nick))) {
             // The browser WDT flow cannot drive the client's own match worker, so
             // the server places the player into the room and starts the match. The
             // WDS tag marks it as a World Domination game; assignConflict then
@@ -505,17 +535,39 @@ export class WolServer {
         const room = this.games.get(WDT_MATCH_ROOM);
         if (!room || !room.has(user.nick) || user.gameChannel !== WDT_MATCH_ROOM) return;
         room.hostName = user.nick;
+        this.wdtArmed.delete(user.nick);
         const clicked = this.wdtPendingTerritory.get(user.nick);
         this.wdtPendingTerritory.delete(user.nick);
-        // Only tag a territory that exists and is not already ours:
-        // assignConflict rejects an owned territory and would create no
-        // conflict, so fall back to its automatic neutral pick.
         const target = clicked === undefined
             ? undefined
             : this.wdt?.cycle.territories.find(t => t.id === clicked);
         const attackable = target !== undefined && target.owner !== 0;
         room.gameOpts = attackable ? `WDS=0,WDT=${clicked}` : "WDS=0";
         this.handleStartg(user, [WDT_MATCH_ROOM, user.nick]);
+    }
+
+    /** The `#WDTmatch` room, created on demand. */
+    private ensureWdtRoom(): GameChannel {
+        let room = this.games.get(WDT_MATCH_ROOM);
+        if (!room) {
+            room = new GameChannel(WDT_MATCH_ROOM, "WDTmatch");
+            room.hostName = "";
+            room.mode = 1;
+            room.slots = 2;
+            room.channelType = 33;
+            this.games.set(WDT_MATCH_ROOM, room);
+        }
+        return room;
+    }
+
+    /** Start the match for a settled territory click (armed, still waiting). */
+    private startPendingWdt(nick: string): void {
+        const user = this.users.get(nick);
+        if (!user || !user.authenticated || !this.wdtArmed.has(nick) || user.gameChannel) return;
+        const room = this.ensureWdtRoom();
+        room.hostName = nick;
+        this.joinGame(user, [WDT_MATCH_ROOM]);
+        this.startWdtMatch(user);
     }
 
     private handlePrivmsg(user: ServerUser, line: string): void {

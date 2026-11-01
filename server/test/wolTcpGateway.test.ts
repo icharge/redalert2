@@ -82,8 +82,13 @@ describe("native WOL TCP gateway", () => {
         expect(await client.waitFor(line => line.includes(" 322 ") && line.includes("#WDTmatch")))
             .toContain("#WDTmatch");
 
+        // The ordinary lobby game-list refresh must not start a WDT match: only
+        // the click/arm from the select screen does.
+        expect(client.text.includes(" STARTG ")).toBe(false);
+
         // The click arrives after LIST; the server waits for it, then starts.
         client.send("wdtstart 7");
+        client.send("list 33 33");
         const start = await client.waitFor(line => line.startsWith(":") && line.includes(" STARTG #WDTmatch "));
         const gameId = / :\S+ :(\S+) /.exec(start)?.[1];
         expect(gameId).toBeTruthy();
@@ -99,6 +104,32 @@ describe("native WOL TCP gateway", () => {
         // The disconnect path releases the shared user record.
         await new Promise(resolve => setTimeout(resolve, 50));
         expect(wol.users.has("native1")).toBe(false);
+    });
+
+    test("wdtarmed turns the next LIST 33 into a WDT start", async () => {
+        const { accounts, sessions, gservs, wdt, wol } = make();
+        await accounts.register("native3", "password123");
+        const gateway = new WolTcpGateway(wol, { host: "127.0.0.1", port: 0 });
+        gateways.push(gateway);
+        const { port } = await gateway.start();
+
+        const client = new TcpClient(port);
+        await client.connected;
+        client.send(`session ${sessions.create("native3")}`);
+        await client.waitFor(line => line.includes(" 376 "));
+
+        client.send("list 33 33");
+        await client.waitFor(line => line.includes(" 322 ") && line.includes("#WDTmatch"));
+        expect(client.text.includes(" STARTG ")).toBe(false);
+
+        client.send("wdtarmed");
+        client.send("list 33 33");
+        const start = await client.waitFor(line => line.includes(" STARTG #WDTmatch "));
+        const gameId = / :\S+ :(\S+) /.exec(start)?.[1];
+        expect(gameId).toBeTruthy();
+        expect(wdt.conflictForGame(gameId!)).toBeDefined();
+        expect(gservs.instances.size).toBe(1);
+        client.close();
     });
 
     test("forwards a plain WOL command loop and drops an oversized line", async () => {
