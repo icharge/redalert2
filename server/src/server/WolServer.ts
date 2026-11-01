@@ -27,6 +27,8 @@ export function parseWdtOpts(gameOpts?: string): { side: number; territory?: num
     return { side: number, territory: territory ? Number(territory[1]) : undefined };
 }
 
+const WDT_MATCH_ROOM = "#WDTmatch";
+
 const LOCALE_CODE_BY_ID: Record<number, string> = {
     2: "en-US",
     3: "en-CA",
@@ -403,6 +405,22 @@ export class WolServer {
                 String(channel.members.size),
                 "0",
                 "0",
+                "0",
+                "0",
+                "0",
+                "0::",
+            ], "0");
+        }
+        // World Domination's match start asks for the lobby's game list
+        // (LIST 33) before any matching room exists. Publish the WDT room so the
+        // client has an entry to match and join instead of showing
+        // "Matching Server Not Found".
+        if (arg === "33" && !matching.some(game => game.channelType === 33)) {
+            this.sendNumeric(user, Code.RPL_LIST, user.nick, [
+                WDT_MATCH_ROOM,
+                "1",
+                "0",
+                "33",
                 "0",
                 "0",
                 "0",
