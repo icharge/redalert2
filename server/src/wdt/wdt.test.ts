@@ -229,4 +229,57 @@ describe("WDT endpoints", () => {
             await server.close();
         }
     });
+
+    test("the native listener serves the previous cycle and tagged/byte selectors", async () => {
+        const service = new WdtService({ edition: "ra2" });
+        const server = new WdtTcpServer(service, { port: 0, idleTimeoutMs: 2000 });
+        const { port } = await server.start();
+        const ask = (bytes: Buffer | string) => new Promise<Buffer>((resolve, reject) => {
+            const socket = Bun.connect({
+                hostname: "127.0.0.1",
+                port,
+                socket: {
+                    open(socket) { socket.write(bytes); },
+                    data(_socket, data) { resolve(Buffer.from(data)); },
+                    error(_socket, error) { reject(error); },
+                },
+            });
+            setTimeout(() => reject(new Error("timeout")), 3000);
+        });
+        try {
+            // Text selector.
+            expect(decodeContainer(await ask("WDT PREVIOUS\n")).has("TOTK")).toBe(true);
+            // One-byte selector: 1 = previous.
+            expect(decodeContainer(await ask(Buffer.from([1]))).has("TOTK")).toBe(true);
+            // The tagged request the browser path uses: WREQ = 1.
+            const tagged = encodeContainer([{ tag: "WREQ", value: Buffer.from([1, 0, 0, 0]) }]);
+            expect(decodeContainer(await ask(tagged)).has("TOTK")).toBe(true);
+            // A fixed 16-byte selector from the classic control still gets a
+            // current packet instead of hanging until the idle timeout.
+            const header = Buffer.alloc(16);
+            header[0] = 0x12;
+            expect(decodeContainer(await ask(header)).has("CRTK")).toBe(true);
+        } finally {
+            await server.close();
+        }
+    });
+});
+
+describe("WDT clicked territory", () => {
+    test("a late click retargets the open conflict; owned or closed ones are ignored", () => {
+        const service = new WdtService({ edition: "ra2", now: () => 1_000 });
+        const conflict = service.assignConflict(0, undefined, "g1-wdt");
+        // The start fell back to the automatic neutral pick (10).
+        expect(conflict.territoryId).toBe(10);
+        // The click was processed a moment later and names region 18.
+        const moved = service.retargetConflict(conflict.id, 18, 0);
+        expect(moved?.territoryId).toBe(18);
+        expect(service.conflictForGame("g1-wdt")?.territoryId).toBe(18);
+        // An own region is not a valid target, so the pick stands.
+        expect(service.retargetConflict(conflict.id, 0, 0)).toBeUndefined();
+        expect(service.conflictForGame("g1-wdt")?.territoryId).toBe(18);
+        // After the result the conflict is closed and cannot move again.
+        service.reportResult({ conflictId: conflict.id, winner: 0, gameId: "g1-wdt" });
+        expect(service.retargetConflict(conflict.id, 11, 0)).toBeUndefined();
+    });
 });

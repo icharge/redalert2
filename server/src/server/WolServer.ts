@@ -140,6 +140,7 @@ export class WolServer {
     }
 
     handleClose(user: ServerUser): void {
+        this.wdtPendingTerritory.delete(user.nick);
         for (const key of [...user.channels]) {
             const channel = this.channels.get(key);
             if (channel) {
@@ -231,8 +232,20 @@ export class WolServer {
                 // the client's own match worker (which normally puts WDS/WDT in the
                 // game options) does not run in the browser flow.
                 const territory = Number(args[0]);
-                if (Number.isInteger(territory) && territory >= 0) {
+                if (Number.isInteger(territory) && territory >= 0 && territory < 30) {
                     this.wdtPendingTerritory.set(user.nick, territory);
+                    this.log.info(`wdtstart ${territory} from ${user.nick}`);
+                    // The click can be processed after LIST 33 already started the
+                    // match; retarget that still-open conflict so the result follows
+                    // the region the player clicked. The instance may already have
+                    // ended, but its conflict is open until the game-res arrives.
+                    const instance = [...this.gservs.instances.values()]
+                        .filter(i => i.wdtConflictId !== undefined && i.players.includes(user.nick))
+                        .sort((a, b) => b.timestamp - a.timestamp)[0];
+                    const conflict = instance && this.wdt?.retargetConflict(instance.wdtConflictId!, territory, 0);
+                    if (conflict) {
+                        this.log.info(`wdt clicked territory ${territory} for conflict ${conflict.id} (game ${instance!.gameId})`);
+                    }
                 }
                 break;
             }
@@ -481,20 +494,28 @@ export class WolServer {
             const room = this.games.get(WDT_MATCH_ROOM);
             if (room) {
                 room.hostName = user.nick;
-                const clicked = this.wdtPendingTerritory.get(user.nick);
-                this.wdtPendingTerritory.delete(user.nick);
-                // Only tag a territory that exists and is not already ours:
-                // assignConflict rejects an owned territory and would create no
-                // conflict, so fall back to its automatic neutral pick.
-                const target = clicked === undefined
-                    ? undefined
-                    : this.wdt?.cycle.territories.find(t => t.id === clicked);
-                const attackable = target !== undefined && target.owner !== 0;
-                room.gameOpts = attackable ? `WDS=0,WDT=${clicked}` : "WDS=0";
                 this.joinGame(user, [WDT_MATCH_ROOM]);
-                this.handleStartg(user, [WDT_MATCH_ROOM, user.nick]);
+                this.startWdtMatch(user);
             }
         }
+    }
+
+    /** Start the WDT room for `user`, honouring the territory it clicked. */
+    private startWdtMatch(user: ServerUser): void {
+        const room = this.games.get(WDT_MATCH_ROOM);
+        if (!room || !room.has(user.nick) || user.gameChannel !== WDT_MATCH_ROOM) return;
+        room.hostName = user.nick;
+        const clicked = this.wdtPendingTerritory.get(user.nick);
+        this.wdtPendingTerritory.delete(user.nick);
+        // Only tag a territory that exists and is not already ours:
+        // assignConflict rejects an owned territory and would create no
+        // conflict, so fall back to its automatic neutral pick.
+        const target = clicked === undefined
+            ? undefined
+            : this.wdt?.cycle.territories.find(t => t.id === clicked);
+        const attackable = target !== undefined && target.owner !== 0;
+        room.gameOpts = attackable ? `WDS=0,WDT=${clicked}` : "WDS=0";
+        this.handleStartg(user, [WDT_MATCH_ROOM, user.nick]);
     }
 
     private handlePrivmsg(user: ServerUser, line: string): void {

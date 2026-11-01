@@ -108,6 +108,10 @@ export interface ServerConfig {
     wdtEnabled: boolean;
     wdtHost: string;
     wdtPort: number;
+    /** Plain-TCP WOL gateway for the classic native client (WebSocket otherwise). */
+    wolTcpEnabled: boolean;
+    wolTcpHost: string;
+    wolTcpPort: number;
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env as Record<string, string | undefined>): ServerConfig {
@@ -263,5 +267,11 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
         wdtEnabled: env.WDT_ENABLED !== "false",
         wdtHost: env.WDT_HOST ?? "127.0.0.1",
         wdtPort: Number(env.WDT_PORT ?? 29090),
+        // The classic client's WOL transport is a raw TCP stream. Loopback by
+        // default so a stock install can point at the same host; expose it on
+        // the edge (or set WOL_TCP_HOST=0.0.0.0) for remote players.
+        wolTcpEnabled: env.WOL_TCP_ENABLED !== "false",
+        wolTcpHost: env.WOL_TCP_HOST ?? "127.0.0.1",
+        wolTcpPort: Number(env.WOL_TCP_PORT ?? 6667),
     };
 }

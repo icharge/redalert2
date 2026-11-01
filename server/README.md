@@ -73,12 +73,18 @@ gitignored.
 | `GSERV_URL_PATH` | `/gserv` | Path of the match-relay endpoint. |
 | `GSERV_ID` | `gs1` | gserv id reported in `GSERV` messages. |
 | `WOL_URL_PATH` | *(empty)* | Extra path suffix for the WOL WebSocket URL reported in `/servers.ini` (e.g. `/wol` behind a reverse proxy). The server accepts the WOL protocol on any path that is not `GSERV_URL_PATH`. |
+| `WOL_TCP_ENABLED` | `true` | Serve the same WOL lobby over plain TCP for the classic native client (`false` disables it). |
+| `WOL_TCP_HOST` / `WOL_TCP_PORT` | `127.0.0.1` / `6667` | Plain-TCP WOL gateway address. Point the native client's Westwood Online server here; accounts, channels, games and results are the same as the WebSocket lobby's. |
+| `WDT_ENABLED` | `true` | Serve World Domination Tour (state endpoint and native TCP listener). |
+| `WDT_HOST` / `WDT_PORT` | `127.0.0.1` / `29090` | Native WDT state listener; the server-list `WDT`/`MGL` entry points at it. |
 | `PING_INTERVAL_SECONDS` | `30` | Server→client `PING` interval (measures player pings). |
 | `STORAGE` | `sqlite` | Storage backend for accounts/sessions: `sqlite` or `memory`. |
 | `DB_PATH` | `server/data/ra2web.sqlite` | SQLite database file; `:memory:` uses an in-memory SQLite DB. |
 | `CORS_ALLOWED_ORIGINS` | `*` | Comma-separated allowed browser origins for the HTTP endpoints **and** WebSocket upgrades. With a specific list, matching origins are echoed back with `Access-Control-Allow-Credentials: true` and other origins (including WebSocket handshakes) are rejected with `403`. |
 
 ## Pointing the game client at it
+
+### Browser
 
 Point the client's server list at this server. Either:
 
@@ -98,6 +104,19 @@ apiRegUrl="http://127.0.0.1:9090/register"
 `wolUrl` is used as-is by `IrcConnection` (`new WebSocket(url)`), so it must include the
 `ws://`/`wss://` scheme. From an `http://` dev origin, `ws://` works; from an `https://`
 origin you need TLS (terminate `wss://` in front of the server).
+
+### Native client (plain TCP)
+
+The classic native client only speaks the original line protocol over TCP. The same server
+process exposes it on `WOL_TCP_HOST:WOL_TCP_PORT` (default `127.0.0.1:6667`): point the
+native install's Westwood Online server there and it uses the same accounts, sessions,
+channels, games and result ingestion as the browser. Set `WOL_TCP_HOST=0.0.0.0` (or proxy
+the port) for remote players.
+
+For World Domination, a native server-list entry labelled `WDT` supplies `WDTHost`/`WDTPort`
+(`conndata` is `proto;host;port`) and the `MGL` entry supplies the mangler; the built-in
+browser bridge publishes both entries automatically. A native install configures the same
+values in its own server list.
 
 ## Reverse proxy (nginx)
 

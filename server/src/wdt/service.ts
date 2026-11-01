@@ -202,6 +202,24 @@ export class WdtService {
         return this.current.conflicts.find(c => c.gameId === gameId);
     }
 
+    /** Point an open conflict at the territory the player actually clicked.
+     *
+     * The client's click is sometimes processed after it has already asked for
+     * the match list, so the start may have used the automatic pick. A late
+     * `wdtstart` retargets the still-open conflict instead of being dropped.
+     * Owned or unknown territories are ignored (the original pick stands). */
+    retargetConflict(conflictId: number, territoryId: number, attacker: number): WdtConflict | undefined {
+        const cycle = this.current;
+        const conflict = cycle.conflicts.find(c => c.id === conflictId);
+        if (!conflict || conflict.closedAt !== undefined) return undefined;
+        const territory = cycle.territories.find(t => t.id === territoryId);
+        if (!territory || territory.owner === attacker) return undefined;
+        conflict.territoryId = territory.id;
+        conflict.defender = territory.owner;
+        this.persist();
+        return conflict;
+    }
+
     /** Apply a native/lobby result that identifies the match only by game id. */
     reportResultByGame(gameId: string, winner: number, at?: number): WdtConflict {
         const conflict = this.conflictForGame(gameId);

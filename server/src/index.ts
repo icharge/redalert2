@@ -7,6 +7,7 @@ import path from "node:path";
 import { AccountStore } from "./auth/accountStore";
 import { SessionManager } from "./auth/session";
 import { WolServer } from "./server/WolServer";
+import { WolTcpGateway } from "./server/WolTcpGateway";
 import { ServerUser } from "./server/ServerUser";
 import { GservServer, GservClient } from "./gserv/GservServer";
 import { GservManager } from "./gserv/GservManager";
@@ -52,6 +53,9 @@ const ladder = new LadderService(storage, makeLogger(config.logLevel, "ladder", 
 const wdtServer = config.wdtEnabled
     ? new WdtTcpServer(wdt, { host: config.wdtHost, port: config.wdtPort })
     : undefined;
+const wolTcp = config.wolTcpEnabled
+    ? new WolTcpGateway(wol, { host: config.wolTcpHost, port: config.wolTcpPort })
+    : undefined;
 const httpDeps: HttpDeps = {
     accounts,
     sessions,
@@ -88,6 +92,15 @@ if (wdtServer) {
     }
     catch (error) {
         log.warn(`World Domination listener did not start: ${error instanceof Error ? error.message : String(error)}`);
+    }
+}
+if (wolTcp) {
+    try {
+        const address = await wolTcp.start();
+        log.info(`Native WOL gateway on tcp://${address.host}:${address.port} (same accounts, channels and games as the WebSocket lobby)`);
+    }
+    catch (error) {
+        log.warn(`Native WOL gateway did not start: ${error instanceof Error ? error.message : String(error)}`);
     }
 }
 
@@ -206,6 +219,8 @@ function shutdown(signal: string): void {
     wol.dispose();
     gserv.dispose();
     nativeRelay.dispose();
+    void wdtServer?.close();
+    void wolTcp?.close();
     server.stop(true);
     storage.close();
     process.exit(0);
@@ -225,6 +240,9 @@ const RESTART_ONLY_KEYS = [
     "logMaxBytes",
     "logMaxFiles",
     "logRotateDaily",
+    "wolTcpEnabled",
+    "wolTcpHost",
+    "wolTcpPort",
 ] as const;
 
 // Hot reload for `systemctl reload` / `kill -HUP`: re-reads env + .env files

@@ -12,7 +12,7 @@
 // and always answers with the same state packet the bridge delivers.
 
 import { createServer, Server, Socket } from "node:net";
-import { decodeContainer, encodeNack, readU32 } from "./codec";
+import { decodeContainer, encodeNack, readU32, readU8 } from "./codec";
 import { WdtService } from "./service";
 import { WdtError } from "./types";
 
@@ -84,16 +84,24 @@ export class WdtTcpServer {
         socket.on("close", () => this.sockets.delete(socket));
     }
 
-    /** A text request ends at a newline; a container ends at its own length. */
+    /** A text request ends at a newline; a container ends at its own length.
+     * Anything else is treated as a fixed-size selector once 16 bytes are in:
+     * the classic WOL control's request header is not a WOL line. */
     private complete(buffer: Buffer): boolean {
         if (buffer.length === 0) return false;
         const newline = buffer.indexOf(0x0a);
         if (newline >= 0) return true;
-        if (buffer.length >= 2) {
+        if (buffer.length >= 8) {
             const total = buffer.readUInt16BE(0);
-            if (total >= 4 && total <= this.maxRequestBytes) return buffer.length >= total;
+            const kind = buffer.readUInt16BE(2);
+            const tag = buffer.toString("ascii", 4, 8);
+            const tagOk = /^[A-Z0-9]{4}$/.test(tag);
+            if (kind === 0 && tagOk && total >= 12 && total <= this.maxRequestBytes) {
+                return buffer.length >= total;
+            }
         }
-        return buffer.length === 1 && buffer[0] <= 1;
+        if (buffer.length === 1 && buffer[0] <= 1) return true;
+        return buffer.length >= 16;
     }
 
     private reply(socket: Socket, request: Buffer): void {
@@ -101,10 +109,19 @@ export class WdtTcpServer {
         try {
             if (request.length >= 4 && request.readUInt16BE(0) >= 4 && request.length >= request.readUInt16BE(0)) {
                 const records = decodeContainer(request.subarray(0, request.readUInt16BE(0)));
-                kind = readU32(records, "WREQ", 0) ? "previous" : "current";
+                kind = readU32(records, "WREQ", 0) || readU8(records, "WREQ", 0) ? "previous" : "current";
             } else {
                 const text = request.toString("ascii").trim().toUpperCase();
-                if (text.includes("PREVIOUS") || text === "1") kind = "previous";
+                if (text.includes("PREVIOUS") || text === "1") {
+                    kind = "previous";
+                }
+                else {
+                    // A binary selector: WREQ's value, or the last byte of the
+                    // fixed header, is 1 for the frozen previous cycle.
+                    const at = request.indexOf("WREQ", 0, "ascii");
+                    const flag = at >= 0 && at + 8 <= request.length ? request[at + 8] : request[request.length - 1];
+                    if (flag === 1) kind = "previous";
+                }
             }
             socket.end(this.service.packet(kind));
         } catch (error) {
