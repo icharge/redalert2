@@ -57,8 +57,6 @@ const LOCALE_CODE_BY_ID: Record<number, string> = {
 
 export class WolServer {
     readonly serverName = WOL_SERVER_NAME;
-    /** Milliseconds a picked territory waits before the match starts. */
-    private static readonly WDT_CLICK_DELAY_MS = 700;
     readonly users = new Map<string, ServerUser>();
     readonly channels = new Map<string, Channel>();
     readonly games = new Map<string, GameChannel>();
@@ -73,7 +71,6 @@ export class WolServer {
     /** The WDT screen is up; the next LIST 33 is its match start. */
     private readonly wdtArmed = new Set<string>();
     /** A click starts the match shortly after the selection settles. */
-    private readonly wdtStartTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
     constructor(
         readonly config: ServerConfig,
@@ -148,11 +145,6 @@ export class WolServer {
     handleClose(user: ServerUser): void {
         this.wdtPendingTerritory.delete(user.nick);
         this.wdtArmed.delete(user.nick);
-        const timer = this.wdtStartTimers.get(user.nick);
-        if (timer) {
-            clearTimeout(timer);
-            this.wdtStartTimers.delete(user.nick);
-        }
         for (const key of [...user.channels]) {
             const channel = this.channels.get(key);
             if (channel) {
@@ -266,20 +258,11 @@ export class WolServer {
                     if (conflict) {
                         this.log.info(`wdt clicked territory ${territory} for conflict ${conflict.id} (game ${instance!.gameId})`);
                     }
-                    // The select screen is up and the player picked a region:
-                    // start the match from the server (the client's own worker
-                    // does not run in the browser). Waiting for the selection to
-                    // settle avoids starting on every hover sample.
-                    if (this.wdtArmed.has(user.nick) && !user.gameChannel) {
-                        const prior = this.wdtStartTimers.get(user.nick);
-                        if (prior) clearTimeout(prior);
-                        const timer = setTimeout(() => {
-                            this.wdtStartTimers.delete(user.nick);
-                            this.startPendingWdt(user.nick);
-                        }, WolServer.WDT_CLICK_DELAY_MS);
-                        timer.unref?.();
-                        this.wdtStartTimers.set(user.nick, timer);
-                    }
+                    // Only record the picked territory. The match itself starts
+                    // from the client's own LIST 33 (below): a single click
+                    // selects a territory and a second click starts the match,
+                    // so starting here would switch the display out from under
+                    // the select screen after the first click.
                 }
                 break;
             }
@@ -558,16 +541,6 @@ export class WolServer {
             this.games.set(WDT_MATCH_ROOM, room);
         }
         return room;
-    }
-
-    /** Start the match for a settled territory click (armed, still waiting). */
-    private startPendingWdt(nick: string): void {
-        const user = this.users.get(nick);
-        if (!user || !user.authenticated || !this.wdtArmed.has(nick) || user.gameChannel) return;
-        const room = this.ensureWdtRoom();
-        room.hostName = nick;
-        this.joinGame(user, [WDT_MATCH_ROOM]);
-        this.startWdtMatch(user);
     }
 
     private handlePrivmsg(user: ServerUser, line: string): void {
