@@ -150,9 +150,12 @@ export class MatchmakingBot {
                 parsed.set(tag.slice(0, eq), tag.slice(eq + 1));
             }
         }
+        // The browser WDT worker sends a plain `Match`; its territory comes
+        // from the earlier `wdtstart` over the bridge.
+        const context = wdt ?? this.server.wdtMatchContext(user.nick);
         const version = parsed.get(TAG_VERSION);
         const ranked = parsed.get(TAG_RANKED) === "1";
-        if (version && !this.versionOk(version, ranked)) {
+        if (version && !context && !this.versionOk(version, ranked)) {
             this.reply(user, RPL_BAD_VERS);
             return;
         }
@@ -186,7 +189,7 @@ export class MatchmakingBot {
                 players: [...party.members],
                 channelType,
                 ranked: parsed.get(TAG_RANKED) === "1",
-                wdt,
+                wdt: context,
             };
             for (const nick of entry.players) {
                 const member = this.server.users.get(nick);
@@ -207,7 +210,7 @@ export class MatchmakingBot {
             players: [user.nick],
             channelType,
             ranked: parsed.get(TAG_RANKED) === "1",
-            wdt,
+            wdt: context,
         };
         user.inQueue = true;
         this.byNick.set(user.nick, entry);
@@ -246,14 +249,15 @@ export class MatchmakingBot {
                 this.reply(user, `${RPL_MATCHED} ${MATCH_COUNTDOWN_SECONDS}`);
             }
         }
+        const wdt = a.wdt ?? b.wdt;
         this.gameCounter += 1;
-        const name = `#matchbot's game ${this.gameCounter}`;
+        const name = wdt ? "#WDTmatch" : `#matchbot's game ${this.gameCounter}`;
         const key = escapeChannelName(name);
         const game = new GameChannel(key, name);
         game.hostName = this.server.config.matchBotName;
         game.mode = 1;
         game.slots = players.length;
-        game.channelType = 0;
+        game.channelType = wdt ? 33 : 0;
         this.server.games.set(key, game);
         for (const nick of players) {
             const user = this.server.users.get(nick);
@@ -279,8 +283,11 @@ export class MatchmakingBot {
         const instance = this.server.gservs.create(players, gserv.url, {
             ranked: a.ranked && b.ranked,
             ladderType: ladderTypeForChannelType(a.channelType),
+            nativeSku: wdt ? 16640 : undefined,
         });
-        const wdt = a.wdt ?? b.wdt;
+        if (wdt) {
+            for (const nick of players) this.server.clearWdtPending(nick);
+        }
         if (wdt && this.server.wdt) {
             try {
                 const conflict = this.server.wdt.assignConflict(wdt.side, wdt.territory, instance.gameId);

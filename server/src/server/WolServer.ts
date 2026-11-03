@@ -68,9 +68,8 @@ export class WolServer {
     private localeCodes = LOCALE_CODE_BY_ID;
     /** Territory the player clicked in the WDT map, sent by the browser bridge. */
     private readonly wdtPendingTerritory = new Map<string, number>();
-    /** The WDT screen is up; the next LIST 33 is its match start. */
+    /** The WDT screen is up; a picked territory is eligible for the queue. */
     private readonly wdtArmed = new Set<string>();
-    /** A click starts the match shortly after the selection settles. */
 
     constructor(
         readonly config: ServerConfig,
@@ -541,6 +540,23 @@ export class WolServer {
             this.games.set(WDT_MATCH_ROOM, room);
         }
         return room;
+    }
+
+    /**
+     * The browser WDT matchmaker sends a plain `Match ...` (its WDT state is
+     * not 2), so pick the territory the earlier `wdtstart` recorded and let
+     * the normal two-player queue pair WDT players.
+     */
+    wdtMatchContext(nick: string): { side: number; territory?: number } | undefined {
+        if (!this.wdt || !this.wdtArmed.has(nick)) return undefined;
+        const territory = this.wdtPendingTerritory.get(nick);
+        if (territory === undefined) return undefined;
+        return { side: 0, territory };
+    }
+
+    clearWdtPending(nick: string): void {
+        this.wdtPendingTerritory.delete(nick);
+        this.wdtArmed.delete(nick);
     }
 
     private handlePrivmsg(user: ServerUser, line: string): void {
