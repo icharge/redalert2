@@ -267,6 +267,7 @@ export class MatchmakingBot {
         const name = wdt ? "#WDTmatch" : `#matchbot's game ${this.gameCounter}`;
         const key = escapeChannelName(name);
         const game = new GameChannel(key, name);
+        game.matchBotGame = true;
         // The native client finds the host of a game by the channel operator
         // bit in the WOL user list (Channel::User_List_To_Session_Players), and
         // only accepts NET_GO from that user. A matchbot-made game has no human
@@ -375,31 +376,64 @@ export class MatchmakingBot {
             const host = this.server.users.get(hostNick);
             const hostPrefix = host ? `${host.nick}!${host.hostmask}` : `${hostNick}!${hostNick}@local`;
             // The native pregame screen builds its slot table from a separate
-            // `L` game-options message. RA2's slot table is eight entries; a
-            // short list leaves the remaining slots unread and the host tries to
-            // connect a player to itself. Fill the unused slots as closed.
+            // `L` game-options message. RA2's slot table is eight entries. A
+            // fixed match has exactly its players: no open slots (those make
+            // the host wait for more joins) and closed entries for the rest.
             const slots = [
                 ...players,
-                ...(players.length < 8 ? ["@Open@", "@Open@"] : []),
-                ...new Array(Math.max(0, 8 - players.length - 2)).fill("@Closed@"),
+                ...new Array(Math.max(0, 8 - players.length)).fill("@Closed@"),
             ].join(",");
             this.server.broadcastChannel(
                 game,
                 `:${hostPrefix} GAMEOPT ${key} :L${slots},\r\n`,
             );
-            this.server.broadcastChannel(
-                game,
-                `:${hostPrefix} GAMEOPT ${key} :${instance.gameopts}\r\n`,
-            );
-            this.log.info(`gameopts sent for match ${key}`);
-            this.log.info(`STARTG sent for match ${key} (${players.join(", ")})`);
-            for (const nick of players) {
-                const user = this.server.users.get(nick);
-                const ticket = instance.tickets.get(nick);
-                if (user && ticket) {
-                    user.send(`:${this.server.serverName} STARTG ${key} :${gserv.url} :${instance.gameId} ${instance.timestamp} ${ticket}\r\n`);
+            // The host's client generates the scenario checksum (the first
+            // option field differs per game) and keeps re-sending its own
+            // GAMEOPT. The host already holds those options locally, so they
+            // are the only set both peers can agree on. Give the room join a
+            // moment to make the host publish them; otherwise fall back to the
+            // matchmaker's options.
+            const fallback = instance.gameopts;
+            const waitingSince = Date.now();
+            const finish = () => {
+                const finalOpts = game.gameOpts ?? fallback;
+                instance.gameopts = finalOpts;
+                const fromHost = finalOpts !== fallback;
+                this.server.broadcastChannel(
+                    game,
+                    `:${hostPrefix} GAMEOPT ${key} :${finalOpts}\r\n`,
+                );
+                // A native client ignores the options it "sent" itself, so the
+                // host would otherwise keep its local set while the guest
+                // applies ours - the "scenarios don't match" split. Repeat the
+                // same options per player from another player's identity.
+                for (const nick of players) {
+                    const recipient = this.server.users.get(nick);
+                    const otherNick = players.find(other => other !== nick);
+                    const other = otherNick ? this.server.users.get(otherNick) : undefined;
+                    if (recipient && other) {
+                        recipient.send(`:${other.nick}!${other.hostmask} GAMEOPT ${key} :${finalOpts}\r\n`);
+                    }
                 }
-            }
+                this.log.info(`gameopts sent for match ${key} (${fromHost ? "host" : "server"})`);
+                this.log.info(`STARTG sent for match ${key} (${players.join(", ")})`);
+                for (const nick of players) {
+                    const user = this.server.users.get(nick);
+                    const ticket = instance.tickets.get(nick);
+                    if (user && ticket) {
+                        user.send(`:${this.server.serverName} STARTG ${key} :${gserv.url} :${instance.gameId} ${instance.timestamp} ${ticket}\r\n`);
+                    }
+                }
+            };
+            const poll = setInterval(() => {
+                const hostPublished = game.gameOpts !== undefined && game.gameOpts !== fallback;
+                if (hostPublished || Date.now() - waitingSince >= 4000) {
+                    clearInterval(poll);
+                    this.timers.delete(poll);
+                    finish();
+                }
+            }, 200);
+            this.timers.add(poll);
         }, MATCH_COUNTDOWN_SECONDS * 1000);
         this.timers.add(timer);
     }
@@ -483,20 +517,45 @@ export class MatchmakingBot {
         for (const nick of b.players) {
             teamOf.set(nick, 1);
         }
-        const mapTitleText = a.native || b.native ? "Random Map" : "Default Map";
-        // The retail client resolves RandMap.Map to its built-in random map
-        // generator; "mpdefault" only exists in the RA2Web map set.
-        const mapName = a.native || b.native ? "RandMap.Map" : "mpdefault";
+        // WDT is driven by the recompiled native client, whose match worker
+        // sends a plain `Match` without a VRS tag; the queue channel is the
+        // only reliable client-type signal. Treat its matching lobbies as
+        // native so the options use the retail map/records instead of the
+        // RA2Web `mpdefault` set the native game cannot load.
+        const native = a.native || b.native ||
+            a.channelType === 35 || a.channelType === 38 ||
+            b.channelType === 35 || b.channelType === 38;
+        // A generated map ("RandMap.Map") is built per client, so the two
+        // machines end up with different scenario checksums and the match
+        // aborts with "scenarios don't match". The retail client's own default
+        // custom-match map is MP32S8.MAP; use it with the size and digest the
+        // client reports, so both sides load the same scenario.
+        const mapTitleText = native ? "MP32S8" : "Default Map";
+        const mapName = native ? "MP32S8.MAP" : "mpdefault";
+        const mapSize = native ? 194911 : 1000;
+        const mapDigest = native ? "0xhVrbjEk8nNmmwr/hpAa2tFClU=" : "abc123";
         const mapTitle = Buffer.from(mapTitleText, "utf16le").toString("base64");
-        const playersPart = players.map((name, index) => (a.native || b.native)
+        const playersPart = players.map((name, index) => (native)
             // The retail game's pregame record is six fields; the eight-field
-            // form is RA2Web's. Extra fields shift every player after the first
-            // and make the host pair a player with itself.
-            ? `${name},-2,-2,ffffffff,${teamOf.get(name) ?? 0},0`
+            // form is RA2Web's. Random (-2) country/colour/start values are
+            // normally resolved by the host's pregame and re-broadcast; a
+            // matchmaker game has no pregame, so send concrete values both
+            // peers can agree on.
+            ? `${name},${index === 0 ? 0 : 8},${index},${index},${teamOf.get(name) ?? 0},0`
             : `${name},0,0,${index},${teamOf.get(name) ?? 0},0,0,0`).join(",");
         const aiPart = new Array(8).fill("0,-1,-1,-1,-1").join(",");
+        const nativeAiPart = new Array(8).fill("0,-1,-1").join(",");
         const wdtPart = wdt ? `,WDS=${wdt.side}${wdt.territory !== undefined ? `,WDT=${wdt.territory}` : ""}` : "";
-        return `0,0,2,10000,100,0,0,1,1,0,1,0,${mapTitle},8,1,1000,${mapName},abc123,1,0,0,1,0,1:${playersPart}:@:${aiPart},${wdtPart}`;
+        if (native) {
+            // Mirror the retail client's own custom-match record exactly:
+            // eighteen option fields ending at the map digest (the RA2Web
+            // extras after it shift the native parser), three-field AI
+            // records, and the client's own speed/unit-count/flag values.
+            // Anything different makes the peers compute different scenario
+            // checksums ("scenarios don't match").
+            return `1897192559,1,0,10000,10,1,1,1,1,1,1,${mapTitle},8,1,${mapSize},${mapName},${mapDigest}:${playersPart}:@:${nativeAiPart},${wdtPart}`;
+        }
+        return `0,0,2,10000,100,0,0,1,1,0,1,0,${mapTitle},8,1,${mapSize},${mapName},${mapDigest},1,0,0,1,0,1:${playersPart}:@:${aiPart},${wdtPart}`;
     }
 
     private reply(user: ServerUser, text: string): void {

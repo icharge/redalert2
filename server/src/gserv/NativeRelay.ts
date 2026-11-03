@@ -1,4 +1,4 @@
-import { GservManager } from "./GservManager";
+﻿import { GservManager } from "./GservManager";
 import { SocketLike, OPEN_STATE } from "../server/SocketLike";
 import { Logger } from "../logger";
 
@@ -143,7 +143,7 @@ export class NativeRelay {
         if (!client.gameId || packet.length < 8 || packet.length > 8 + NATIVE_RELAY_MAX_PACKET) return;
         const dst = ((packet[0] << 24) | (packet[1] << 16) | (packet[2] << 8) | packet[3]) >>> 0;
         const count = (client.packets = (client.packets ?? 0) + 1);
-        if (count <= 8) {
+        if (count <= 24) {
             this.log.debug(`native relay: ${client.nick} packet ${count} len=${packet.length} dst=${formatIp(dst)}`);
         }
         const peers = this.games.get(client.gameId);
@@ -152,7 +152,7 @@ export class NativeRelay {
             ? [...peers.values()].filter(peer => peer !== client)
             : [peers.get(dst)].filter((peer): peer is NativeRelayClient => !!peer && peer !== client);
         if (targets.length === 0) {
-            if (count <= 8) this.log.debug(`native relay: ${client.nick} packet ${count} has no target`);
+            if (count <= 24) this.log.debug(`native relay: ${client.nick} packet ${count} has no target`);
             return;
         }
         const out = new Uint8Array(packet);
