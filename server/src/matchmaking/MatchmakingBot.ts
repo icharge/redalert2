@@ -254,7 +254,7 @@ export class MatchmakingBot {
                 this.reply(user, `${RPL_MATCHED} ${MATCH_COUNTDOWN_SECONDS}`);
             }
         }
-        const wdt = a.wdt ?? b.wdt;
+        let wdt = a.wdt ?? b.wdt;
         this.gameCounter += 1;
         const name = wdt ? "#WDTmatch" : `#matchbot's game ${this.gameCounter}`;
         const key = escapeChannelName(name);
@@ -295,13 +295,19 @@ export class MatchmakingBot {
         }
         if (wdt && this.server.wdt) {
             try {
-                const conflict = this.server.wdt.assignConflict(wdt.side, wdt.territory, instance.gameId);
+                const conflict = this.server.wdt.assignConflictOrAuto(wdt.side, wdt.territory, instance.gameId);
+                if (wdt.territory !== undefined && conflict.territoryId !== wdt.territory) {
+                    this.log.warn(`wdt territory ${wdt.territory} not attackable; using ${conflict.territoryId}`);
+                }
                 instance.wdtConflictId = conflict.id;
                 instance.wdtSides = Object.fromEntries([
                     ...a.players.map(nick => [nick, conflict.attacker] as const),
                     ...b.players.map(nick => [nick, conflict.defender] as const),
                 ]);
                 this.log.info(`wdt conflict ${conflict.id} for territory ${conflict.territoryId} (game ${instance.gameId})`);
+                // The gameopts must carry the territory the conflict actually
+                // plays for, not the client's unusable click.
+                wdt = { side: wdt.side, territory: conflict.territoryId };
             }
             catch (error) {
                 this.log.warn(`wdt assignment failed: ${error instanceof Error ? error.message : String(error)}`);

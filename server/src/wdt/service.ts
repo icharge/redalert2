@@ -197,6 +197,23 @@ export class WdtService {
         return conflict;
     }
 
+    /**
+     * Assign a conflict, falling back to an automatic territory when the
+     * requested one cannot be attacked. The client may click its own territory
+     * (or an id this cycle does not know) and still start a match; the server
+     * then picks a neutral, then an enemy region so the game has a real
+     * conflict to report against.
+     */
+    assignConflictOrAuto(factionId: number, territoryId?: number, gameId?: string): WdtConflict {
+        try {
+            return this.assignConflict(factionId, territoryId, gameId);
+        }
+        catch (error) {
+            if (territoryId === undefined) throw error;
+            return this.assignConflict(factionId, undefined, gameId);
+        }
+    }
+
     /** The conflict a game id is playing for, if it is a WDT match. */
     conflictForGame(gameId: string): WdtConflict | undefined {
         return this.current.conflicts.find(c => c.gameId === gameId);

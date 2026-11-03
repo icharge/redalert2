@@ -91,6 +91,17 @@ describe("WDT cycle service", () => {
         expect(() => service.reportResult({ conflictId: conflict.id, winner: 0 })).toThrow(/closed/);
     });
 
+    test("an own-territory pick falls back to a neutral territory", () => {
+        const service = new WdtService({ edition: "ra2", now: () => 1_000 });
+        // Territory 0 starts owned by the allied row (0); clicking it must not
+        // abort the match, it attacks the automatic neutral pick instead.
+        const conflict = service.assignConflictOrAuto(0, 0, "g-fallback");
+        expect(conflict.territoryId).toBe(10);
+        expect(conflict.defender).toBe(2);
+        expect(service.conflictForGame("g-fallback")?.id).toBe(conflict.id);
+        expect(() => service.assignConflict(0, 0)).toThrow(/already ours/);
+    });
+
     test("a winner outside the conflict is rejected", () => {
         const service = new WdtService({ edition: "ra2" });
         const conflict = service.assignConflict(0, 11);

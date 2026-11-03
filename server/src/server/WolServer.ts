@@ -792,11 +792,15 @@ export class WolServer {
             return;
         }
         const instance = this.gservs.create(players, gserv.url, { nativeSku: game.channelType === 33 ? 16640 : game.channelType === 41 ? 18688 : undefined });
-        instance.gameopts = game.gameOpts;
-        const wdt = parseWdtOpts(game.gameOpts);
+        let gameOpts = game.gameOpts;
+        const wdt = parseWdtOpts(gameOpts);
         if (wdt && this.wdt) {
             try {
-                const conflict = this.wdt.assignConflict(wdt.side, wdt.territory, instance.gameId);
+                const conflict = this.wdt.assignConflictOrAuto(wdt.side, wdt.territory, instance.gameId);
+                if (wdt.territory !== undefined && conflict.territoryId !== wdt.territory) {
+                    this.log.warn(`wdt territory ${wdt.territory} not attackable; using ${conflict.territoryId}`);
+                    gameOpts = gameOpts?.replace(/((?:^|[,;:\s])WDT=)\d+/, `$1${conflict.territoryId}`);
+                }
                 instance.wdtConflictId = conflict.id;
                 instance.wdtSides = Object.fromEntries(players.map((nick, index) =>
                     [nick, index === 0 ? conflict.attacker : conflict.defender]));
@@ -806,6 +810,7 @@ export class WolServer {
                 this.log.warn(`wdt assignment failed for ${key}: ${error instanceof Error ? error.message : String(error)}`);
             }
         }
+        instance.gameopts = gameOpts;
         this.log.info(`game start ${key} by ${user.nick}: instance ${instance.gameId} for ${players.join(", ")}`);
         for (const nick of players) {
             const member = game.members.get(nick);
