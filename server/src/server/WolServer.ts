@@ -548,10 +548,10 @@ export class WolServer {
      * the normal two-player queue pair WDT players.
      */
     wdtMatchContext(nick: string): { side: number; territory?: number } | undefined {
-        if (!this.wdt || !this.wdtArmed.has(nick)) return undefined;
-        const territory = this.wdtPendingTerritory.get(nick);
-        if (territory === undefined) return undefined;
-        return { side: 0, territory };
+        if (!this.wdt) return undefined;
+        // A territory is optional: the matchmaker's click can arrive after the
+        // Match request, and assignConflict picks a target when it is absent.
+        return { side: 0, territory: this.wdtPendingTerritory.get(nick) };
     }
 
     clearWdtPending(nick: string): void {

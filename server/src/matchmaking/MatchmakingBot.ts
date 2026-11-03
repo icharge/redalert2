@@ -150,23 +150,26 @@ export class MatchmakingBot {
                 parsed.set(tag.slice(0, eq), tag.slice(eq + 1));
             }
         }
-        // The browser WDT worker sends a plain `Match`; its territory comes
-        // from the earlier `wdtstart` over the bridge.
-        const context = wdt ?? this.server.wdtMatchContext(user.nick);
+        // The browser WDT worker sends a plain `Match`; it has already joined
+        // the WDT matching lobby (Lob_35_0/Lob_38_0), and the territory comes
+        // from the earlier `wdtstart` when the click has been processed.
+        const channelType = this.getUserQueueType(user);
+        if (channelType === undefined) {
+            this.reply(user, RPL_MODE_UNAVAIL);
+            return;
+        }
+        const wdtQueue = channelType === 35 || channelType === 38;
+        const context = wdt ?? (wdtQueue ? this.server.wdtMatchContext(user.nick) : undefined);
         const version = parsed.get(TAG_VERSION);
         const ranked = parsed.get(TAG_RANKED) === "1";
-        if (version && !context && !this.versionOk(version, ranked)) {
+        if (version && !wdtQueue && !context && !this.versionOk(version, ranked)) {
+            this.log.info(`match version rejected for ${user.nick}: ${version} (expected ${this.server.config.gameVersion})`);
             this.reply(user, RPL_BAD_VERS);
             return;
         }
         const expectedModHash = this.server.config.expectedModHash;
         if (expectedModHash !== undefined && parsed.get(TAG_MODHASH) !== expectedModHash) {
             this.reply(user, RPL_BAD_HASH);
-            return;
-        }
-        const channelType = this.getUserQueueType(user);
-        if (channelType === undefined) {
-            this.reply(user, RPL_MODE_UNAVAIL);
             return;
         }
         const queue = this.queues.get(channelType) ?? [];

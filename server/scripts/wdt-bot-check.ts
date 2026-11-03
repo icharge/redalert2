@@ -20,8 +20,10 @@ await loginWs(bob, bTok);
 
 alice.send("wdtarmed");
 bob.send("wdtarmed");
-alice.send("wdtstart 1");
-bob.send("wdtstart 1");
+if (!process.env.WDT_NO_PICK) {
+    alice.send("wdtstart 1");
+    bob.send("wdtstart 1");
+}
 await joinChannel(alice, "#Lob 35 0", "zotclot9");
 await joinChannel(bob, "#Lob 35 0", "zotclot9");
 
