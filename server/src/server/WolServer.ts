@@ -65,6 +65,8 @@ export class WolServer {
     readonly gservs: GservManager;
     readonly log: Logger;
     private pingInterval?: ReturnType<typeof setInterval>;
+    /** Delayed room teardown after a matchbot host leaves. */
+    private closingTimers = new Set<ReturnType<typeof setTimeout>>();
     private localeCodes = LOCALE_CODE_BY_ID;
     /** Territory the player clicked in the WDT map, sent by the browser bridge. */
     private readonly wdtPendingTerritory = new Map<string, number>();
@@ -97,6 +99,10 @@ export class WolServer {
             clearInterval(this.pingInterval);
             this.pingInterval = undefined;
         }
+        for (const timer of this.closingTimers) {
+            clearTimeout(timer);
+        }
+        this.closingTimers.clear();
     }
 
     // Re-create the ping interval with the current config value (used after a
@@ -433,10 +439,12 @@ export class WolServer {
         // RA2Web otherwise lists only game rooms, but the native channel list
         // needs every lobby's player count, so include them for that request.
         const lobbies = arg === "0" ? [...this.channels.values()] : [];
-        // World Domination: the match start asks for the lobby's game list
-        // (LIST 33). Ensure the matching room exists so it is listed and the
-        // server can place the player into it.
-        if (arg === "33" && ![...this.games.values()].some(game => game.channelType === 33)) {
+        // World Domination: only a player on the WDT screen (armed/pending)
+        // needs the matching room. Creating it for every LIST 33 put an empty
+        // #WDTmatch in the normal Custom Match game list.
+        if (arg === "33" &&
+            (this.wdtArmed.has(user.nick) || this.wdtPendingTerritory.has(user.nick)) &&
+            ![...this.games.values()].some(game => game.channelType === 33)) {
             this.ensureWdtRoom();
             this.log.info(`wdt match room ${WDT_MATCH_ROOM} created for ${user.nick}`);
         }
@@ -460,10 +468,12 @@ export class WolServer {
             ], "0");
         }
         // World Domination's match start asks for the lobby's game list
-        // (LIST 33) before any matching room exists. Publish the WDT room so the
-        // client has an entry to match and join instead of showing
-        // "Matching Server Not Found".
-        if (arg === "33" && !matching.some(game => game.channelType === 33)) {
+        // (LIST 33) before any matching room exists. Publish the WDT room for a
+        // WDT player so the client has an entry to match and join instead of
+        // showing "Matching Server Not Found".
+        if (arg === "33" &&
+            (this.wdtArmed.has(user.nick) || this.wdtPendingTerritory.has(user.nick)) &&
+            !matching.some(game => game.channelType === 33)) {
             this.sendNumeric(user, Code.RPL_LIST, user.nick, [
                 WDT_MATCH_ROOM,
                 "1",
@@ -702,7 +712,9 @@ export class WolServer {
             this.sendNumeric(user, Code.ERR_CHANNELISFULL, user.nick, [key], "Cannot join game (+l) - game is full");
             return;
         }
-        game.addMember(user, false);
+        // A room whose host is set server-side (the WDT match room) has no
+        // createGame call to mark its operator; do it on the host's own join.
+        game.addMember(user, user.nick === game.hostName);
         user.gameChannel = key;
         this.log.info(`join game ${key} as ${user.nick} (now ${game.members.size}/${game.slots} players)`);
         const flags = `0 0 0 0 0 ${user.ping} 0`;
@@ -730,17 +742,42 @@ export class WolServer {
         }
         if (!opt) {
             // An empty `gameopt` is the client asking for the host's options.
-            // The server is the host of a matchbot game, so answer from the
-            // cached options instead of relaying an empty request.
+            // Answer as the room's host (a matchbot game has no human host in
+            // the room, but the server keeps the matched player's options).
             if (game.gameOpts) {
-                user.send(`:${this.config.matchBotName}!${this.config.matchBotName}@local GAMEOPT ${key} :${game.gameOpts}\r\n`);
+                const host = this.users.get(game.hostName);
+                const prefix = host
+                    ? userPrefix(host.nick, host.hostmask)
+                    : `${this.config.matchBotName}!${this.config.matchBotName}@local`;
+                user.send(`:${prefix} GAMEOPT ${key} :${game.gameOpts}\r\n`);
                 return;
             }
         }
         else if (/^[-0-9]/.test(opt[0] ?? "")) {
+            this.log.debug(`gameopt ${user.nick} ${key}: ${opt.slice(0, 140)}`);
+            // The matchmaker's map/teams are authoritative. After STARTG each
+            // client keeps sending its own local options; relaying those would
+            // leave each player with the other's scenario and the match then
+            // aborts with "scenarios don't match". The room host is the one
+            // exception: its own client is the scenario authority and already
+            // holds these options, so the others must receive exactly them.
+            const isHost = user.nick === game.hostName;
+            if (game.matchBotGame && game.gameOpts && !isHost &&
+                this.scenarioKey(opt) !== this.scenarioKey(game.gameOpts)) {
+                this.log.info(`gameopt ${user.nick} ignored: scenario differs from the host's`);
+                return;
+            }
             game.gameOpts = opt;
+            if (game.matchBotGame && isHost) {
+                this.log.info(`gameopt host ${user.nick} accepted (${this.scenarioKey(opt)})`);
+            }
         }
         this.broadcastChannel(game, userLine(userPrefix(user.nick, user.hostmask), "GAMEOPT", `${key} :${opt}`), user);
+    }
+
+    /** The scenario-identifying options fields: title, slots, official, size, map, digest. */
+    private scenarioKey(gameOpts: string): string {
+        return gameOpts.split(":")[0]?.split(",").slice(12, 18).join(",") ?? "";
     }
 
     private handleMode(user: ServerUser, args: string[]): void {
@@ -872,10 +909,31 @@ export class WolServer {
     }
 
     private checkGameHostLeft(game: GameChannel): void {
-        if (!game.members.has(game.hostName)) {
-            this.games.delete(game.key);
-            this.log.info(`game ${game.key} closed (host left)`);
+        if (game.members.has(game.hostName) || game.closing) {
+            return;
         }
+        game.closing = true;
+        // A stock WOL server keeps the game channel alive while its members
+        // finish leaving. The native client calls Leave_Channel a moment after
+        // "Pregame setup" and waits for its own PART; destroying the room here
+        // (or pushing a PART at it) makes the passive peer abandon the start
+        // and fall back to the World Domination screen. Keep the room
+        // reachable until the remaining players leave, then drop it.
+        this.log.info(`game ${game.key} closed (host left)`);
+        const timer = setTimeout(() => {
+            this.closingTimers.delete(timer);
+            for (const member of [...game.members.values()]) {
+                const user = member.user;
+                user.send(`:${user.nick}!${user.hostmask} PART ${game.key}\r\n`);
+                game.removeMember(user);
+                if (user.gameChannel === game.key) {
+                    user.gameChannel = undefined;
+                }
+                this.log.info(`game ${game.key}: removed ${user.nick} (host left)`);
+            }
+            this.games.delete(game.key);
+        }, 4000);
+        this.closingTimers.add(timer);
     }
 
     sendChannelNames(channel: Channel, target?: ServerUser): void {

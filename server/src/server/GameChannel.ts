@@ -11,6 +11,10 @@ export class GameChannel extends Channel {
     modHash?: string;
     topic?: string;
     gameOpts?: string;
+    /** True for a room the matchmaker created (its map/teams are authoritative). */
+    matchBotGame = false;
+    /** Set once the room is being torn down because its host left. */
+    closing = false;
     pings = new Map<string, number>();
 
     constructor(key: string, name: string) {
