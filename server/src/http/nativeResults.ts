@@ -68,7 +68,10 @@ export async function handleNativeResults(req: Request, deps: HttpDeps, config: 
         }
         return reply({ gameId, stored: true, ranked: false, ...(wdt ? { wdt } : {}) }, 200);
     } catch (error) {
-        if (error instanceof NativeResultError) return reply({ error: error.message }, error.status);
+        if (error instanceof NativeResultError) {
+            console.warn(`native-results ${gameId} rejected: ${error.message}`);
+            return reply({ error: error.message }, error.status);
+        }
         throw error;
     } finally { reader.releaseLock(); }
 }
