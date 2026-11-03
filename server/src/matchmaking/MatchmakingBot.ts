@@ -276,15 +276,7 @@ export class MatchmakingBot {
             }
             game.addMember(user, false);
             user.gameChannel = key;
-            // A matchbot game has no human host, so tell each player about
-            // their own join. The native bridge adopts a game channel from the
-            // JOINGAME whose nick is the local user; a matchbot-sent JOINEGAME
-            // only fires OnChannelJoin with an unknown user and leaves
-            // g_current_channel on the matching lobby, so the later STARTG is
-            // dropped as "not my channel".
-            user.send(`:${user.nick}!${user.hostmask} JOINGAME 0 0 0 0 0 ${user.ping} 0 :${key}\r\n`);
         }
-        this.server.sendChannelNames(game);
 
         const gserv = this.server.gservs.getDefault();
         if (!gserv) {
@@ -328,14 +320,8 @@ export class MatchmakingBot {
         // The matchbot is the game host, so it has to answer the clients'
         // GameOptions request itself: the native client reads map/teams from
         // the cached GAMEOPT before OnGameStart, and without it the match
-        // aborts as soon as it starts. Sent here so it precedes STARTG (sent on
-        // the countdown below).
+        // aborts as soon as it starts.
         game.gameOpts = instance.gameopts;
-        this.server.broadcastChannel(
-            game,
-            `:${this.server.config.matchBotName}!${this.server.config.matchBotName}@local GAMEOPT ${key} :${instance.gameopts}\r\n`,
-        );
-        this.log.info(`gameopts sent for match ${key}`);
         this.log.info(`instance ${instance.gameId} created${a.ranked && b.ranked ? ` (ranked ${instance.ladderType})` : ""} for ${players.join(", ")}`);
 
         const matched = { gameKey: key, players };
@@ -349,6 +335,25 @@ export class MatchmakingBot {
         }
         const timer = setTimeout(() => {
             this.timers.delete(timer);
+            // Move the players into the game room only now. The native WDT
+            // match window stays in the matching lobby during the countdown;
+            // leaving it earlier makes the match worker report "Matching
+            // Server Not Found" (0xD0) before STARTG arrives. The bridge
+            // adopts a game channel from the JOINGAME whose sender is the
+            // local player, so send one per player, then the roster and the
+            // matchbot's options, then STARTG - all in the same burst.
+            for (const nick of players) {
+                const user = this.server.users.get(nick);
+                if (user) {
+                    user.send(`:${user.nick}!${user.hostmask} JOINGAME 0 0 0 0 0 ${user.ping} 0 :${key}\r\n`);
+                }
+            }
+            this.server.sendChannelNames(game);
+            this.server.broadcastChannel(
+                game,
+                `:${this.server.config.matchBotName}!${this.server.config.matchBotName}@local GAMEOPT ${key} :${instance.gameopts}\r\n`,
+            );
+            this.log.info(`gameopts sent for match ${key}`);
             this.log.info(`STARTG sent for match ${key} (${players.join(", ")})`);
             for (const nick of players) {
                 const user = this.server.users.get(nick);

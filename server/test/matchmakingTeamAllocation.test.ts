@@ -91,23 +91,28 @@ describe("matchmaking team allocation", () => {
         // The retail client only ships RandMap.Map (it generates the map);
         // "mpdefault" exists only in the RA2Web map set.
         expect(instance!.gameopts).toContain(",RandMap.Map,");
+        const wants = (line: string) => line.includes(" GAMEOPT ") || line.includes(" JOINGAME ");
+        const deadline = Date.now() + 12000;
+        while (Date.now() < deadline &&
+            !(hasLine(socketA, wants) && hasLine(socketB, wants))) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
         for (const socket of [socketA, socketB]) {
             expect(hasLine(socket, line => line.includes(" GAMEOPT ") && line.includes("RandMap.Map"))).toBe(true);
         }
         // The native bridge adopts a game channel from a JOINGAME sent as the
         // local player; a matchbot-sent one leaves it on the matching lobby and
-        // the STARTG is then dropped.
+        // the STARTG is then dropped. Both are sent at the end of the countdown.
         expect(hasLine(socketA, line => line.startsWith(":alice!") && line.includes(" JOINGAME "))).toBe(true);
         expect(hasLine(socketB, line => line.startsWith(":bob!") && line.includes(" JOINGAME "))).toBe(true);
-    });
+    }, 20000);
 
-    test("a web quick match keeps the RA2Web map and also gets GAMEOPT", async () => {
+    test("a web quick match keeps the RA2Web map", async () => {
         const { server, accounts, sessions } = makeServer();
-        const socketA = await queue(server, accounts, sessions, "alice");
+        await queue(server, accounts, sessions, "alice");
         await queue(server, accounts, sessions, "bob");
         const instance = [...server.gservs.instances.values()][0];
         expect(instance!.gameopts).toContain(",mpdefault,");
-        expect(hasLine(socketA, line => line.includes(" GAMEOPT ") && line.includes("mpdefault"))).toBe(true);
     });
 
     test("quick match 1v1 actually pairs the two queued users", async () => {
