@@ -82,6 +82,35 @@ describe("matchmaking team allocation", () => {
         expect(teams.size).toBe(4);
     });
 
+    test("a Match from the WDT matching lobby is a WDT match without wdtstart", async () => {
+        const { server, accounts, sessions } = makeServer();
+        const queueFromBothLobbies = async (username: string) => {
+            await accounts.register(username, "password123");
+            const token = sessions.create(username);
+            const socket = new FakeSocket();
+            const user = server.handleOpen(socket);
+            server.handleMessage(user, `session ${token}`);
+            user.fresh = false;
+            // The native client can still be in the main lobby when the WDT
+            // match request goes out.
+            server.handleMessage(user, `join ${escapeChannelName("#Lob 33 0")} zotclot9`);
+            server.handleMessage(user, `join ${escapeChannelName("#Lob 35 0")} zotclot9`);
+            server.handleMessage(user, `PRIVMSG matchbot :Match COU=US, COL=0, VRS=1.006, RKD=0`);
+            return socket;
+        };
+        const socketA = await queueFromBothLobbies("alice");
+        await queueFromBothLobbies("bob");
+        const instance = [...server.gservs.instances.values()][0];
+        expect(instance).toBeDefined();
+        expect([...server.games.keys()]).toContain("#WDTmatch");
+        expect(instance!.nativeSku).toBe(16640);
+        const deadline = Date.now() + 12000;
+        while (Date.now() < deadline && !hasLine(socketA, line => line.includes(" GAMEOPT "))) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        expect(hasLine(socketA, line => line.includes(" GAMEOPT ") && line.includes("WDS=0"))).toBe(true);
+    }, 20000);
+
     test("the matchbot sends GAMEOPT and picks the retail random map for native clients", async () => {
         const { server, accounts, sessions } = makeServer();
         const socketA = await queue(server, accounts, sessions, "alice", 50, "1.006", false);
@@ -99,6 +128,10 @@ describe("matchmaking team allocation", () => {
         }
         for (const socket of [socketA, socketB]) {
             expect(hasLine(socket, line => line.includes(" GAMEOPT ") && line.includes("RandMap.Map"))).toBe(true);
+            // The native client identifies the host by the channel operator in
+            // the room's 353 roster, and only accepts NET_GO from that user.
+            expect(hasLine(socket, line => line.includes(" 353 ") && line.includes(" :@alice,"))).toBe(true);
+            expect(hasLine(socket, line => line.includes(" 353 ") && line.includes(" bob,"))).toBe(true);
         }
     }, 20000);
 

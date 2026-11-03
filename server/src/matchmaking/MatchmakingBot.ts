@@ -163,7 +163,10 @@ export class MatchmakingBot {
             return;
         }
         const wdtQueue = channelType === 35 || channelType === 38;
-        const context = wdt ?? (wdtQueue ? this.server.wdtMatchContext(user.nick) : undefined);
+        // A Match from a WDT matching lobby is always a World Domination
+        // match, even when the territory click (`wdtstart`) has not been
+        // processed yet; the conflict assignment then auto-picks a region.
+        const context = wdt ?? (wdtQueue ? (this.server.wdtMatchContext(user.nick) ?? { side: 0 }) : undefined);
         const version = parsed.get(TAG_VERSION);
         const ranked = parsed.get(TAG_RANKED) === "1";
         if (version && !wdtQueue && !context && !this.versionOk(version, ranked)) {
@@ -264,7 +267,13 @@ export class MatchmakingBot {
         const name = wdt ? "#WDTmatch" : `#matchbot's game ${this.gameCounter}`;
         const key = escapeChannelName(name);
         const game = new GameChannel(key, name);
-        game.hostName = this.server.config.matchBotName;
+        // The native client finds the host of a game by the channel operator
+        // bit in the WOL user list (Channel::User_List_To_Session_Players), and
+        // only accepts NET_GO from that user. A matchbot-made game has no human
+        // host, so without an operator both clients treat themselves as host and
+        // the match never starts. Make the first matched player the room host.
+        const hostNick = players[0];
+        game.hostName = hostNick;
         game.mode = 1;
         game.slots = players.length;
         game.channelType = wdt ? 33 : 0;
@@ -274,7 +283,7 @@ export class MatchmakingBot {
             if (!user) {
                 continue;
             }
-            game.addMember(user, false);
+            game.addMember(user, nick === hostNick);
             user.gameChannel = key;
         }
 
@@ -384,13 +393,17 @@ export class MatchmakingBot {
     }
 
     private getUserQueueType(user: ServerUser): number | undefined {
+        const types: number[] = [];
         for (const key of user.channels) {
             const match = key.match(/^#Lob_(\d+)_0$/);
             if (match) {
-                return Number(match[1]);
+                types.push(Number(match[1]));
             }
         }
-        return undefined;
+        // A WDT client can still be in its main lobby (#Lob_33_0/#Lob_41_0)
+        // when the match request goes out; the request belongs to the
+        // matching lobby, not to whichever channel was joined first.
+        return types.find(type => type === 35 || type === 38) ?? types[0];
     }
 
     private versionOk(version: string, ranked: boolean): boolean {
