@@ -537,11 +537,14 @@ export class MatchmakingBot {
         const mapTitle = Buffer.from(mapTitleText, "utf16le").toString("base64");
         const playersPart = players.map((name, index) => (native)
             // The retail game's pregame record is six fields; the eight-field
-            // form is RA2Web's. Random (-2) country/colour/start values are
-            // normally resolved by the host's pregame and re-broadcast; a
-            // matchmaker game has no pregame, so send concrete values both
-            // peers can agree on.
-            ? `${name},${index === 0 ? 0 : 8},${index},${index},${teamOf.get(name) ?? 0},0`
+            // form is RA2Web's. Leave country/colour/start to the client (-2
+            // and 0xffffffff mean "random", exactly what a host-published
+            // custom match carries), and send 0 for the multiplayer team: RA2
+            // treats a non-zero value as a 1-based squad index, so 0/1 put both
+            // players in squad 1, allied, and the game ended at frame 0 with
+            // every house defeated. 0/0 is a free-for-all 1v1, which is what a
+            // World Domination conflict is.
+            ? `${name},-2,-2,ffffffff,0,0`
             : `${name},0,0,${index},${teamOf.get(name) ?? 0},0,0,0`).join(",");
         const aiPart = new Array(8).fill("0,-1,-1,-1,-1").join(",");
         const nativeAiPart = new Array(8).fill("0,-1,-1").join(",");
