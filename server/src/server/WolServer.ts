@@ -831,7 +831,7 @@ export class WolServer {
             this.sendStartgAbort(user, key, 1);
             return;
         }
-        const instance = this.gservs.create(players, gserv.url, { nativeSku: game.channelType === 33 ? 16640 : game.channelType === 41 ? 18688 : undefined });
+        const instance = this.gservs.create(players, gserv.url, { nativeSku: game.channelType === 33 ? 8960 : game.channelType === 41 ? 18688 : undefined });
         let gameOpts = game.gameOpts;
         const wdt = parseWdtOpts(gameOpts);
         if (wdt && this.wdt) {

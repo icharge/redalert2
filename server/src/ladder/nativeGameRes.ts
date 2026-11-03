@@ -44,7 +44,10 @@ export function decodeNativeGameRes(bytes: Uint8Array): NativeGameRes {
         seen.add(name);
         const type = view.getUint16(at + 4), length = view.getUint16(at + 6);
         const end = at + 8 + Math.ceil(length / 4) * 4;
-        if (end > bytes.length || length === 0) fail("truncated field payload");
+        // Type 20 is a byte array; the retail client emits empty arrays for the
+        // per-house slots it did not use (CRA1/BLC1/... with length 0). Those
+        // are valid records, not truncation.
+        if (end > bytes.length || (length === 0 && type !== 20)) fail("truncated field payload");
         const data = bytes.subarray(at + 8, at + 8 + length);
         const payload = new DataView(data.buffer, data.byteOffset, data.byteLength);
         let value: NativeField;
@@ -81,7 +84,9 @@ export function decodeNativeGameRes(bytes: Uint8Array): NativeGameRes {
     const players = Array.from({ length: count }, (_, i) => ({ name: text(`NAM${i}`), completionStatus: integer(`CMP${i}`) }));
     if (players.some(p => !p.name || p.name.length > 64) || new Set(players.map(p => p.name.toLowerCase())).size !== count) fail("invalid player names");
     const sku = integer("GSKU"), finished = integer("FINI"), outOfSync = integer("OOSY");
-    if (![16640, 18688].includes(sku) || finished > 1 || outOfSync > 1) fail("invalid edition or flags");
+    // 8960 (0x2300) is what the retail Red Alert 2 native client reports in
+    // GSKU; 16640/18688 are the Yuri's Revenge-era values the ladder used.
+    if (![8960, 16640, 18688].includes(sku) || finished > 1 || outOfSync > 1) fail("invalid edition or flags");
     const clean = Buffer.concat([Buffer.alloc(4), ...kept]); clean.writeUInt16BE(clean.length);
     return { gameNumber: integer("IDNO"), sku, finished: !!finished, outOfSync: !!outOfSync,
         duration: integer("DURA"), mapName: text("SCEN"), aiPlayers: integer("AIPL"), players, fields,

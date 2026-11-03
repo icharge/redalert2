@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+﻿import { describe, expect, test } from "bun:test";
 import { WolServer } from "../src/server/WolServer";
 import { AccountStore } from "../src/auth/accountStore";
 import { SessionManager } from "../src/auth/session";
@@ -103,13 +103,13 @@ describe("matchmaking team allocation", () => {
         const instance = [...server.gservs.instances.values()][0];
         expect(instance).toBeDefined();
         expect([...server.games.keys()]).toContain("#WDTmatch");
-        expect(instance!.nativeSku).toBe(16640);
-        const deadline = Date.now() + 12000;
-        while (Date.now() < deadline && !hasLine(socketA, line => line.includes(" GAMEOPT "))) {
+        expect(instance!.nativeSku).toBe(8960);
+        const deadline = Date.now() + 17000;
+        while (Date.now() < deadline && !hasLine(socketA, line => line.includes(" STARTG "))) {
             await new Promise(resolve => setTimeout(resolve, 100));
         }
         expect(hasLine(socketA, line => line.includes(" GAMEOPT ") && line.includes("WDS=0"))).toBe(true);
-    }, 20000);
+    }, 26000);
 
     test("the quick-match lobby wins over the main lobby", async () => {
         const { server, accounts, sessions } = makeServer();
@@ -139,23 +139,23 @@ describe("matchmaking team allocation", () => {
         const socketB = await queue(server, accounts, sessions, "bob", 50, "1.006", false);
         const instance = [...server.gservs.instances.values()][0];
         expect(instance).toBeDefined();
-        // The retail client only ships RandMap.Map (it generates the map);
-        // "mpdefault" exists only in the RA2Web map set.
-        expect(instance!.gameopts).toContain(",RandMap.Map,");
-        const wants = (line: string) => line.includes(" GAMEOPT ") || line.includes(" JOINGAME ");
-        const deadline = Date.now() + 12000;
+        // The retail client loads MP32S8.MAP from its MIX; a per-client
+        // generated map gives the two machines different scenario checksums.
+        expect(instance!.gameopts).toContain(",MP32S8.MAP,");
+        const wants = (line: string) => line.includes(" STARTG ");
+        const deadline = Date.now() + 17000;
         while (Date.now() < deadline &&
             !(hasLine(socketA, wants) && hasLine(socketB, wants))) {
             await new Promise(resolve => setTimeout(resolve, 100));
         }
         for (const socket of [socketA, socketB]) {
-            expect(hasLine(socket, line => line.includes(" GAMEOPT ") && line.includes("RandMap.Map"))).toBe(true);
+            expect(hasLine(socket, line => line.includes(" GAMEOPT ") && line.includes("MP32S8.MAP"))).toBe(true);
             // The native client identifies the host by the channel operator in
             // the room's 353 roster, and only accepts NET_GO from that user.
             expect(hasLine(socket, line => line.includes(" 353 ") && line.includes(" :@alice,"))).toBe(true);
             expect(hasLine(socket, line => line.includes(" 353 ") && line.includes(" bob,"))).toBe(true);
         }
-    }, 20000);
+    }, 26000);
 
     test("a web quick match keeps the RA2Web map", async () => {
         const { server, accounts, sessions } = makeServer();

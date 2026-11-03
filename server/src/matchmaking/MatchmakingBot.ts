@@ -301,7 +301,7 @@ export class MatchmakingBot {
         const instance = this.server.gservs.create(players, gserv.url, {
             ranked: a.ranked && b.ranked,
             ladderType: ladderTypeForChannelType(a.channelType),
-            nativeSku: wdt ? 16640 : undefined,
+            nativeSku: wdt ? 8960 : undefined,
         });
         if (wdt) {
             for (const nick of players) this.server.clearWdtPending(nick);
