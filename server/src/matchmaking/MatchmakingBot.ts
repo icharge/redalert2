@@ -349,10 +349,47 @@ export class MatchmakingBot {
             // burst. The native client adopts the room from the roster; a
             // JOIN at this point makes its WDT match window report "Matching
             // Server Not Found" (0xD0).
+            // The native chat sink creates a session user (with its ipaddr) from
+            // a channel JOIN. Send the host's JOIN to both players (the guest
+            // needs the host's ipaddr to validate NET_GO), but send the guest's
+            // JOIN only to the guest itself: a second copy of the guest on the
+            // host makes the host pair the guest with itself.
+            for (const nick of players) {
+                const user = this.server.users.get(nick);
+                if (!user) {
+                    continue;
+                }
+                const recipients = nick === hostNick ? players : [nick];
+                for (const other of recipients) {
+                    const recipient = this.server.users.get(other);
+                    if (recipient) {
+                        recipient.send(`:${user.nick}!${user.hostmask} JOIN :0,${user.ping},${nick === hostNick ? 1 : 0},${user.fresh ? 1 : 0} ${key}\r\n`);
+                    }
+                }
+            }
             this.server.sendChannelNames(game);
+            // Send the options as the room host, not as the service bot: the
+            // native client associates the host's IP with the user that sends
+            // GAMEOPT, and User_List_To_Session_Players needs that address for
+            // the guest's NET_GO validation.
+            const host = this.server.users.get(hostNick);
+            const hostPrefix = host ? `${host.nick}!${host.hostmask}` : `${hostNick}!${hostNick}@local`;
+            // The native pregame screen builds its slot table from a separate
+            // `L` game-options message. RA2's slot table is eight entries; a
+            // short list leaves the remaining slots unread and the host tries to
+            // connect a player to itself. Fill the unused slots as closed.
+            const slots = [
+                ...players,
+                ...(players.length < 8 ? ["@Open@", "@Open@"] : []),
+                ...new Array(Math.max(0, 8 - players.length - 2)).fill("@Closed@"),
+            ].join(",");
             this.server.broadcastChannel(
                 game,
-                `:${this.server.config.matchBotName}!${this.server.config.matchBotName}@local GAMEOPT ${key} :${instance.gameopts}\r\n`,
+                `:${hostPrefix} GAMEOPT ${key} :L${slots},\r\n`,
+            );
+            this.server.broadcastChannel(
+                game,
+                `:${hostPrefix} GAMEOPT ${key} :${instance.gameopts}\r\n`,
             );
             this.log.info(`gameopts sent for match ${key}`);
             this.log.info(`STARTG sent for match ${key} (${players.join(", ")})`);
@@ -400,10 +437,13 @@ export class MatchmakingBot {
                 types.push(Number(match[1]));
             }
         }
-        // A WDT client can still be in its main lobby (#Lob_33_0/#Lob_41_0)
-        // when the match request goes out; the request belongs to the
-        // matching lobby, not to whichever channel was joined first.
-        return types.find(type => type === 35 || type === 38) ?? types[0];
+        // Main lobbies (#Lob_33_0 RA2, #Lob_41_0 YR) are chat rooms, not
+        // matchmaking queues; a client usually sits in one of them *and* in a
+        // queue lobby, so prefer the queue. WDT's matching lobbies win over
+        // the quick-match ones if a client somehow has both.
+        return types.find(type => type === 35 || type === 38)
+            ?? types.find(type => type !== 33 && type !== 41)
+            ?? types[0];
     }
 
     private versionOk(version: string, ranked: boolean): boolean {
@@ -448,10 +488,15 @@ export class MatchmakingBot {
         // generator; "mpdefault" only exists in the RA2Web map set.
         const mapName = a.native || b.native ? "RandMap.Map" : "mpdefault";
         const mapTitle = Buffer.from(mapTitleText, "utf16le").toString("base64");
-        const playersPart = players.map((name, index) => `${name},0,0,${index},${teamOf.get(name) ?? 0},0,0,0`).join(",");
+        const playersPart = players.map((name, index) => (a.native || b.native)
+            // The retail game's pregame record is six fields; the eight-field
+            // form is RA2Web's. Extra fields shift every player after the first
+            // and make the host pair a player with itself.
+            ? `${name},-2,-2,ffffffff,${teamOf.get(name) ?? 0},0`
+            : `${name},0,0,${index},${teamOf.get(name) ?? 0},0,0,0`).join(",");
         const aiPart = new Array(8).fill("0,-1,-1,-1,-1").join(",");
         const wdtPart = wdt ? `,WDS=${wdt.side}${wdt.territory !== undefined ? `,WDT=${wdt.territory}` : ""}` : "";
-        return `0,0,2,10000,100,0,0,1,1,0,1,0,${mapTitle},${players.length},1,1000,${mapName},abc123,1,0,0,1,0,1:${playersPart}:@:${aiPart},${wdtPart}`;
+        return `0,0,2,10000,100,0,0,1,1,0,1,0,${mapTitle},8,1,1000,${mapName},abc123,1,0,0,1,0,1:${playersPart}:@:${aiPart},${wdtPart}`;
     }
 
     private reply(user: ServerUser, text: string): void {

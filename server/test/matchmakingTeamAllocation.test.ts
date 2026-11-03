@@ -111,6 +111,28 @@ describe("matchmaking team allocation", () => {
         expect(hasLine(socketA, line => line.includes(" GAMEOPT ") && line.includes("WDS=0"))).toBe(true);
     }, 20000);
 
+    test("the quick-match lobby wins over the main lobby", async () => {
+        const { server, accounts, sessions } = makeServer();
+        await accounts.register("alice", "password123");
+        await accounts.register("bob", "password123");
+        const queueFrom = async (username: string) => {
+            const token = sessions.create(username);
+            const socket = new FakeSocket();
+            const user = server.handleOpen(socket);
+            server.handleMessage(user, `session ${token}`);
+            user.fresh = false;
+            server.handleMessage(user, `join ${escapeChannelName("#Lob 33 0")} zotclot9`);
+            server.handleMessage(user, `join ${escapeChannelName("#Lob 50 0")} zotclot9`);
+            server.handleMessage(user, `PRIVMSG matchbot :Match COU=US, COL=0, VRS=0.83.4-abc123, RKD=1`);
+            return socket;
+        };
+        await queueFrom("alice");
+        await queueFrom("bob");
+        const instance = [...server.gservs.instances.values()][0];
+        expect(instance).toBeDefined();
+        expect([...server.games.keys()]).not.toContain("#WDTmatch");
+    });
+
     test("the matchbot sends GAMEOPT and picks the retail random map for native clients", async () => {
         const { server, accounts, sessions } = makeServer();
         const socketA = await queue(server, accounts, sessions, "alice", 50, "1.006", false);
