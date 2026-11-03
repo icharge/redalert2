@@ -29,6 +29,8 @@ interface QueueEntry {
     players: string[];
     channelType: number;
     ranked: boolean;
+    /** True when the client is the retail (native) game, not the RA2Web app. */
+    native?: boolean;
     /** WDT request that formed this queue entry, if any. */
     wdt?: { side: number; territory?: number };
     matched?: { gameKey: string; players: string[] };
@@ -179,6 +181,7 @@ export class MatchmakingBot {
             this.reply(user, RPL_RATE_LIMITED);
             return;
         }
+        const native = this.isNativeVersion(version);
         this.log.info(`queue ${user.nick} (channelType ${channelType}, ranked ${ranked ? 1 : 0})`);
 
         const party = this.server.parties.getParty(user);
@@ -194,6 +197,7 @@ export class MatchmakingBot {
                 players: [...party.members],
                 channelType,
                 ranked: parsed.get(TAG_RANKED) === "1",
+                native,
                 wdt: context,
             };
             for (const nick of entry.players) {
@@ -215,6 +219,7 @@ export class MatchmakingBot {
             players: [user.nick],
             channelType,
             ranked: parsed.get(TAG_RANKED) === "1",
+            native,
             wdt: context,
         };
         user.inQueue = true;
@@ -314,6 +319,17 @@ export class MatchmakingBot {
             }
         }
         instance.gameopts = this.buildDefaultGameOpts(a, b, wdt);
+        // The matchbot is the game host, so it has to answer the clients'
+        // GameOptions request itself: the native client reads map/teams from
+        // the cached GAMEOPT before OnGameStart, and without it the match
+        // aborts as soon as it starts. Sent here so it precedes STARTG (sent on
+        // the countdown below).
+        game.gameOpts = instance.gameopts;
+        this.server.broadcastChannel(
+            game,
+            `:${this.server.config.matchBotName}!${this.server.config.matchBotName}@local GAMEOPT ${key} :${instance.gameopts}\r\n`,
+        );
+        this.log.info(`gameopts sent for match ${key}`);
         this.log.info(`instance ${instance.gameId} created${a.ranked && b.ranked ? ` (ranked ${instance.ladderType})` : ""} for ${players.join(", ")}`);
 
         const matched = { gameKey: key, players };
@@ -390,6 +406,13 @@ export class MatchmakingBot {
         return stripBuildSuffix(version) === stripBuildSuffix(webVersion);
     }
 
+    /** The retail game reports its own VRS (1.006) instead of RA2Web's 0.83.x. */
+    private isNativeVersion(version: string | undefined): boolean {
+        if (!version) return false;
+        const family = (value: string) => value.split(".").slice(0, 2).join(".");
+        return family(version) === family(this.server.config.nativeGameVersion);
+    }
+
     // Builds the authoritative gameopts for a quick-match/ranked instance.
     // The two matched sides are pinned to team 0 and team 1 so a 1v1 plays as a
     // normal fight (each team has one member -> no pre-formed alliance) and a
@@ -404,11 +427,15 @@ export class MatchmakingBot {
         for (const nick of b.players) {
             teamOf.set(nick, 1);
         }
-        const mapTitle = Buffer.from("Default Map", "utf16le").toString("base64");
+        const mapTitleText = a.native || b.native ? "Random Map" : "Default Map";
+        // The retail client resolves RandMap.Map to its built-in random map
+        // generator; "mpdefault" only exists in the RA2Web map set.
+        const mapName = a.native || b.native ? "RandMap.Map" : "mpdefault";
+        const mapTitle = Buffer.from(mapTitleText, "utf16le").toString("base64");
         const playersPart = players.map((name, index) => `${name},0,0,${index},${teamOf.get(name) ?? 0},0,0,0`).join(",");
         const aiPart = new Array(8).fill("0,-1,-1,-1,-1").join(",");
         const wdtPart = wdt ? `,WDS=${wdt.side}${wdt.territory !== undefined ? `,WDT=${wdt.territory}` : ""}` : "";
-        return `0,0,2,10000,100,0,0,1,1,0,1,0,${mapTitle},${players.length},1,1000,mpdefault,abc123,1,0,0,1,0,1:${playersPart}:@:${aiPart},${wdtPart}`;
+        return `0,0,2,10000,100,0,0,1,1,0,1,0,${mapTitle},${players.length},1,1000,${mapName},abc123,1,0,0,1,0,1:${playersPart}:@:${aiPart},${wdtPart}`;
     }
 
     private reply(user: ServerUser, text: string): void {

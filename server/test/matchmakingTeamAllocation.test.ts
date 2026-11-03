@@ -17,7 +17,7 @@ function makeServer(): { config: ServerConfig; server: WolServer; accounts: Acco
     return { config, server, accounts, sessions };
 }
 
-async function queue(server: WolServer, accounts: AccountStore, sessions: SessionManager, username: string, channelType = 50): Promise<FakeSocket> {
+async function queue(server: WolServer, accounts: AccountStore, sessions: SessionManager, username: string, channelType = 50, version = "0.83.4-abc123", ranked = true): Promise<FakeSocket> {
     await accounts.register(username, "password123");
     const token = sessions.create(username);
     const socket = new FakeSocket();
@@ -28,9 +28,9 @@ async function queue(server: WolServer, accounts: AccountStore, sessions: Sessio
     const request = [
         TAG_COUNTRY + "=0",
         TAG_COLOR + "=0",
-        TAG_VERSION + "=0.83.4-abc123",
+        TAG_VERSION + "=" + version,
         TAG_MODHASH + "=deadbeef",
-        TAG_RANKED + "=1",
+        TAG_RANKED + "=" + (ranked ? 1 : 0),
     ].join(", ");
     server.handleMessage(user, `PRIVMSG matchbot :Match ${request}`);
     return socket;
@@ -80,6 +80,29 @@ describe("matchmaking team allocation", () => {
         expect(teams.get("bob")).toBe(1);
         expect(teams.get("dave")).toBe(1);
         expect(teams.size).toBe(4);
+    });
+
+    test("the matchbot sends GAMEOPT and picks the retail random map for native clients", async () => {
+        const { server, accounts, sessions } = makeServer();
+        const socketA = await queue(server, accounts, sessions, "alice", 50, "1.006", false);
+        const socketB = await queue(server, accounts, sessions, "bob", 50, "1.006", false);
+        const instance = [...server.gservs.instances.values()][0];
+        expect(instance).toBeDefined();
+        // The retail client only ships RandMap.Map (it generates the map);
+        // "mpdefault" exists only in the RA2Web map set.
+        expect(instance!.gameopts).toContain(",RandMap.Map,");
+        for (const socket of [socketA, socketB]) {
+            expect(hasLine(socket, line => line.includes(" GAMEOPT ") && line.includes("RandMap.Map"))).toBe(true);
+        }
+    });
+
+    test("a web quick match keeps the RA2Web map and also gets GAMEOPT", async () => {
+        const { server, accounts, sessions } = makeServer();
+        const socketA = await queue(server, accounts, sessions, "alice");
+        await queue(server, accounts, sessions, "bob");
+        const instance = [...server.gservs.instances.values()][0];
+        expect(instance!.gameopts).toContain(",mpdefault,");
+        expect(hasLine(socketA, line => line.includes(" GAMEOPT ") && line.includes("mpdefault"))).toBe(true);
     });
 
     test("quick match 1v1 actually pairs the two queued users", async () => {

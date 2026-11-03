@@ -728,7 +728,16 @@ export class WolServer {
         if (!game || !game.has(user.nick)) {
             return;
         }
-        if (/^[-0-9]/.test(opt[0] ?? "")) {
+        if (!opt) {
+            // An empty `gameopt` is the client asking for the host's options.
+            // The server is the host of a matchbot game, so answer from the
+            // cached options instead of relaying an empty request.
+            if (game.gameOpts) {
+                user.send(`:${this.config.matchBotName}!${this.config.matchBotName}@local GAMEOPT ${key} :${game.gameOpts}\r\n`);
+                return;
+            }
+        }
+        else if (/^[-0-9]/.test(opt[0] ?? "")) {
             game.gameOpts = opt;
         }
         this.broadcastChannel(game, userLine(userPrefix(user.nick, user.hostmask), "GAMEOPT", `${key} :${opt}`), user);

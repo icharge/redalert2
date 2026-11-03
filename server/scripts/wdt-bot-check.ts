@@ -27,13 +27,18 @@ if (!process.env.WDT_NO_PICK) {
 await joinChannel(alice, "#Lob 35 0", "zotclot9");
 await joinChannel(bob, "#Lob 35 0", "zotclot9");
 
-const match = "Match COU=US, COL=0, VRS=0.83.4, RKD=0";
+const version = process.env.WOL_VERSION ?? "0.83.4";
+const match = `Match COU=US, COL=0, VRS=${version}, RKD=0`;
 alice.send(`privmsg matchbot :${match}`);
 bob.send(`privmsg matchbot :${match}`);
 
 const aMatched = await alice.waitFor(l => l.includes(" PRIVMSG ") && l.includes("Matched"), "alice Matched");
 const bMatched = await bob.waitFor(l => l.includes(" PRIVMSG ") && l.includes("Matched"), "bob Matched");
 console.log("matched", aMatched, "|", bMatched);
+const aOpts = await alice.waitFor(l => l.includes(" GAMEOPT "), "alice GAMEOPT");
+const bOpts = await bob.waitFor(l => l.includes(" GAMEOPT "), "bob GAMEOPT");
+console.log("gameopt", aOpts);
+console.log("gameopt", bOpts);
 await new Promise(resolve => setTimeout(resolve, 12000));
 const aStart = await alice.waitFor(l => l.includes(" STARTG "), "alice STARTG");
 const bStart = await bob.waitFor(l => l.includes(" STARTG "), "bob STARTG");
