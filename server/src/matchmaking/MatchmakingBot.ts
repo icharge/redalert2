@@ -335,19 +335,11 @@ export class MatchmakingBot {
         }
         const timer = setTimeout(() => {
             this.timers.delete(timer);
-            // Move the players into the game room only now. The native WDT
-            // match window stays in the matching lobby during the countdown;
-            // leaving it earlier makes the match worker report "Matching
-            // Server Not Found" (0xD0) before STARTG arrives. The bridge
-            // adopts a game channel from the JOINGAME whose sender is the
-            // local player, so send one per player, then the roster and the
-            // matchbot's options, then STARTG - all in the same burst.
-            for (const nick of players) {
-                const user = this.server.users.get(nick);
-                if (user) {
-                    user.send(`:${user.nick}!${user.hostmask} JOINGAME 0 0 0 0 0 ${user.ping} 0 :${key}\r\n`);
-                }
-            }
+            // Publish the game room to the matched players only at the end of
+            // the countdown, then send the options and STARTG in the same
+            // burst. The native client adopts the room from the roster; a
+            // JOIN at this point makes its WDT match window report "Matching
+            // Server Not Found" (0xD0).
             this.server.sendChannelNames(game);
             this.server.broadcastChannel(
                 game,
