@@ -528,9 +528,13 @@ export class GservServer {
             client.socket.send(`:${this.serverName} ${Code.RPL_INSTANCE_NONEXISTENT} ${client.nick} :no such instance\r\n`);
             return;
         }
-        if (version && !this.isVersionCompatible(version, this.config.gameVersion)) {
-            client.socket.send(`:${this.serverName} ${Code.RPL_INSTANCE_VERS_MISMATCH} ${client.nick} :version mismatch\r\n`);
-            return;
+        if (version) {
+            const webOk = this.isVersionCompatible(version, this.config.gameVersion);
+            const nativeOk = !instance.ranked && this.isVersionCompatible(version, this.config.nativeGameVersion);
+            if (!webOk && !nativeOk) {
+                client.socket.send(`:${this.serverName} ${Code.RPL_INSTANCE_VERS_MISMATCH} ${client.nick} :version mismatch\r\n`);
+                return;
+            }
         }
         if (this.config.expectedModHash !== undefined && modHash !== this.config.expectedModHash) {
             client.socket.send(`:${this.serverName} ${Code.RPL_INSTANCE_VERS_MISMATCH} ${client.nick} :mod hash mismatch\r\n`);

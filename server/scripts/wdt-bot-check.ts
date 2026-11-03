@@ -27,7 +27,7 @@ if (!process.env.WDT_NO_PICK) {
 await joinChannel(alice, "#Lob 35 0", "zotclot9");
 await joinChannel(bob, "#Lob 35 0", "zotclot9");
 
-const match = "Match COU=US,COL=0,VRS=0.83.4,RKD=0";
+const match = "Match COU=US, COL=0, VRS=0.83.4, RKD=0";
 alice.send(`privmsg matchbot :${match}`);
 bob.send(`privmsg matchbot :${match}`);
 

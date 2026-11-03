@@ -71,6 +71,20 @@ describe("matchbot ranked version gate", () => {
         expect(hasLine(socket, line => line.includes(RPL_BAD_VERS))).toBe(false);
     });
 
+    test("unranked queue accepts the native retail version", async () => {
+        const { server, accounts, sessions } = makeServer("0.83.2");
+        const socket = await queue(server, accounts, sessions, "alice", "1.006", false);
+        expect(hasLine(socket, line => line.includes(RPL_WORKING))).toBe(true);
+        expect(hasLine(socket, line => line.includes(RPL_BAD_VERS))).toBe(false);
+    });
+
+    test("ranked queue rejects the native retail version", async () => {
+        const { server, accounts, sessions } = makeServer("0.83.2");
+        const socket = await queue(server, accounts, sessions, "alice", "1.006", true);
+        expect(hasLine(socket, line => line.includes(RPL_BAD_VERS))).toBe(true);
+        expect(hasLine(socket, line => line.includes(RPL_WORKING))).toBe(false);
+    });
+
     test("unranked queue rejects a different major.minor", async () => {
         const { server, accounts, sessions } = makeServer("0.83.2");
         const socket = await queue(server, accounts, sessions, "alice", "0.84.0-abc123", false);

@@ -39,7 +39,10 @@ export interface ServerConfig {
     host: string;
     port: number;
     externalUrl: string;
+    /** RA2Web browser/ladder client version. */
     gameVersion: string;
+    /** Retail game's own VRS (the shell's 1.006). Unranked matches accept it. */
+    nativeGameVersion: string;
     globalChannelPass: string;
     matchBotName: string;
     motd: string[];
@@ -130,6 +133,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
         port,
         externalUrl,
         gameVersion: env.GAME_VERSION ?? "0.83.4",
+        nativeGameVersion: env.NATIVE_GAME_VERSION ?? "1.006",
         globalChannelPass: env.GLOBAL_CHANNEL_PASS ?? "zotclot9",
         matchBotName: env.MATCH_BOT_NAME ?? "matchbot",
         motd: (env.SERVER_MOTD ?? "Welcome to RA2Web\ngood luck and have fun").replace(/\\n/g, "\n").split("\n"),

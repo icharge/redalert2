@@ -10,11 +10,11 @@ function buildGameOpts(names: string[]): string {
     return `${optionsPart}:${playersPart}:@:,-1,-1,-1,-1,`;
 }
 
-function setup(env: Record<string, string> = {}) {
+function setup(env: Record<string, string> = {}, options: { ranked?: boolean } = {}) {
     const config = loadConfig(env);
     const manager = new GservManager({ id: "gs1", url: "ws://test.local/gserv" });
     const server = new GservServer(config, manager);
-    const instance = manager.create(["alice"], "ws://gserv");
+    const instance = manager.create(["alice"], "ws://gserv", options);
     instance.gameopts = buildGameOpts(["alice"]);
     return { config, manager, server, instance };
 }
@@ -51,6 +51,20 @@ describe("GservServer join version gate", () => {
         const { server, instance } = setup();
         const { socket } = joinWithVersion(server, instance, "alice", "0.83.4-deadbeef", "");
         expect(accepted(socket)).toBe(true);
+    });
+
+    test("unranked instances accept the native retail version", () => {
+        const { server, instance } = setup();
+        const { socket } = joinWithVersion(server, instance, "alice", "1.006", "");
+        expect(accepted(socket)).toBe(true);
+        expect(versionMismatch(socket)).toBe(false);
+    });
+
+    test("ranked instances reject the native retail version", () => {
+        const { server, instance } = setup({}, { ranked: true });
+        const { socket } = joinWithVersion(server, instance, "alice", "1.006", "");
+        expect(versionMismatch(socket)).toBe(true);
+        expect(accepted(socket)).toBe(false);
     });
 
     test("a different patch is rejected even in lenient mode", () => {

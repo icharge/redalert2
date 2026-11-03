@@ -54,6 +54,18 @@ function stripBuildSuffix(version: string): string {
     return version.split("-")[0];
 }
 
+// The retail client separates Match tags with ", " and leaves a trailing
+// comma on every value except the last ("VRS=1.006, COL=...").
+function parseQmTags(tags: string[]): Map<string, string> {
+    const parsed = new Map<string, string>();
+    for (const raw of tags) {
+        const tag = raw.replace(/,+$/, "");
+        const eq = tag.indexOf("=");
+        if (eq !== -1) parsed.set(tag.slice(0, eq), tag.slice(eq + 1));
+    }
+    return parsed;
+}
+
 export class MatchmakingBot {
     private queues = new Map<number, QueueEntry[]>();
     private byNick = new Map<string, QueueEntry>();
@@ -120,11 +132,7 @@ export class MatchmakingBot {
             this.reply(user, RPL_MODE_UNAVAIL);
             return;
         }
-        const parsed = new Map<string, string>();
-        for (const tag of tags) {
-            const eq = tag.indexOf("=");
-            if (eq !== -1) parsed.set(tag.slice(0, eq), tag.slice(eq + 1));
-        }
+        const parsed = parseQmTags(tags);
         const side = Number(parsed.get("WDS") ?? 0);
         if (!Number.isInteger(side) || side < 0) {
             this.reply(user, RPL_BAD_VERS);
@@ -143,13 +151,7 @@ export class MatchmakingBot {
             this.reply(user, RPL_ALREADY_QUEUED);
             return;
         }
-        const parsed = new Map<string, string>();
-        for (const tag of tags) {
-            const eq = tag.indexOf("=");
-            if (eq !== -1) {
-                parsed.set(tag.slice(0, eq), tag.slice(eq + 1));
-            }
-        }
+        const parsed = parseQmTags(tags);
         // The browser WDT worker sends a plain `Match`; it has already joined
         // the WDT matching lobby (Lob_35_0/Lob_38_0), and the territory comes
         // from the earlier `wdtstart` when the click has been processed.
@@ -367,15 +369,19 @@ export class MatchmakingBot {
     }
 
     private versionOk(version: string, ranked: boolean): boolean {
-        const expected = this.server.config.gameVersion;
+        const webVersion = this.server.config.gameVersion;
+        const nativeVersion = this.server.config.nativeGameVersion;
         if (!ranked) {
-            // Unranked games only require the same protocol family (major.minor).
-            return version.split(".").slice(0, 2).join(".") === expected.split(".").slice(0, 2).join(".");
+            // Unranked games only require the same protocol family
+            // (major.minor): the browser ladder client reports 0.83.x and the
+            // retail game reports its own 1.006.
+            const family = (value: string) => value.split(".").slice(0, 2).join(".");
+            return family(version) === family(webVersion) || family(version) === family(nativeVersion);
         }
         // Ranked games pair clients on the exact same game version (major.minor
         // .patch) so both sides play identical game logic; the git-hash build
         // suffix is stripped ("0.83.4-abcde" == "0.83.4").
-        return stripBuildSuffix(version) === stripBuildSuffix(expected);
+        return stripBuildSuffix(version) === stripBuildSuffix(webVersion);
     }
 
     // Builds the authoritative gameopts for a quick-match/ranked instance.
