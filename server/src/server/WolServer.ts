@@ -65,8 +65,6 @@ export class WolServer {
     readonly gservs: GservManager;
     readonly log: Logger;
     private pingInterval?: ReturnType<typeof setInterval>;
-    /** Delayed room teardown after a matchbot host leaves. */
-    private closingTimers = new Set<ReturnType<typeof setTimeout>>();
     private localeCodes = LOCALE_CODE_BY_ID;
     /** Territory the player clicked in the WDT map, sent by the browser bridge. */
     private readonly wdtPendingTerritory = new Map<string, number>();
@@ -99,10 +97,6 @@ export class WolServer {
             clearInterval(this.pingInterval);
             this.pingInterval = undefined;
         }
-        for (const timer of this.closingTimers) {
-            clearTimeout(timer);
-        }
-        this.closingTimers.clear();
     }
 
     // Re-create the ping interval with the current config value (used after a
@@ -913,27 +907,21 @@ export class WolServer {
             return;
         }
         game.closing = true;
-        // A stock WOL server keeps the game channel alive while its members
-        // finish leaving. The native client calls Leave_Channel a moment after
-        // "Pregame setup" and waits for its own PART; destroying the room here
-        // (or pushing a PART at it) makes the passive peer abandon the start
-        // and fall back to the World Domination screen. Keep the room
-        // reachable until the remaining players leave, then drop it.
+        this.games.delete(game.key);
         this.log.info(`game ${game.key} closed (host left)`);
-        const timer = setTimeout(() => {
-            this.closingTimers.delete(timer);
-            for (const member of [...game.members.values()]) {
-                const user = member.user;
-                user.send(`:${user.nick}!${user.hostmask} PART ${game.key}\r\n`);
-                game.removeMember(user);
-                if (user.gameChannel === game.key) {
-                    user.gameChannel = undefined;
-                }
-                this.log.info(`game ${game.key}: removed ${user.nick} (host left)`);
+        // A stock WOL server removes every remaining member when a game channel
+        // closes, and each of them sees a PART of itself. The native client's
+        // WOL->game transition waits for that line, so send it before dropping
+        // the room.
+        for (const member of [...game.members.values()]) {
+            const user = member.user;
+            user.send(`:${user.nick}!${user.hostmask} PART ${game.key}\r\n`);
+            game.removeMember(user);
+            if (user.gameChannel === game.key) {
+                user.gameChannel = undefined;
             }
-            this.games.delete(game.key);
-        }, 4000);
-        this.closingTimers.add(timer);
+            this.log.info(`game ${game.key}: removed ${user.nick} (host left)`);
+        }
     }
 
     sendChannelNames(channel: Channel, target?: ServerUser): void {
