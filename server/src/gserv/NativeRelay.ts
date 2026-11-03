@@ -45,6 +45,8 @@ export interface NativeRelayClient {
     ip: number;
     gameId?: string;
     handshakeTimer?: ReturnType<typeof setTimeout>;
+    /** Debug: datagrams seen from this client, for start-up diagnosis. */
+    packets?: number;
 }
 
 export class NativeRelay {
@@ -140,12 +142,19 @@ export class NativeRelay {
     private handleDatagram(client: NativeRelayClient, packet: Uint8Array): void {
         if (!client.gameId || packet.length < 8 || packet.length > 8 + NATIVE_RELAY_MAX_PACKET) return;
         const dst = ((packet[0] << 24) | (packet[1] << 16) | (packet[2] << 8) | packet[3]) >>> 0;
+        const count = (client.packets = (client.packets ?? 0) + 1);
+        if (count <= 8) {
+            this.log.debug(`native relay: ${client.nick} packet ${count} len=${packet.length} dst=${formatIp(dst)}`);
+        }
         const peers = this.games.get(client.gameId);
         if (!peers) return;
         const targets = dst === 0xffffffff
             ? [...peers.values()].filter(peer => peer !== client)
             : [peers.get(dst)].filter((peer): peer is NativeRelayClient => !!peer && peer !== client);
-        if (targets.length === 0) return;
+        if (targets.length === 0) {
+            if (count <= 8) this.log.debug(`native relay: ${client.nick} packet ${count} has no target`);
+            return;
+        }
         const out = new Uint8Array(packet);
         out[0] = client.ip >>> 24; out[1] = (client.ip >>> 16) & 255; out[2] = (client.ip >>> 8) & 255; out[3] = client.ip & 255;
         const deliver = () => {

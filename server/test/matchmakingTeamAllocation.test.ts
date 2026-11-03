@@ -94,6 +94,11 @@ describe("matchmaking team allocation", () => {
         for (const socket of [socketA, socketB]) {
             expect(hasLine(socket, line => line.includes(" GAMEOPT ") && line.includes("RandMap.Map"))).toBe(true);
         }
+        // The native bridge adopts a game channel from a JOINGAME sent as the
+        // local player; a matchbot-sent one leaves it on the matching lobby and
+        // the STARTG is then dropped.
+        expect(hasLine(socketA, line => line.startsWith(":alice!") && line.includes(" JOINGAME "))).toBe(true);
+        expect(hasLine(socketB, line => line.startsWith(":bob!") && line.includes(" JOINGAME "))).toBe(true);
     });
 
     test("a web quick match keeps the RA2Web map and also gets GAMEOPT", async () => {

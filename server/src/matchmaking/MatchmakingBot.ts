@@ -276,7 +276,13 @@ export class MatchmakingBot {
             }
             game.addMember(user, false);
             user.gameChannel = key;
-            user.send(`:${this.server.config.matchBotName}!${this.server.config.matchBotName}@local JOINGAME 0 0 0 0 0 ${user.ping} 0 :${key}\r\n`);
+            // A matchbot game has no human host, so tell each player about
+            // their own join. The native bridge adopts a game channel from the
+            // JOINGAME whose nick is the local user; a matchbot-sent JOINEGAME
+            // only fires OnChannelJoin with an unknown user and leaves
+            // g_current_channel on the matching lobby, so the later STARTG is
+            // dropped as "not my channel".
+            user.send(`:${user.nick}!${user.hostmask} JOINGAME 0 0 0 0 0 ${user.ping} 0 :${key}\r\n`);
         }
         this.server.sendChannelNames(game);
 
