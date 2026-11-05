@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Two-account World Domination pairing check over real WebSocket WOL clients.
  * It sends the same `wdtarmed` / `wdtstart` / `Match` sequence the browser
  * bridge does and expects `Matched`, then STARTG on #WDTmatch for both.
@@ -35,7 +35,7 @@ bob.send(`privmsg matchbot :${match}`);
 const aMatched = await alice.waitFor(l => l.includes(" PRIVMSG ") && l.includes("Matched"), "alice Matched");
 const bMatched = await bob.waitFor(l => l.includes(" PRIVMSG ") && l.includes("Matched"), "bob Matched");
 console.log("matched", aMatched, "|", bMatched);
-await new Promise(resolve => setTimeout(resolve, 12000));
+await new Promise(resolve => setTimeout(resolve, 16000));
 const aStart = await alice.waitFor(l => l.includes(" STARTG "), "alice STARTG");
 const bStart = await bob.waitFor(l => l.includes(" STARTG "), "bob STARTG");
 const aOpts = await alice.waitFor(l => l.includes(" GAMEOPT "), "alice GAMEOPT");
